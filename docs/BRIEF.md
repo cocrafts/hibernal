@@ -106,10 +106,10 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `hearts`, `max_hearts` | u8 | Base max 5. 0 = dead. |
 | `yield_`, `might`, `grit` | u16 | Derived from tree bitmap; cached. Base 5 each; start region +3 to its stat. |
 | `level`, `points_unspent` | u16, u8 | 1 point per level. |
-| `tree_bitmap` | u128 | Allocated nodes. Adjacency table is a program constant. |
+| `tree_bitmap` | u64 | Allocated nodes (24 for the hackathon, ≤ 64). Adjacency is computed in `rules/tree.ms`, no table. |
 | `harvest` | u64 | Unclaimed earnings. **Lootable.** |
 | `burrow` | u64 | Claimed $HBRN (D24). **Not lootable.** Pays food and levels. |
-| `reward_debt` | u128 | `work_power × acc` at last settlement (D23). |
+| `acc_snapshot` | u64 | Value of `acc_reward_per_wp` at last settlement (D23). Replaces `reward_debt`: `pending = work_power × (acc − acc_snapshot) / ACC_SCALE` never exceeds the emission of the interval, so no u128 is needed. |
 | `born_epoch`, `last_tick_epoch` | u64 | Age, lazy tick. |
 | `fights_out_today`, `fights_in_today`, `bites_in_today`, `fight_day` | u8, u8, u8, u64 | Reset by epoch. |
 | `growth_mult_bps`, `growth_mult_expiry` | u16, u64 | SKR buffs. Clamped ≤ 12000. |
@@ -135,10 +135,10 @@ Estimated size ~220 bytes → rent ≈ 0.0024 SOL.
 ### 3.3 Epoch, emission and lazy settlement (D23)
 - `epoch = floor((now - genesis_ts) / EPOCH_SECONDS)`
 - Emission for epoch `e`: `E(e) = max(E0 × 0.75^floor(e / 90), E_floor)` `[strawman: E0 = 100_000/day, E_floor = 0.05 × E0]`
-- `GlobalConfig` holds `acc_reward_per_wp: u128` (fixed-point 1e12), `acc_epoch: u64`, `total_work_power: u64`.
-- **Global settle** (runs first in any instruction that writes global): for each epoch from `acc_epoch` to current: `acc += (E(e) + recycled(e)) × 1e12 / total_work_power`. Integer loop, no accounts.
+- `GlobalConfig` holds `acc_reward_per_wp: u64` (fixed-point, `ACC_SCALE = 1e5`), `acc_epoch: u64`, `total_work_power: u64`, `recycled_pending: u64`. With `E0 = 1e11` base units/day and `total_work_power ≥ 10`, `acc` stays below 2^63 for ~1,800 epochs and `work_power × Δacc` is bounded by the interval's emission × 1e5.
+- **Global settle** (runs first in any instruction that writes global): for each epoch from `acc_epoch` to current: `acc += (E(e) + recycled) × ACC_SCALE / total_work_power`, where `recycled_pending` is spent entirely on the first settled epoch. Integer loop, no accounts (`rules/emission.ms: settleGlobal`).
 - **Pet tick** (called on any pet instruction; permissionless `tick(pet)` also exists so neighbors can force-settle a sleeper):
-  1. `pending = work_power × acc − reward_debt`; `harvest += pending × growth_mult`; the `(growth_mult − 1)` part is extra mint (D23). `reward_debt = work_power × acc`.
+  1. `pending = work_power × (acc − acc_snapshot) / ACC_SCALE`; `harvest += pending + growthBonus(pending, mult)`; the bonus part is extra mint (D23). `acc_snapshot = acc`.
   2. For each missed epoch in `(last_tick_epoch, current]`: hunger step — newborn pets skip every other step; if `hearts − 1 < min_hearts` and `burrow ≥ food_cost(1)` → auto-eat tier 1 (D22), else `hearts -= 1`. `hearts == 0` → death (§3.7), stop.
   3. Reset daily fight counters if `fight_day != epoch`.
 - **Write discipline:** a plain tick must not write `GlobalConfig` unless `acc_epoch` advanced or `total_work_power` changed (allocate, death). Global is the one hot account; keep it read-mostly.
@@ -174,19 +174,22 @@ SKR **never** buys: $HBRN from protocol, levels/points/power, a second revive, o
 - **Limits:** `attacks_per_epoch = 1 + might/10` `[strawman; rev 1 was flat 3]`; 3 incoming/epoch (first-come); max 1 attack per (attacker, target) per epoch; max 1 bite per target per epoch (D11).
 - **Stake:** attacker posts `S` from burrow, `S ≤ target.harvest / k` so that `k × S ≤ harvest` (if `target.harvest == 0`, `S` = minimum bite stake `[strawman: 5]`).
 - **Resolution:** `attack(target, S)` locks stake and requests VRF; `resolve_fight(randomness)` callback runs `fight(seed, snapshot_a, snapshot_d)` and settles. Fallback build: single-step using slot hashes.
-- **Combat function** (all integer, `[strawman]` constants; the rev-2 draft was measured too steep and attacker-biased in a 20k-run Monte Carlo — retune in `sim/` before hardcoding):
+- **Combat function** (all integer; implemented in `rules/fight.ms`, constants measured against §6.7 with `sim/curve.ms`, 4,000 runs per cell, rev 4):
 
-  | Quantity | Draft |
+  | Quantity | Rule |
   |---|---|
-  | Fight HP | `100 + 4 × grit` (separate from hearts) |
-  | Attacker hit | `might × DMG × (80..120)/100`, `DMG` `[strawman 3]` |
-  | Defender counter | same formula at `might/2` |
-  | Dodge | `min(30, grit/2)` % |
-  | Crit | `5 + might/4` %, ×1.5 |
-  | Max rounds | 8; then higher remaining HP% wins; tie → defender |
-  | RNG | splitmix64 stream from `seed = hash(vrf_output, attacker, target, epoch, fights_out_today)` |
+  | Fight HP | `100 + 4 × grit` (separate from hearts); Glass Cannon halves it |
+  | Round | **simultaneous**: attacker and defender each strike once, then HP is checked |
+  | Hit | `might × DMG × roll/100`, `DMG = 3`, `roll ∈ [20, 180]` uniform |
+  | Dodge | `min(30, grit/2)` %, Thick Hide +10 |
+  | Crit | `5 + might/4` %, ×2; Scavenger +15 vs a target with fewer hearts |
+  | Max rounds | 8 |
+  | Outcome | one comparison in every case: attacker wins iff `hpA/hpA0 > hpD/hpD0` (cross-multiplied). Covers KO, mutual KO (less overkill wins) and the round cap. Exact tie → defender. |
+  | RNG | splitmix64, `seed = fightSeed(entropy, attacker_slot, defender_slot, epoch, fights_out_today)`; draw `i` uses `splitmix(seed + i)` |
 
-  Notables hook in via a `mods` bitmask (e.g. Thick Hide +dodge, Scavenger +crit vs fewer hearts, Glass Cannon ×2 DMG / −Fight HP).
+  Measured curve (attacker p_win): equal stats 0.49–0.51 at might 5/8/20 · 2× might 0.96 · 0.5× might 0.009 · 2× grit 0.78 · 0.5× grit 0.33 · Fighter start vs Worker start 0.94. Equal fights at might 5 run 7.4 rounds on average, so the HP% comparison decides most of them; at might 20 they end in 3.1.
+
+  Notables hook in via a `mods` bitmask (Thick Hide +dodge and −50% loot on the first 3 incoming fights, Scavenger +crit, Glass Cannon ×2 DMG / half Fight HP, Pacifist −70% incoming loot and cannot attack, Cannibal on the death path).
 - **Attacker wins:** `loot = min(k × S, harvest_d) × (1 − grit_d/100)`; `harvest_d -= loot`; `burrow_a += loot × 0.95`; protocol 5%. If `harvest_d` was 0 before the fight **and** `power_d ≥ 0.5 × power_a` **and** `bites_in_today_d == 0` → **bite:** `hearts_d -= 1`.
 - **Attacker loses:** `S × 0.95 → burrow_d`; protocol 5%; `hearts_a -= 1`.
 - **Record:** append `FightRecord` to the Block ring buffer (§3.8); emit an event with the same payload.
@@ -210,7 +213,7 @@ SKR **never** buys: $HBRN from protocol, levels/points/power, a second revive, o
 - **The campfire scene is the home screen** (§5.6); neighbor cards open from the distant fires. Each neighbor card: stats, hearts, level, age (+ "Fading" badge past epoch 80), harvest, burrow size, **Monte-Carlo p_win if my pet attacks**, max loot, 24h fight log with replay buttons.
 
 ### 3.9 Skill tree (PoE-style)
-- Web constant in program: `NODES[N]` with `{kind, stat_delta, mods, adjacency: [u8]}`; `N ≤ 128` (u128 bitmap). Hackathon: **~24 nodes** — 3 start nodes, 5 small + 1 notable per region, 3 keystones at center/borders (36 is the post-hackathon target).
+- No node table in the program: `rules/tree.ms` computes kind, stat delta, mods and neighbours arithmetically from the node id (`u64` bitmap, `N ≤ 64`). Hackathon: **~24 nodes** — 3 start nodes, 5 small + 1 notable per region, 3 keystones at center/borders (36 is the post-hackathon target).
 - `allocate(node_id)`: require `points_unspent > 0`, node not set, and at least one adjacent node set (or node is the chosen start). Set bit; recompute cached stats; settle pet first (D23), then update `total_work_power`.
 - Node kinds:
   - **Small:** +1 Yield / +1 Might / +1 Grit / +1 max_hearts
@@ -286,7 +289,7 @@ Everything below the ABI (clang → ld.lld → sBPF v3 ELF, DCE, comptime) alrea
 `getMultipleAccounts` on the 10 Pet accounts + Block + GlobalConfig covers the home scene; district leaderboard via `getProgramAccounts` with a `kind` filter. No indexer, no backend.
 
 ### 5.4 Single source of rules
-`rules/` (`layout.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `pwin_mc.ms`) is compiled into the program, the native core and the sim from the same files. No ports, no golden vectors. A determinism test runs identical seeds through the js and native builds and asserts identical `FightRecord`s; the program build is checked in LiteSVM against the same seeds. Rules stay integer-only.
+`rules/` (`layout.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `pwinMc.ms`) is compiled into the program, the native core and the sim from the same files. No ports, no golden vectors. A determinism test runs identical seeds through the js and native builds and asserts identical `FightRecord`s; the program build is checked in LiteSVM against the same seeds. Rules stay integer-only.
 
 ### 5.5 Narration
 Template morning digest generated natively from the state cache and FightRecords, shown in the HUD. On-device LLM is roadmap (RENDERER-BRIEF §8 already spent those days).
@@ -352,7 +355,7 @@ Compiler and library work lands in the `recompiler` and `void` repos; this repo 
 4. A pet born at epoch 60 can reach top-quartile of the *current* generation by epoch 120 (requires aging, post-hackathon).
 5. Worker beats Survivor on expected income iff daily successful-raid probability `q < 0.67` (given Worker harvest ≈ 3× base, Survivor ≈ 1×). `work_power` weights must actually produce ≈ 3×.
 6. Fighter EV vs a claimed (harvest = 0) target must be **negative** (bite stake risk + heart risk, no loot).
-7. **Combat curve** `[strawman targets]`: equal stats → attacker p_win 0.45–0.55; 2× might → ≥ 0.85; 0.5× might → ≤ 0.20. Draft in §3.6 currently fails this (near 1.0 at equal stats).
+7. **Combat curve**: equal stats → attacker p_win 0.45–0.55; 2× might → ≥ 0.85; 0.5× might → ≤ 0.20. **Met by rev 4 of §3.6** (0.50 / 0.96 / 0.009). Open: whether 0.009 is too crushing for the underdog; `ROLL_LO/HI` widen it (10–190 gives 0.018 at the cost of 2× dropping to 0.94).
 8. Fight EV between peers with non-empty harvest must be **positive for the stronger side** at `k` chosen, so the brain actually attacks.
 
 Write the offchain simulator early (`sim/`, TypeScript on the shared module) — seed 200 pets across 20 blocks with mixed builds and brain personas, run 120 epochs, check invariants. Use it to pick `E0`, `cost(L)`, `food_cost`, `k`, combat constants and stat weights before hardcoding.

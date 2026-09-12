@@ -159,8 +159,8 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 ### 3.1 READY today (no upstream blocker)
 | ID | Package | Est. | Notes |
 |---|---|---|---|
-| **P0** | `rules/`: `layout.ms` (fixed account structs), `fight.ms`, `emission.ms` (accumulator), `tree.ms` (24 nodes), `brain.ms` (EV policy), `pwin_mc.ms` | 3 | Pure integer MetaScript; runs on host with js/native backends today. Largest de-risked chunk; feeds P1, A1, S1, P9. |
-| **S1** | Sim harness on `rules/` js build: 200 pets, 20 blocks, 120 epochs, invariants §6 | 1.5 | After P0's first pass. |
+| ~~**P0**~~ | `rules/`: `layout.ms`, `rng.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `pwinMc.ms` | 3 | **Done 2026-09-12** (first pass): 26 tests green under `msc test rules/index.ms`; `sim/determinism.ms` gives identical digests on native and js; `sim/curve.ms` meets §6.7. Not yet on chain: see R12. Feeds P1, A1, S1, P9. |
+| **S1** | Sim harness in MetaScript on `rules/`: 200 pets, 20 blocks, 120 epochs, invariants §6 | 1.5 | Unblocked. `sim/curve.ms` and `sim/determinism.ms` are the seed. |
 | **A0** | Kotlin shell skeleton: gradle, `WallpaperService`, Activity + SurfaceView, `System.loadLibrary`, JNI stubs | 1 | Pure Kotlin. |
 | **T1** | Blender parametric generator → glTF (positions, normals, vertex colors), 3 region variants, 9 animations as baked keyframes | 3 | Offline. Feeds A4. |
 | **R7** | Extend the demo's LiteSVM JS harness: multi-account setup, clock control, state dump, seed replay | 1 | Feeds P1 and P9. |
@@ -181,6 +181,8 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 | **R8** | Solana subset definition + one `--os=solana` regression test per construct | ongoing | P8 |
 | **R9** | Android: NDK toolchain wiring (`--cc` wrapper or detection), `arm64-v8a`, `--app=lib` → `.so`, JNI export pattern (C shim with `JNIEXPORT` calling MetaScript symbols) | 1–3 | A1, A2, R10 |
 | **R10** | `std/http` + `std/tls` link and run under NDK | 0.5–2 | A5 (fallback: OkHttp in the shell) |
+| **R12** | Module-scope `const` under `--os=solana`: emitted as a C global that the contract link discards (`ld.lld: relocation refers to a symbol in a discarded section: K__…`), exported or not; `enum` members are fine. Fold to literals or emit `static const`. Measured 2026-09-12 on `tools/rulesProbe.ms`. | 0.5–1 | P1 (rules/ on chain), A1 |
+| **R13** | Runtime calls that abort on chain, measured 2026-09-12 in LiteSVM: `String(uint64)` → `exceeded max BPF to BPF call depth`; `process.exit()` → `ProgramFailedToComplete`. Refuse them at compile time under `--os=solana` (extends R4/R5). | 0.5 | R8 |
 
 ### 3.3 BLOCKED on void (V)
 | ID | Package | Est. | Blocks |
