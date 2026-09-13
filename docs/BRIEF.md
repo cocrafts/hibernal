@@ -82,7 +82,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | ~~D20~~ | ~~Program in Anchor (Rust); rules module in MetaScript compiled to JS.~~ **Superseded by D31.** | — |
 | **D21** | **Fully onchain on Solana L1.** No Ephemeral Rollup, no off-chain state DB. Fight records live onchain (D25). Reads via RPC account subscriptions; no indexer for MVP. | See §1.6. Cost is ~0.00005 SOL/pet/day. |
 | **D22** | **$HBRN buys food.** `eat(tier)` costs $HBRN from burrow, restores hearts; spend splits 60/30/10 like upgrades. **Auto-eat floor at tick**: if hearts would fall below `min_hearts` `[strawman 2]` and burrow can afford tier 1, tick eats. **Newborn hunger is halved** for 3 epochs. SKR Food remains as emergency heal. | A zero-SKR pet that works can live indefinitely. The fear is not starving; it is being unable to work or raid. |
-| **D23** | **Emission via a global reward accumulator** (MasterChef pattern). `EpochState` removed. `acc_reward_per_wp` updates lazily on any global touch; each pet stores `reward_debt`. **Growth multiplier is paid by extra mint** on top of the pet's share, never by diluting others. | No per-epoch accounts, no snapshot approximation, a 5-day sleeper settles with one multiplication. |
+| **D23** | **Emission via a global reward accumulator** (MasterChef pattern). `EpochState` removed. `reward_per_work_power` updates lazily on any global touch; each pet stores `reward_debt`. **Growth multiplier is paid by extra mint** on top of the pet's share, never by diluting others. | No per-epoch accounts, no snapshot approximation, a 5-day sleeper settles with one multiplication. |
 | **D24** | **Hackathon mode: all $HBRN balances are `u64` fields** (pet burrow, protocol, recycled pot). No mint, no ATAs, no Token-2022 CPI in the game loop. Real mint arrives with real launch. | Removes the largest CPI surface from the 14-day build; D17 already made the balances non-transferable. |
 | **D25** | **Combat is a deterministic multi-round duel**, pure integer math, `fight(seed, attacker, defender) → outcome`. The rounds *are* the resolution, not a dramatization. Each Block keeps a **ring buffer of the last 32 `FightRecord`s** (seed + stat snapshots + result); the client replays them round by round. **Win odds are computed client-side by Monte Carlo** over the shared module. **Seed from MagicBlock VRF** (two-step: request → callback), fallback to slot hashes if VRF fee or latency is unacceptable. | RPG feel and honest replays for zero extra rent. Skill-tree notables map onto crit/dodge/first-strike. |
 | **D26** | **Loot may exceed stake**: `loot = min(k × S, harvest_d) × (1 − grit_d/100)`, `k` `[strawman 1.5]`. The rev-1 invariant "attacker never takes more than staked" is **dropped**. Attacks per epoch may scale with might `[strawman 1 + might/10]`, pending §10 Q7. | With loot ≤ stake and 5% rake, every fight between peers has negative EV and the autonomous brain would never attack. |
@@ -109,13 +109,13 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `tree_bitmap` | u64 | Allocated nodes (24 for the hackathon, ≤ 64). Adjacency is computed in `rules/tree.ms`, no table. |
 | `harvest` | u64 | Unclaimed earnings. **Lootable.** |
 | `burrow` | u64 | Claimed $HBRN (D24). **Not lootable.** Pays food and levels. |
-| `acc_snapshot` | u64 | Value of `acc_reward_per_wp` at last settlement (D23). Replaces `reward_debt`: `pending = work_power × (acc − acc_snapshot) / ACC_SCALE` never exceeds the emission of the interval, so no u128 is needed. |
+| `reward_snapshot` | u64 | Value of `reward_per_work_power` at last settlement (D23). Replaces `reward_debt`: `pending = work_power × (reward_per_work_power − reward_snapshot) / REWARD_SCALE` never exceeds the emission of the interval, so no u128 is needed. |
 | `born_epoch`, `last_tick_epoch` | u64 | Age, lazy tick. |
 | `fights_out_today`, `fights_in_today`, `bites_in_today`, `fight_day` | u8, u8, u8, u64 | Reset by epoch. |
-| `growth_mult_bps`, `growth_mult_expiry` | u16, u64 | SKR buffs. Clamped ≤ 12000. |
+| `growth_multiplier_bps`, `growth_multiplier_expiry` | u16, u64 | SKR buffs. Clamped ≤ 12000. |
 | `min_hearts` | u8 | Auto-eat floor set by the brain (D22). |
 | `insurance` | enum {None, Armed, Used} | Once per pet. |
-| `scars`, `lineage_gen` | u8, u16 | Cosmetic/prestige. |
+| `scars`, `lineage_generation` | u8, u16 | Cosmetic/prestige. |
 | `power` | derived | `yield_ + might + grit` |
 | `work_power` | derived | `10 + yield_ × 3` `[strawman — sim must make Worker ≈ 3× base, see §6]` |
 
@@ -133,15 +133,15 @@ Estimated size ~220 bytes → rent ≈ 0.0024 SOL.
 7. Client immediately creates a session (D19) so the brain can act from epoch 0.
 
 ### 3.3 Epoch, emission and lazy settlement (D23)
-- `epoch = floor((now - genesis_ts) / EPOCH_SECONDS)`
+- `epoch = floor((now - genesis_timestamp) / EPOCH_SECONDS)`
 - Emission for epoch `e`: `E(e) = max(E0 × 0.75^floor(e / 90), E_floor)` `[strawman: E0 = 100_000/day, E_floor = 0.05 × E0]`
-- `GlobalConfig` holds `acc_reward_per_wp: u64` (fixed-point, `ACC_SCALE = 1e5`), `acc_epoch: u64`, `total_work_power: u64`, `recycled_pending: u64`. With `E0 = 1e11` base units/day and `total_work_power ≥ 10`, `acc` stays below 2^63 for ~1,800 epochs and `work_power × Δacc` is bounded by the interval's emission × 1e5.
-- **Global settle** (runs first in any instruction that writes global): for each epoch from `acc_epoch` to current: `acc += (E(e) + recycled) × ACC_SCALE / total_work_power`, where `recycled_pending` is spent entirely on the first settled epoch. Integer loop, no accounts (`rules/emission.ms: settleGlobal`).
+- `GlobalConfig` holds `reward_per_work_power: u64` (fixed-point, `REWARD_SCALE = 1e5`), `reward_epoch: u64`, `total_work_power: u64`, `recycled_pending: u64`. With `E0 = 1e11` base units/day and `total_work_power ≥ 10`, `acc` stays below 2^63 for ~1,800 epochs and `work_power × Δacc` is bounded by the interval's emission × 1e5.
+- **Global settle** (runs first in any instruction that writes global): for each epoch from `reward_epoch` to current: `reward_per_work_power += (E(e) + recycled) × REWARD_SCALE / total_work_power`, where `recycled_pending` is spent entirely on the first settled epoch. Integer loop, no accounts (`rules/emission.ms: settleGlobal`).
 - **Pet tick** (called on any pet instruction; permissionless `tick(pet)` also exists so neighbors can force-settle a sleeper):
-  1. `pending = work_power × (acc − acc_snapshot) / ACC_SCALE`; `harvest += pending + growthBonus(pending, mult)`; the bonus part is extra mint (D23). `acc_snapshot = acc`.
+  1. `pending = work_power × (reward_per_work_power − reward_snapshot) / REWARD_SCALE`; `harvest += pending + growthBonus(pending, multiplier)`; the bonus part is extra mint (D23). `reward_snapshot = reward_per_work_power`.
   2. For each missed epoch in `(last_tick_epoch, current]`: hunger step — newborn pets skip every other step; if `hearts − 1 < min_hearts` and `burrow ≥ food_cost(1)` → auto-eat tier 1 (D22), else `hearts -= 1`. `hearts == 0` → death (§3.7), stop.
   3. Reset daily fight counters if `fight_day != epoch`.
-- **Write discipline:** a plain tick must not write `GlobalConfig` unless `acc_epoch` advanced or `total_work_power` changed (allocate, death). Global is the one hot account; keep it read-mostly.
+- **Write discipline:** a plain tick must not write `GlobalConfig` unless `reward_epoch` advanced or `total_work_power` changed (allocate, death). Global is the one hot account; keep it read-mostly.
 - Dead-but-unticked pets remain in `total_work_power` until ticked. Inheritance (§3.7) is the incentive for neighbors to tick them. Document the small dilution.
 
 ### 3.4 Economy flows ($HBRN)
@@ -162,7 +162,7 @@ Level cost `[strawman]`: `cost(L) = 100 × 1.12^L`. Food cost `[strawman]`: `foo
 | Item | Effect | Constraint |
 |---|---|---|
 | Food (3 tiers) | +1 / +2 / +3 hearts | No other effect. Bypasses the pet's budget. |
-| Growth drug (3 tiers, 24h) | `growth_mult` +5% / +10% / +15% | Stacked total clamped at **1.20**. Multiplies *harvest* only. Paid by extra mint (D23). |
+| Growth drug (3 tiers, 24h) | `growth_multiplier` +5% / +10% / +15% | Stacked total clamped at **1.20**. Multiplies *harvest* only. Paid by extra mint (D23). |
 | Insurance | On reaching 0 hearts: revive with 3 hearts, burn 50% of wallet, +1 scar | **Once per pet.** |
 | Skins | Cosmetic | 0% stat effect. |
 
@@ -180,7 +180,7 @@ SKR **never** buys: $HBRN from protocol, levels/points/power, a second revive, o
   |---|---|
   | Fight HP | `100 + 4 × grit` (separate from hearts); Glass Cannon halves it |
   | Round | **simultaneous**: attacker and defender each strike once, then HP is checked |
-  | Hit | `might × DMG × roll/100`, `DMG = 3`, `roll ∈ [20, 180]` uniform |
+  | Hit | `might × DAMAGE × roll/100`, `DAMAGE = 3`, `roll ∈ [20, 180]` uniform |
   | Dodge | `min(30, grit/2)` %, Thick Hide +10 |
   | Crit | `5 + might/4` %, ×2; Scavenger +15 vs a target with fewer hearts |
   | Max rounds | 8 |
@@ -189,7 +189,7 @@ SKR **never** buys: $HBRN from protocol, levels/points/power, a second revive, o
 
   Measured curve (attacker p_win): equal stats 0.49–0.51 at might 5/8/20 · 2× might 0.96 · 0.5× might 0.009 · 2× grit 0.78 · 0.5× grit 0.33 · Fighter start vs Worker start 0.94. Equal fights at might 5 run 7.4 rounds on average, so the HP% comparison decides most of them; at might 20 they end in 3.1.
 
-  Notables hook in via a `mods` bitmask (Thick Hide +dodge and −50% loot on the first 3 incoming fights, Scavenger +crit, Glass Cannon ×2 DMG / half Fight HP, Pacifist −70% incoming loot and cannot attack, Cannibal on the death path).
+  Notables hook in via a `mods` bitmask (Thick Hide +dodge and −50% loot on the first 3 incoming fights, Scavenger +crit, Glass Cannon ×2 damage / half Fight HP, Pacifist −70% incoming loot and cannot attack, Cannibal on the death path).
 - **Attacker wins:** `loot = min(k × S, harvest_d) × (1 − grit_d/100)`; `harvest_d -= loot`; `burrow_a += loot × 0.95`; protocol 5%. If `harvest_d` was 0 before the fight **and** `power_d ≥ 0.5 × power_a` **and** `bites_in_today_d == 0` → **bite:** `hearts_d -= 1`.
 - **Attacker loses:** `S × 0.95 → burrow_d`; protocol 5%; `hearts_a -= 1`.
 - **Record:** append `FightRecord` to the Block ring buffer (§3.8); emit an event with the same payload.
@@ -218,7 +218,7 @@ SKR **never** buys: $HBRN from protocol, levels/points/power, a second revive, o
 - Node kinds:
   - **Small:** +1 Yield / +1 Might / +1 Grit / +1 max_hearts
   - **Notable** (examples): *Scavenger* +crit vs targets with fewer hearts; *Thick Hide* +dodge, first 3 incoming fights/day yield 50% loot; *Overtime* Yield ×1.5 on days with no fights in/out; *Nightwatch* one chosen neighbor gets +50% of your Grit
-  - **Keystone** (rule-changing, always with a cost): *Glass Cannon* DMG ×2, max_hearts = 2 · *Hibernate* no upkeep after ≥3 idle epochs, Yield 0 while idle, −2 hearts on wake · *Cannibal* killing blow → 50% of victim's wallet to you instead of block · *Pacifist* cannot attack, incoming loot −70%, Yield +30% · *Tithe* 10% Yield → block pot, +1 max_hearts per living neighbor · *Bloodline* heir gets 60% (post-hackathon), max level −20%
+  - **Keystone** (rule-changing, always with a cost): *Glass Cannon* damage ×2, max_hearts = 2 · *Hibernate* no upkeep after ≥3 idle epochs, Yield 0 while idle, −2 hearts on wake · *Cannibal* killing blow → 50% of victim's wallet to you instead of block · *Pacifist* cannot attack, incoming loot −70%, Yield +30% · *Tithe* 10% Yield → block pot, +1 max_hearts per living neighbor · *Bloodline* heir gets 60% (post-hackathon), max level −20%
 - Keystones sit far from starts and on region borders → cross-region pathing costs levels.
 - **Respec:** none, except **one refund of up to 3 points per Winter** (post-hackathon).
 
@@ -289,7 +289,7 @@ Everything below the ABI (clang → ld.lld → sBPF v3 ELF, DCE, comptime) alrea
 `getMultipleAccounts` on the 10 Pet accounts + Block + GlobalConfig covers the home scene; district leaderboard via `getProgramAccounts` with a `kind` filter. No indexer, no backend.
 
 ### 5.4 Single source of rules
-`rules/` (`layout.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `pwinMc.ms`) is compiled into the program, the native core and the sim from the same files. No ports, no golden vectors. A determinism test runs identical seeds through the js and native builds and asserts identical `FightRecord`s; the program build is checked in LiteSVM against the same seeds. Rules stay integer-only.
+`rules/` (`units.ms`, `stats.ms`, `layout.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `winOdds.ms`) is compiled into the program, the native core and the sim from the same files. No ports, no golden vectors. A determinism test runs identical seeds through the js and native builds and asserts identical `FightRecord`s; the program build is checked in LiteSVM against the same seeds. Rules stay integer-only.
 
 ### 5.5 Narration
 Template morning digest generated natively from the state cache and FightRecords, shown in the HUD. On-device LLM is roadmap (RENDERER-BRIEF §8 already spent those days).
@@ -414,7 +414,7 @@ Two tracks in parallel from day 1: **chain** (recompiler Solana backend + progra
 | 4 | **Tripwire:** `claim`-less `tick` + `eat` + `level_up` running in LiteSVM from MetaScript. Missed → the blocking item gets a dated shim, nothing else changes. | Outline + palette passes. Blender generator script starts. |
 | 5–6 | `claim` with SGT TLV parse, `Block` + free-list + grace, session-token verification, `close_dead_pet`. LiteSVM scenario tests. | glTF loader, first pet on screen, lights, idle animation, touch. Native RPC: `getMultipleAccounts`, blockhash, tx serialization, ed25519 signing, `sendTransaction` against devnet. |
 | 7–8 | `attack` (slot-hash seed), `fight()` in program, `FightRecord` ring buffer, death + inheritance, `allocate` + 24-node tree. CPI item 6 → SKR shop instructions. **Devnet deploy.** | Brain loop (`hib_brain_tick`) end to end with session key; Kotlin shell: Worker, MWA claim + session creation. Lifecycle hardening (preview, context loss, visibility). |
-| 9–10 | Determinism test js vs native vs LiteSVM. Sim run: invariants §6. Tune `k`, `DMG`, `E0`, `cost`. | HUD in Neon-on-void: campfire home with neighbor fires + Monte-Carlo odds, My Pet, Tree, Replay, Shop, Digest. Widget. |
+| 9–10 | Determinism test js vs native vs LiteSVM. Sim run: invariants §6. Tune `LOOT_PER_STAKE_BPS`, `DAMAGE`, `EMISSION_START`, `levelCost`. | HUD in Neon-on-void: campfire home with neighbor fires + Monte-Carlo odds, My Pet, Tree, Replay, Shop, Digest. Widget. |
 | 11–12 | VRF request/callback if CPI is solid; else document fallback. `update_config`, timelock authority. | Variants, day/night, Winter palette, harvest objects. Battery measurement. |
 | 13 | Demo video (10-min epochs; opens on unlock with the pet on the lock screen). Deck. | |
 | 14 | README, architecture doc, commit hygiene. dApp Store submission. | |
@@ -443,7 +443,7 @@ Commit daily in this repo and in the compiler/void repos with meaningful message
 ## 10. Open questions (decide day 1 unless noted)
 1. Project name. "Hibernal" is the working title; token is **$HBRN** (settled). Alternatives floated: Warren, Burrow, Holt.
 2. ~~Client stack~~ — **settled: all-in MetaScript with a thin Kotlin shell (D31).**
-3. `E0`, `cost(L)`, `food_cost`, `k`, `DMG` and other combat constants — run `sim/` first.
+3. `EMISSION_START`, `levelCost`, `foodCost`, `LOOT_PER_STAKE_BPS`, `DAMAGE` and other combat constants — run `sim/` first.
 4. Devnet SGT: no real SGT on devnet → add a `DevAdmission` group to `admission_groups` on devnet only, minted by a dev keypair. Never on mainnet.
 5. Whether inheritance credits to `harvest` (lootable, must be claimed) or directly to burrow. Default: harvest.
 6. Minimum bite stake value.
@@ -473,5 +473,5 @@ Commit daily in this repo and in the compiler/void repos with meaningful message
 - **Bite** — heart damage inflicted when a winning attacker finds an empty harvest.
 - **Winter** — the ×0.75 emission step every 90 epochs; also the seasonal ritual (merge, refund, titles).
 - **Pot** — the epoch's distributable tokens (emission + recycled spend), realized through the accumulator.
-- **acc** — `acc_reward_per_wp`, cumulative reward per unit of work power since genesis.
-- **growth_mult** — SKR-purchased multiplier on harvest, clamped at 1.20, paid by extra mint.
+- **reward_per_work_power** — cumulative reward per unit of work power since genesis.
+- **growth_multiplier** — SKR-purchased multiplier on harvest, clamped at 1.20, paid by extra mint.

@@ -159,7 +159,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 ### 3.1 READY today (no upstream blocker)
 | ID | Package | Est. | Notes |
 |---|---|---|---|
-| ~~**P0**~~ | `rules/`: `layout.ms`, `rng.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `pwinMc.ms` | 3 | **Done 2026-09-12** (first pass): 26 tests green under `msc test rules/index.ms`; `sim/determinism.ms` gives identical digests on native and js; `sim/curve.ms` meets §6.7. Not yet on chain: see R12. Feeds P1, A1, S1, P9. |
+| ~~**P0**~~ | `rules/`: `units.ms`, `stats.ms`, `layout.ms`, `rng.ms`, `fight.ms`, `emission.ms`, `tree.ms`, `brain.ms`, `winOdds.ms` | 3 | **Done 2026-09-12** (first pass): 26 tests green under `msc test rules/index.ms`; `sim/determinism.ms` gives identical digests on native and js; `sim/curve.ms` meets §6.7. Not yet on chain: see R12. Feeds P1, A1, S1, P9. |
 | **S1** | Sim harness in MetaScript on `rules/`: 200 pets, 20 blocks, 120 epochs, invariants §6 | 1.5 | Unblocked. `sim/curve.ms` and `sim/determinism.ms` are the seed. |
 | **A0** | Kotlin shell skeleton: gradle, `WallpaperService`, Activity + SurfaceView, `System.loadLibrary`, JNI stubs | 1 | Pure Kotlin. |
 | **T1** | Blender parametric generator → glTF (positions, normals, vertex colors), 3 region variants, 9 animations as baked keyframes | 3 | Offline. Feeds A4. |
@@ -181,7 +181,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 | **R8** | Solana subset definition + one `--os=solana` regression test per construct | ongoing | P8 |
 | **R9** | Android: NDK toolchain wiring (`--cc` wrapper or detection), `arm64-v8a`, `--app=lib` → `.so`, JNI export pattern (C shim with `JNIEXPORT` calling MetaScript symbols) | 1–3 | A1, A2, R10 |
 | **R10** | `std/http` + `std/tls` link and run under NDK | 0.5–2 | A5 (fallback: OkHttp in the shell) |
-| **R12** | Module-scope `const` under `--os=solana`: emitted as a C global that the contract link discards (`ld.lld: relocation refers to a symbol in a discarded section: K__…`), exported or not; `enum` members are fine. Fold to literals or emit `static const`. Measured 2026-09-12 on `tools/rulesProbe.ms`. | 0.5–1 | P1 (rules/ on chain), A1 |
+| **R12** | Module-scope data under `--os=solana` becomes a C global that the contract link discards (`ld.lld: relocation refers to a symbol in a discarded section`). Measured 2026-09-12: a scalar `const` in the entry file folds and links; any `const` in a non-entry module (even used only in that file), any non-scalar `const` (string, struct) and any module-scope `let` fail; `enum` members and local `const`s are fine. Fold cross-module scalar consts or emit `static const`. Repro: `tools/rulesProbe.ms` (rules/ imports consts across files). | 0.5–1 | P1 (rules/ on chain), A1 |
 | **R13** | Runtime calls that abort on chain, measured 2026-09-12 in LiteSVM: `String(uint64)` → `exceeded max BPF to BPF call depth`; `process.exit()` → `ProgramFailedToComplete`. Refuse them at compile time under `--os=solana` (extends R4/R5). | 0.5 | R8 |
 
 ### 3.3 BLOCKED on void (V)
@@ -230,7 +230,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 ### 3.7 Tuning and submission
 | ID | Package | Est. | Depends on |
 |---|---|---|---|
-| **S2** | Tuning runs: `E0`, `cost(L)`, `food_cost`, `k`, `DMG`, combat curve (BRIEF §6 invariants 7–8) | 1.5 | S1 |
+| **S2** | Tuning runs: `EMISSION_START`, `levelCost`, `foodCost`, `LOOT_PER_STAKE_BPS`, `DAMAGE`, combat curve (BRIEF §6 invariants 7–8) | 1.5 | S1 |
 | **X2** | Demo video: unlock → pet on lock screen → claim → session → works → eats → levels → fight replay → neighbor starves → inheritance | 1 | A6 A8 A10 P10 |
 | **X3** | Deck (BRIEF §9 outline) | 1 | X2 |
 | **X4** | dApp Store submission, README, architecture doc, pinned commits | 1 | X2 |
