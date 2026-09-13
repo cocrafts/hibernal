@@ -41,10 +41,10 @@ export function winChanceAgainst(
 }
 
 test "win chance grows with might" {
-	const defender = Combatant.plain(8, 5, 5);
-	const weaker = Combatant.plain(4, 5, 5).winChanceAgainst(defender, 1, 500);
-	const equal = Combatant.plain(8, 5, 5).winChanceAgainst(defender, 1, 500);
-	const stronger = Combatant.plain(16, 5, 5).winChanceAgainst(defender, 1, 500);
+	const defender = Combatant.plain(80, 50, 5);
+	const weaker = Combatant.plain(40, 50, 5).winChanceAgainst(defender, 1, 500);
+	const equal = Combatant.plain(80, 50, 5).winChanceAgainst(defender, 1, 500);
+	const stronger = Combatant.plain(160, 50, 5).winChanceAgainst(defender, 1, 500);
 	assert weaker < equal;
 	assert equal < stronger;
 }

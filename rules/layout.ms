@@ -68,11 +68,11 @@ export struct FightRecord {
 
 export function stats(this pet: Pet): Stats {
 	return {
+		...Stats.fromTree(pet.tree),
 		forage: pet.forage as int32,
 		might: pet.might as int32,
 		grit: pet.grit as int32,
 		maxHearts: pet.maxHearts as int32,
-		mods: Stats.fromTree(pet.tree).mods,
 	};
 }
 

@@ -1,4 +1,4 @@
-import { START_BONUS, Stats, Region, Mod } from "./stats";
+import { START_BONUS, NODE_BONUS, Stats, Region, Mod } from "./stats";
 
 export const TREE_NODES: int32 = 24;
 export const KEYSTONE_PACIFIST: int32 = 21;
@@ -148,13 +148,13 @@ function withStart(this stats: Stats, id: int32): Stats {
 function withSmall(this stats: Stats, id: int32): Stats {
 	const region = regionOf(id);
 	const primaryStat: Stats = match (region) {
-		Region.Worker => ({ ...stats, forage: stats.forage + 1 }),
-		Region.Fighter => ({ ...stats, might: stats.might + 1 }),
-		Region.Survivor => ({ ...stats, grit: stats.grit + 1 }),
+		Region.Worker => ({ ...stats, forage: stats.forage + NODE_BONUS }),
+		Region.Fighter => ({ ...stats, might: stats.might + NODE_BONUS }),
+		Region.Survivor => ({ ...stats, grit: stats.grit + NODE_BONUS }),
 	};
 	const secondaryStat: Stats = match (region) {
-		Region.Survivor => ({ ...stats, might: stats.might + 1 }),
-		_ => ({ ...stats, grit: stats.grit + 1 }),
+		Region.Survivor => ({ ...stats, might: stats.might + NODE_BONUS }),
+		_ => ({ ...stats, grit: stats.grit + NODE_BONUS }),
 	};
 	const extraHeart: Stats = { ...stats, maxHearts: stats.maxHearts + 1 };
 	return match (offsetOf(id)) {
@@ -266,9 +266,9 @@ test "derived stats for a fighter path" {
 		.withNode(14)
 		.withNode(KEYSTONE_GLASS_CANNON);
 	const stats = Stats.fromTree(tree);
-	assert stats.might == 9;
-	assert stats.grit == 6;
-	assert stats.forage == 5;
+	assert stats.might == 90;
+	assert stats.grit == 60;
+	assert stats.forage == 50;
 	assert stats.maxHearts == 2;
 	assert stats.mods.has(Mod.Scavenger);
 	assert stats.mods.has(Mod.GlassCannon);

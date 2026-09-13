@@ -13,7 +13,7 @@ import {
 } from "../rules/index";
 
 function fightHolds(): boolean {
-	const result = Combatant.plain(0, 5, 5).fight(Combatant.plain(8, 5, 5), 42);
+	const result = Combatant.plain(0, 50, 5).fight(Combatant.plain(80, 50, 5), 42);
 	return result.outcome == Outcome.DefenderWins && result.rounds >= 1;
 }
 
@@ -22,7 +22,7 @@ function treeHolds(): boolean {
 	const grown = path.allocate(KEYSTONE_GLASS_CANNON, Region.Fighter);
 	if (!grown.ok) { return false; }
 	const derived = Stats.fromTree(grown.value);
-	return derived.might == 9 && derived.maxHearts == 2 && derived.mods.has(Mod.GlassCannon);
+	return derived.might == 90 && derived.maxHearts == 2 && derived.mods.has(Mod.GlassCannon);
 }
 
 function emissionHolds(): boolean {

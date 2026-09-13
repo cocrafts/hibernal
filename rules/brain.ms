@@ -130,7 +130,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		region: 0,
 		hearts: fighter.hearts as uint8,
 		maxHearts: 5,
-		forage: 5,
+		forage: 50,
 		might: fighter.might as uint16,
 		grit: fighter.grit as uint16,
 		level: 0,
@@ -182,7 +182,7 @@ test "level up respects reserve" {
 }
 
 test "attack expected value follows odds" {
-	const defender = Combatant.plain(5, 0, 5);
+	const defender = Combatant.plain(50, 0, 5);
 	assert defender.attackExpectedValue(9000, 100, 1000000, 0) > 0;
 	assert defender.attackExpectedValue(3000, 100, 1000000, 0) < 0;
 	assert defender.attackExpectedValue(9000, 100, 0, 0) < 0;
@@ -190,8 +190,8 @@ test "attack expected value follows odds" {
 
 test "empty harvest target is never worth attacking" {
 	const greedy = Persona.of(PersonaKind.Greedy);
-	const attacker = petWith(Combatant.plain(50, 5, 5), 0, 1000000000, 0);
-	const defender = petWith(Combatant.plain(5, 5, 5), 1000000000, 0, 0);
+	const attacker = petWith(Combatant.plain(500, 50, 5), 0, 1000000000, 0);
+	const defender = petWith(Combatant.plain(50, 50, 5), 1000000000, 0, 0);
 	const empty = greedy.scoreTarget(attacker, { ...defender, harvest: 0 }, 10, 1);
 	assert !empty.ok;
 	if (!empty.ok) { assert empty.error == Skip.EmptyHarvest; }
@@ -205,8 +205,8 @@ test "empty harvest target is never worth attacking" {
 
 test "daily attack counters reset with the fight day" {
 	const greedy = Persona.of(PersonaKind.Greedy);
-	const attacker = petWith(Combatant.plain(50, 5, 5), 0, 1000000000, 0);
-	const defender = petWith(Combatant.plain(5, 5, 5), 1000000000, 0, 0);
+	const attacker = petWith(Combatant.plain(500, 50, 5), 0, 1000000000, 0);
+	const defender = petWith(Combatant.plain(50, 50, 5), 1000000000, 0, 0);
 	const spentToday: Pet = { ...attacker, fightDay: 10, fightsOutToday: 6 };
 	const spent = greedy.scoreTarget(spentToday, defender, 10, 1);
 	assert !spent.ok;

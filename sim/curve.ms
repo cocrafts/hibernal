@@ -27,17 +27,17 @@ function row(matchup: Matchup): string {
 
 function main(): int32 {
 	const matchups: Matchup[] = [
-		{ label: "equal low", attacker: contender(5, 5), defender: contender(5, 5) },
-		{ label: "equal mid", attacker: contender(8, 8), defender: contender(8, 8) },
-		{ label: "equal high", attacker: contender(20, 20), defender: contender(20, 20) },
-		{ label: "double might", attacker: contender(16, 8), defender: contender(8, 8) },
-		{ label: "half might", attacker: contender(4, 8), defender: contender(8, 8) },
-		{ label: "double grit", attacker: contender(8, 16), defender: contender(8, 8) },
-		{ label: "half grit", attacker: contender(8, 4), defender: contender(8, 8) },
-		{ label: "Fighter vs Worker", attacker: contender(8, 5), defender: contender(5, 5) },
-		{ label: "Worker vs Fighter", attacker: contender(5, 5), defender: contender(8, 5) },
-		{ label: "Survivor vs Fighter", attacker: contender(5, 8), defender: contender(8, 5) },
-		{ label: "Fighter vs Survivor", attacker: contender(8, 5), defender: contender(5, 8) },
+		{ label: "equal low", attacker: contender(50, 50), defender: contender(50, 50) },
+		{ label: "equal mid", attacker: contender(80, 80), defender: contender(80, 80) },
+		{ label: "equal high", attacker: contender(200, 200), defender: contender(200, 200) },
+		{ label: "double might", attacker: contender(160, 80), defender: contender(80, 80) },
+		{ label: "half might", attacker: contender(40, 80), defender: contender(80, 80) },
+		{ label: "double grit", attacker: contender(80, 160), defender: contender(80, 80) },
+		{ label: "half grit", attacker: contender(80, 40), defender: contender(80, 80) },
+		{ label: "Fighter vs Worker", attacker: contender(80, 50), defender: contender(50, 50) },
+		{ label: "Worker vs Fighter", attacker: contender(50, 50), defender: contender(80, 50) },
+		{ label: "Survivor vs Fighter", attacker: contender(50, 80), defender: contender(80, 50) },
+		{ label: "Fighter vs Survivor", attacker: contender(80, 50), defender: contender(50, 80) },
 	];
 	for (const matchup of matchups) { console.log(row(matchup)); }
 	return 0;

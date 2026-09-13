@@ -1,5 +1,7 @@
-export const BASE_STAT: int32 = 5;
-export const START_BONUS: int32 = 3;
+export const BASE_STAT: int32 = 50;
+export const BASE_SPEED: int32 = 50;
+export const START_BONUS: int32 = 30;
+export const NODE_BONUS: int32 = 10;
 export const BASE_MAX_HEARTS: int32 = 5;
 
 export enum Region {
@@ -21,6 +23,11 @@ export struct Stats {
 	forage: int32;
 	might: int32;
 	grit: int32;
+	speed: int32;
+	armor: int32;
+	accuracy: int32;
+	lifesteal: int32;
+	bleed: int32;
 	maxHearts: int32;
 	mods: BitSet<Mod>;
 }
@@ -28,6 +35,11 @@ export struct Stats {
 export struct Combatant {
 	might: int32;
 	grit: int32;
+	speed: int32;
+	armor: int32;
+	accuracy: int32;
+	lifesteal: int32;
+	bleed: int32;
 	hearts: int32;
 	mods: BitSet<Mod>;
 }
@@ -46,13 +58,18 @@ export function base(this typeof Stats): Stats {
 		forage: BASE_STAT,
 		might: BASE_STAT,
 		grit: BASE_STAT,
+		speed: BASE_SPEED,
+		armor: 0,
+		accuracy: 0,
+		lifesteal: 0,
+		bleed: 0,
 		maxHearts: BASE_MAX_HEARTS,
 		mods: noMods(),
 	};
 }
 
 export function workPower(this stats: Stats): uint64 {
-	return (10 + stats.forage * 3) as uint64;
+	return (10 + stats.forage * 3 / 10) as uint64;
 }
 
 export function power(this stats: Stats): int32 {
@@ -60,19 +77,30 @@ export function power(this stats: Stats): int32 {
 }
 
 export function asCombatant(this stats: Stats, hearts: int32): Combatant {
-	return { might: stats.might, grit: stats.grit, hearts: hearts, mods: stats.mods };
+	return {
+		might: stats.might,
+		grit: stats.grit,
+		speed: stats.speed,
+		armor: stats.armor,
+		accuracy: stats.accuracy,
+		lifesteal: stats.lifesteal,
+		bleed: stats.bleed,
+		hearts: hearts,
+		mods: stats.mods,
+	};
 }
 
 export function plain(this typeof Combatant, might: int32, grit: int32, hearts: int32): Combatant {
-	return { might: might, grit: grit, hearts: hearts, mods: noMods() };
+	return { ...Stats.base().asCombatant(hearts), might: might, grit: grit };
 }
 
-test "workPower base is 25 at forage 5" {
+test "workPower base is 25 at forage 50" {
 	const base = Stats.base();
 	const worker: Stats = { ...base, forage: base.forage + START_BONUS };
 	assert base.workPower() == 25;
 	assert worker.workPower() == 34;
 	assert Stats.base().asCombatant(3).hearts == 3;
+	assert Combatant.plain(80, 60, 5).speed == BASE_SPEED;
 }
 
 test "mods round-trip through a mask" {
@@ -82,5 +110,5 @@ test "mods round-trip through a mask" {
 	assert !mods.has(Mod.Overtime);
 	assert (mods as uint32) == 18;
 	assert noMods().isEmpty();
-	assert Stats.base().power() == 15;
+	assert Stats.base().power() == 150;
 }

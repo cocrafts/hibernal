@@ -27,14 +27,24 @@ function digestFights(count: int32): uint64 {
 	for (let index = 0; index < count; index++) {
 		const seed = splitmix(index as uint64);
 		const attacker: Combatant = {
-			might: 1 + ((seed >> 8) % 40) as int32,
-			grit: ((seed >> 16) % 40) as int32,
+			might: (1 + ((seed >> 8) % 40) as int32) * 10,
+			grit: (((seed >> 16) % 40) as int32) * 10,
+			speed: 30 + ((seed >> 12) % 60) as int32,
+			armor: ((seed >> 20) % 50) as int32,
+			accuracy: ((seed >> 28) % 50) as int32,
+			lifesteal: ((seed >> 36) % 40) as int32,
+			bleed: ((seed >> 44) % 40) as int32,
 			hearts: 1 + ((seed >> 24) % 5) as int32,
 			mods: modsFromMask(((seed >> 32) % 64) as int32),
 		};
 		const defender: Combatant = {
-			might: 1 + ((seed >> 40) % 40) as int32,
-			grit: ((seed >> 48) % 40) as int32,
+			might: (1 + ((seed >> 40) % 40) as int32) * 10,
+			grit: (((seed >> 48) % 40) as int32) * 10,
+			speed: 30 + ((seed >> 52) % 60) as int32,
+			armor: ((seed >> 2) % 50) as int32,
+			accuracy: ((seed >> 10) % 50) as int32,
+			lifesteal: ((seed >> 18) % 40) as int32,
+			bleed: ((seed >> 26) % 40) as int32,
 			hearts: 1 + ((seed >> 56) % 5) as int32,
 			mods: modsFromMask(((seed >> 4) % 64) as int32),
 		};
@@ -75,8 +85,18 @@ function digestEconomy(): uint64 {
 }
 
 function digestOdds(): uint64 {
-	const attacker: Combatant = { might: 9, grit: 6, hearts: 5, mods: modsFromMask(2) };
-	const defender: Combatant = { might: 7, grit: 9, hearts: 3, mods: modsFromMask(4) };
+	const attacker: Combatant = {
+		...Combatant.plain(90, 60, 5),
+		speed: 60,
+		armor: 20,
+		mods: modsFromMask(2),
+	};
+	const defender: Combatant = {
+		...Combatant.plain(70, 90, 3),
+		accuracy: 30,
+		bleed: 20,
+		mods: modsFromMask(4),
+	};
 	const odds = attacker.oddsAgainst(defender, 99, 2000);
 	const packed = (odds.winChanceBps as uint64) ^ ((odds.averageRoundsTimes100 as uint64) << 20);
 	const digest: Digest = { value: 0 };
