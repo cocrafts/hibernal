@@ -26,7 +26,8 @@ msc build tools/rulesProbe.ms --os=solana --output=out/rulesProbe.so
 
 ## Naming
 
-- **camelCase for file names and identifiers** whenever the language allows: `pwinMc.ms`, `rulesProbe.ms`, `accSnapshot`, `fightsOutToday`. Snake_case only where the other side dictates it (Solana account field names in docs, C symbols in shims).
+- **camelCase for file names and identifiers** whenever the language allows: `winOdds.ms`, `rulesProbe.ms`, `rewardSnapshot`, `fightsOutToday`. Snake_case only where the other side dictates it (Solana account field names in docs, C symbols in shims).
+- **Spell names out.** A reader should not have to ask what a name means: `winChanceBps` not `pwinBps`, `attackExpectedValue` not `attackEv`, `defenderHarvest` not `harvestD`, `winOdds.ms` not `pwinMc.ms`. Abbreviate only when the full name would be unreasonably long, and then only with terms `docs/BRIEF.md` already uses (`BPS`, `HP`, `HBRN`, `crit`).
 - Constants stay `UPPER_SNAKE`. Struct and enum names `PascalCase`.
 - `yield` is reserved, so the stat is `yield_`.
 
@@ -34,15 +35,17 @@ msc build tools/rulesProbe.ms --os=solana --output=out/rulesProbe.so
 
 - Integer only: `int32`, `int64`, `uint64`. No floats, no strings, no arrays, no allocation. It has to run on chain.
 - Every rule change is measured, not argued: rerun `sim/curve.ms` and `msc test rules/index.ms`, and update the numbers in `docs/BRIEF.md` §3.6 / §6.
-- Constants that are tuning knobs live at the top of their file as `export const`.
+- Tuning knobs live at the top of their file as `export const`. They do not link under `--os=solana` yet (any `const` in a non-entry module, R12); that is a compiler fix, not a reason to rewrite them as functions.
 
-## MetaScript traps hit in this repo (msc 0.2.54)
+## Code style
 
-- The test assertion keyword is `assert`, not `expect` as `LANG-TEST.md` says.
-- `|=`, `&=` do not parse. Write `a = a | b`.
-- A struct literal cannot be assigned to an existing variable or `out` param: bind it to a typed `const` first, then assign.
-- Under `--os=solana`: module-scope `const` (exported or not) fails the link (`relocation refers to a symbol in a discarded section`); `enum` members are fine. `String(uint64)` and `process.exit()` abort on chain. Tracked as R12 / R13 in the roadmap.
-- Nothing calls `main()` for you. End entry files with `process.exit(main());` on host, bare `main();` for the chain build.
+`docs/CODE-STYLE.md` is the style guide: `match` over if/else ladders, `Result<T, E>` over sentinels, `for..of` then indexed `for` then `while`, `struct`/`enum`/`BitSet` over classes and masks, sized integers with explicit `as`. It also lists every doc-vs-compiler discrepancy measured on msc 0.2.54. Read it before writing or reviewing `.ms`.
+
+Repo-specific on top of it:
+
+- `rules/` must satisfy the on-chain column of CODE-STYLE §11: no allocation, no module-scope `let`, no `String(uint64)` or `process.exit()` in code that reaches the chain (R13). Module `const`s stay and wait on R12.
+- `sim/determinism.ms` must print the same four digests on native and `--target=js`; a rule change that moves a digest needs a reason in the commit.
+- Host entry files end with `process.exit(main());`, chain builds with bare `main();`.
 
 ## Git
 
