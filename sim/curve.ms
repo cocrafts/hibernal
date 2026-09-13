@@ -1,30 +1,45 @@
-import { Combatant, Odds, estimateOdds } from "../rules/index";
+import { Combatant, Odds, oddsAgainst } from "../rules/index";
 
-function odds(am: int32, ag: int32, dm: int32, dg: int32, runs: int32): Odds {
-	const a: Combatant = { might: am, grit: ag, hearts: 5, mods: 0 };
-	const d: Combatant = { might: dm, grit: dg, hearts: 5, mods: 0 };
-	let o: Odds = { pwinBps: 0, avgRoundsX100: 0, runs: 0 };
-	estimateOdds(a, d, 7, runs, out o);
-	return o;
+struct Matchup {
+	label: string;
+	attacker: Combatant;
+	defender: Combatant;
 }
 
-function row(label: string, am: int32, ag: int32, dm: int32, dg: int32): void {
-	const o = odds(am, ag, dm, dg, 4000);
-	console.log(label + "\tA(" + String(am) + "," + String(ag) + ") vs D(" + String(dm) + "," + String(dg) + ")\tpwin=" + String(o.pwinBps) + "bps\trounds=" + String(o.avgRoundsX100));
+const RUNS_PER_MATCHUP: int32 = 4000;
+
+function contender(might: int32, grit: int32): Combatant {
+	return Combatant.plain(might, grit, 5);
+}
+
+function toString(this combatant: Combatant): string {
+	return `(${combatant.might},${combatant.grit})`;
+}
+
+function toString(this odds: Odds): string {
+	return `winChance=${odds.winChanceBps}bps\taverageRoundsTimes100=${odds.averageRoundsTimes100}`;
+}
+
+function row(matchup: Matchup): string {
+	const odds = matchup.attacker.oddsAgainst(matchup.defender, 7, RUNS_PER_MATCHUP);
+	return `${matchup.label}\tA${matchup.attacker} vs D${matchup.defender}\t${odds}`;
 }
 
 function main(): int32 {
-	row("equal low ", 5, 5, 5, 5);
-	row("equal mid ", 8, 8, 8, 8);
-	row("equal high", 20, 20, 20, 20);
-	row("2x might  ", 16, 8, 8, 8);
-	row("0.5x might", 4, 8, 8, 8);
-	row("2x grit   ", 8, 16, 8, 8);
-	row("0.5x grit ", 8, 4, 8, 8);
-	row("start F v W", 8, 5, 5, 5);
-	row("start W v F", 5, 5, 8, 5);
-	row("start S v F", 5, 8, 8, 5);
-	row("start F v S", 8, 5, 5, 8);
+	const matchups: Matchup[] = [
+		{ label: "equal low", attacker: contender(5, 5), defender: contender(5, 5) },
+		{ label: "equal mid", attacker: contender(8, 8), defender: contender(8, 8) },
+		{ label: "equal high", attacker: contender(20, 20), defender: contender(20, 20) },
+		{ label: "double might", attacker: contender(16, 8), defender: contender(8, 8) },
+		{ label: "half might", attacker: contender(4, 8), defender: contender(8, 8) },
+		{ label: "double grit", attacker: contender(8, 16), defender: contender(8, 8) },
+		{ label: "half grit", attacker: contender(8, 4), defender: contender(8, 8) },
+		{ label: "Fighter vs Worker", attacker: contender(8, 5), defender: contender(5, 5) },
+		{ label: "Worker vs Fighter", attacker: contender(5, 5), defender: contender(8, 5) },
+		{ label: "Survivor vs Fighter", attacker: contender(5, 8), defender: contender(8, 5) },
+		{ label: "Fighter vs Survivor", attacker: contender(8, 5), defender: contender(5, 8) },
+	];
+	for (const matchup of matchups) { console.log(row(matchup)); }
 	return 0;
 }
 process.exit(main());

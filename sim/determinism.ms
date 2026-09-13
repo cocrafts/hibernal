@@ -1,51 +1,86 @@
-import { Combatant, FightResult, Stats, splitmix, fight, derivedStats, withNode, settleGlobal, pendingReward, levelCost, foodCost, estimateOdds, Odds } from "../rules/index";
+import {
+	TREE_NODES,
+	Combatant,
+	Stats,
+	Tree,
+	Food,
+	splitmix,
+	fight,
+	settleGlobal,
+	pendingReward,
+	levelCost,
+	foodCost,
+	oddsAgainst,
+	modsFromMask,
+} from "../rules/index";
 
-function digestFights(n: int32): uint64 {
-	let h: uint64 = 0x9e3779b97f4a7c15;
-	let r: FightResult = { outcome: 0, rounds: 0, hpA: 0, hpD: 0 };
-	let i = 0;
-	while (i < n) {
-		const seed = splitmix(i as uint64);
-		const a: Combatant = { might: 1 + ((seed >> 8) % 40) as int32, grit: ((seed >> 16) % 40) as int32, hearts: 1 + ((seed >> 24) % 5) as int32, mods: ((seed >> 32) % 64) as int32 };
-		const d: Combatant = { might: 1 + ((seed >> 40) % 40) as int32, grit: ((seed >> 48) % 40) as int32, hearts: 1 + ((seed >> 56) % 5) as int32, mods: ((seed >> 4) % 64) as int32 };
-		fight(seed, a, d, out r);
-		h = splitmix(h ^ (r.outcome as uint64) ^ ((r.rounds as uint64) << 8) ^ ((r.hpA as uint64) << 16) ^ ((r.hpD as uint64) << 32));
-		i += 1;
+struct Digest {
+	value: uint64;
+}
+
+function absorb(this digest: Digest, input: uint64): Digest {
+	return { value: splitmix(digest.value ^ input) };
+}
+
+function digestFights(count: int32): uint64 {
+	let digest: Digest = { value: 0x9e3779b97f4a7c15 };
+	for (let index = 0; index < count; index++) {
+		const seed = splitmix(index as uint64);
+		const attacker: Combatant = {
+			might: 1 + ((seed >> 8) % 40) as int32,
+			grit: ((seed >> 16) % 40) as int32,
+			hearts: 1 + ((seed >> 24) % 5) as int32,
+			mods: modsFromMask(((seed >> 32) % 64) as int32),
+		};
+		const defender: Combatant = {
+			might: 1 + ((seed >> 40) % 40) as int32,
+			grit: ((seed >> 48) % 40) as int32,
+			hearts: 1 + ((seed >> 56) % 5) as int32,
+			mods: modsFromMask(((seed >> 4) % 64) as int32),
+		};
+		const result = attacker.fight(defender, seed);
+		digest = digest.absorb(((result.outcome as int32) as uint64) ^
+			((result.rounds as uint64) << 8) ^
+			((result.attackerHp as uint64) << 16) ^
+			((result.defenderHp as uint64) << 32));
 	}
-	return h;
+	return digest.value;
 }
 
 function digestTree(): uint64 {
-	let h: uint64 = 1;
-	let bitmap: uint64 = 0;
-	let s: Stats = { yield_: 0, might: 0, grit: 0, maxHearts: 0, mods: 0 };
-	let i = 0;
-	while (i < 24) {
-		bitmap = withNode(bitmap, i);
-		derivedStats(bitmap, out s);
-		h = splitmix(h ^ (s.yield_ as uint64) ^ ((s.might as uint64) << 8) ^ ((s.grit as uint64) << 16) ^ ((s.maxHearts as uint64) << 24) ^ ((s.mods as uint64) << 32));
-		i += 1;
+	let digest: Digest = { value: 1 };
+	let tree = Tree.empty();
+	for (let id = 0; id < TREE_NODES; id++) {
+		tree = tree.withNode(id);
+		const derived = Stats.fromTree(tree);
+		digest = digest.absorb((derived.yield_ as uint64) ^
+			((derived.might as uint64) << 8) ^
+			((derived.grit as uint64) << 16) ^
+			((derived.maxHearts as uint64) << 24) ^
+			(((derived.mods as uint32) as uint64) << 32));
 	}
-	return h;
+	return digest.value;
 }
 
 function digestEconomy(): uint64 {
-	let h: uint64 = 2;
-	let e: uint64 = 0;
-	while (e < 400) {
-		const acc = settleGlobal(0, 0, e, 1234, e * 7);
-		h = splitmix(h ^ acc ^ pendingReward(34, acc, acc / 3) ^ levelCost((e % 70) as int32) ^ foodCost(((e % 3) + 1) as int32, (e % 50) as int32));
-		e += 1;
+	let digest: Digest = { value: 2 };
+	for (let epoch: uint64 = 0; epoch < 400; epoch++) {
+		const rewardPerWorkPower = settleGlobal(0, 0, epoch, 1234, epoch * 7);
+		digest = digest.absorb(rewardPerWorkPower ^
+			pendingReward(34, rewardPerWorkPower, rewardPerWorkPower / 3) ^
+			levelCost((epoch % 70) as int32) ^
+			foodCost(((epoch % 3) as int32) as Food, (epoch % 50) as int32));
 	}
-	return h;
+	return digest.value;
 }
 
 function digestOdds(): uint64 {
-	const a: Combatant = { might: 9, grit: 6, hearts: 5, mods: 2 };
-	const d: Combatant = { might: 7, grit: 9, hearts: 3, mods: 4 };
-	let o: Odds = { pwinBps: 0, avgRoundsX100: 0, runs: 0 };
-	estimateOdds(a, d, 99, 2000, out o);
-	return splitmix((o.pwinBps as uint64) ^ ((o.avgRoundsX100 as uint64) << 20));
+	const attacker: Combatant = { might: 9, grit: 6, hearts: 5, mods: modsFromMask(2) };
+	const defender: Combatant = { might: 7, grit: 9, hearts: 3, mods: modsFromMask(4) };
+	const odds = attacker.oddsAgainst(defender, 99, 2000);
+	const packed = (odds.winChanceBps as uint64) ^ ((odds.averageRoundsTimes100 as uint64) << 20);
+	const digest: Digest = { value: 0 };
+	return digest.absorb(packed).value;
 }
 
 function main(): int32 {

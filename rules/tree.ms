@@ -1,208 +1,286 @@
-import { TREE_NODES, START_BONUS, BASE_STAT, BASE_MAX_HEARTS, Stats, Region } from "./layout";
-import { MOD_OVERTIME, MOD_SCAVENGER, MOD_THICK_HIDE, MOD_PACIFIST, MOD_GLASS_CANNON, MOD_CANNIBAL } from "./layout";
+import { START_BONUS, Stats, Region, Mod } from "./stats";
 
+export const TREE_NODES: int32 = 24;
 export const KEYSTONE_PACIFIST: int32 = 21;
 export const KEYSTONE_GLASS_CANNON: int32 = 22;
 export const KEYSTONE_CANNIBAL: int32 = 23;
 
-export enum NodeKind { Start = 0, Small = 1, Notable = 2, Keystone = 3 }
-
-export function nodeKind(id: int32): int32 {
-	if (id < 3) { return NodeKind.Start as int32; }
-	if (id >= 21) { return NodeKind.Keystone as int32; }
-	return (id - 3) % 6 == 5 ? (NodeKind.Notable as int32) : (NodeKind.Small as int32);
+export enum NodeKind {
+	Start,
+	Small,
+	Notable,
+	Keystone,
 }
 
-export function regionOf(id: int32): int32 {
-	if (id < 3) { return id; }
-	if (id >= 21) { return -1; }
-	return (id - 3) / 6;
+export enum AllocationError {
+	OutOfRange,
+	Taken,
+	WrongStart,
+	AlreadyStarted,
+	NotAdjacent,
+}
+
+export struct Tree {
+	bits: uint64;
+}
+
+export function empty(this typeof Tree): Tree {
+	return { bits: 0 };
+}
+
+export function nodeKind(id: int32): NodeKind {
+	return match (id) {
+		_ when id < 3 => NodeKind.Start,
+		_ when id >= 21 => NodeKind.Keystone,
+		_ when (id - 3) % 6 == 5 => NodeKind.Notable,
+		_ => NodeKind.Small,
+	};
+}
+
+export function regionOf(id: int32): Region {
+	if (id >= 21) { unreachable; }
+	return id < 3 ? id as Region : ((id - 3) / 6) as Region;
 }
 
 function offsetOf(id: int32): int32 {
 	return (id - 3) % 6;
 }
 
-function regionNode(region: int32, offset: int32): int32 {
-	return 3 + region * 6 + offset;
+function regionNode(region: Region, offset: int32): int32 {
+	return 3 + (region as int32) * 6 + offset;
 }
 
-function bit(id: int32): uint32 {
+function nodeBit(id: int32): uint32 {
 	return (1 as uint32) << (id as uint32);
 }
 
-export function neighbors(id: int32): uint32 {
-	if (id < 3) {
-		return bit(regionNode(id, 0)) | bit(regionNode(id, 1));
-	}
-	if (id == KEYSTONE_PACIFIST) { return bit(regionNode(Region.Worker as int32, 4)) | bit(regionNode(Region.Survivor as int32, 4)); }
-	if (id == KEYSTONE_GLASS_CANNON) { return bit(regionNode(Region.Fighter as int32, 4)) | bit(regionNode(Region.Worker as int32, 4)); }
-	if (id == KEYSTONE_CANNIBAL) { return bit(regionNode(Region.Fighter as int32, 4)) | bit(regionNode(Region.Survivor as int32, 4)); }
-	const r = regionOf(id);
-	return match (offsetOf(id)) {
-		0 => bit(r) | bit(regionNode(r, 2)),
-		1 => bit(r) | bit(regionNode(r, 3)),
-		2 => bit(regionNode(r, 0)) | bit(regionNode(r, 4)),
-		3 => bit(regionNode(r, 1)) | bit(regionNode(r, 4)),
-		4 => bit(regionNode(r, 2)) | bit(regionNode(r, 3)) | bit(regionNode(r, 5)) | keystonesTouching(r),
-		_ => bit(regionNode(r, 4)),
-	};
-}
-
-function keystonesTouching(region: int32): uint32 {
+function keystonesTouching(region: Region): uint32 {
 	return match (region) {
-		0 => bit(KEYSTONE_PACIFIST) | bit(KEYSTONE_GLASS_CANNON),
-		1 => bit(KEYSTONE_GLASS_CANNON) | bit(KEYSTONE_CANNIBAL),
-		_ => bit(KEYSTONE_PACIFIST) | bit(KEYSTONE_CANNIBAL),
+		Region.Worker => nodeBit(KEYSTONE_PACIFIST) | nodeBit(KEYSTONE_GLASS_CANNON),
+		Region.Fighter => nodeBit(KEYSTONE_GLASS_CANNON) | nodeBit(KEYSTONE_CANNIBAL),
+		Region.Survivor => nodeBit(KEYSTONE_PACIFIST) | nodeBit(KEYSTONE_CANNIBAL),
 	};
 }
 
-export function adjacent(a: int32, b: int32): boolean {
-	return (neighbors(a) & bit(b)) != 0;
+function regionNeighbors(id: int32): uint32 {
+	const region = regionOf(id);
+	return match (offsetOf(id)) {
+		0 => nodeBit(region as int32) | nodeBit(regionNode(region, 2)),
+		1 => nodeBit(region as int32) | nodeBit(regionNode(region, 3)),
+		2 => nodeBit(regionNode(region, 0)) | nodeBit(regionNode(region, 4)),
+		3 => nodeBit(regionNode(region, 1)) | nodeBit(regionNode(region, 4)),
+		4 => nodeBit(regionNode(region, 2)) |
+			nodeBit(regionNode(region, 3)) |
+			nodeBit(regionNode(region, 5)) |
+			keystonesTouching(region),
+		_ => nodeBit(regionNode(region, 4)),
+	};
 }
 
-export function isSet(bitmap: uint64, id: int32): boolean {
-	return ((bitmap >> (id as uint64)) & 1) == 1;
+export function neighbors(id: int32): uint32 {
+	return match (id) {
+		_ when id < 3 => nodeBit(regionNode(id as Region, 0)) |
+			nodeBit(regionNode(id as Region, 1)),
+		KEYSTONE_PACIFIST => nodeBit(regionNode(Region.Worker, 4)) |
+			nodeBit(regionNode(Region.Survivor, 4)),
+		KEYSTONE_GLASS_CANNON => nodeBit(regionNode(Region.Fighter, 4)) |
+			nodeBit(regionNode(Region.Worker, 4)),
+		KEYSTONE_CANNIBAL => nodeBit(regionNode(Region.Fighter, 4)) |
+			nodeBit(regionNode(Region.Survivor, 4)),
+		_ => regionNeighbors(id),
+	};
 }
 
-export function withNode(bitmap: uint64, id: int32): uint64 {
-	return bitmap | ((1 as uint64) << (id as uint64));
+export function adjacent(first: int32, second: int32): boolean {
+	return (neighbors(first) & nodeBit(second)) != 0;
 }
 
-export function canAllocate(bitmap: uint64, id: int32, startRegion: int32): boolean {
-	if (id < 0 || id >= TREE_NODES) { return false; }
-	if (isSet(bitmap, id)) { return false; }
-	if (id < 3) { return id == startRegion && bitmap == 0; }
-	if (bitmap == 0) { return false; }
-	return (neighbors(id) & (bitmap as uint32)) != 0;
+export function has(this tree: Tree, id: int32): boolean {
+	return ((tree.bits >> (id as uint64)) & 1) == 1;
 }
 
-function applyNode(id: int32, s: Stats, out next: Stats): void {
-	let y = s.yield_;
-	let m = s.might;
-	let g = s.grit;
-	let h = s.maxHearts;
-	let mods = s.mods;
-	const kind = nodeKind(id);
-	if (kind == (NodeKind.Start as int32)) {
-		if (id == (Region.Worker as int32)) { y += START_BONUS; }
-		if (id == (Region.Fighter as int32)) { m += START_BONUS; }
-		if (id == (Region.Survivor as int32)) { g += START_BONUS; }
-	} else if (kind == (NodeKind.Small as int32)) {
-		const r = regionOf(id);
-		const o = offsetOf(id);
-		if (o == 2) {
-			h += 1;
-		} else if (o == 4) {
-			if (r == (Region.Survivor as int32)) { m += 1; } else { g += 1; }
-		} else {
-			if (r == (Region.Worker as int32)) { y += 1; }
-			if (r == (Region.Fighter as int32)) { m += 1; }
-			if (r == (Region.Survivor as int32)) { g += 1; }
-		}
-	} else if (kind == (NodeKind.Notable as int32)) {
-		const r = regionOf(id);
-		if (r == (Region.Worker as int32)) { mods = mods | MOD_OVERTIME; }
-		if (r == (Region.Fighter as int32)) { mods = mods | MOD_SCAVENGER; }
-		if (r == (Region.Survivor as int32)) { mods = mods | MOD_THICK_HIDE; }
-	} else {
-		if (id == KEYSTONE_PACIFIST) { mods = mods | MOD_PACIFIST; }
-		if (id == KEYSTONE_GLASS_CANNON) { mods = mods | MOD_GLASS_CANNON; h = 2; }
-		if (id == KEYSTONE_CANNIBAL) { mods = mods | MOD_CANNIBAL; }
+export function withNode(this tree: Tree, id: int32): Tree {
+	return { bits: tree.bits | ((1 as uint64) << (id as uint64)) };
+}
+
+export function isEmpty(this tree: Tree): boolean {
+	return tree.bits == 0;
+}
+
+export function touches(this tree: Tree, id: int32): boolean {
+	return (neighbors(id) & (tree.bits as uint32)) != 0;
+}
+
+export function allocate(
+	this tree: Tree,
+	id: int32,
+	start: Region,
+): Result<Tree, AllocationError> {
+	if (id < 0 || id >= TREE_NODES) { return Result.err(AllocationError.OutOfRange); }
+	if (tree.has(id)) { return Result.err(AllocationError.Taken); }
+	if (id < 3) {
+		if (id != (start as int32)) { return Result.err(AllocationError.WrongStart); }
+		if (!tree.isEmpty()) { return Result.err(AllocationError.AlreadyStarted); }
+		return Result.ok(tree.withNode(id));
 	}
-	const built: Stats = { yield_: y, might: m, grit: g, maxHearts: h, mods: mods };
-	next = built;
+	if (tree.isEmpty() || !tree.touches(id)) { return Result.err(AllocationError.NotAdjacent); }
+	return Result.ok(tree.withNode(id));
 }
 
-export function derivedStats(bitmap: uint64, out stats: Stats): void {
-	let s: Stats = { yield_: BASE_STAT, might: BASE_STAT, grit: BASE_STAT, maxHearts: BASE_MAX_HEARTS, mods: 0 };
-	let id = 0;
-	while (id < TREE_NODES) {
-		if (isSet(bitmap, id)) {
-			let next: Stats = s;
-			applyNode(id, s, out next);
-			s = next;
-		}
-		id += 1;
+export function nodeCount(this tree: Tree): int32 {
+	let count = 0;
+	let remaining = tree.bits;
+	while (remaining != 0) {
+		remaining = remaining & (remaining - 1);
+		count += 1;
 	}
-	stats = s;
+	return count;
 }
 
-export function popcount(bitmap: uint64): int32 {
-	let n = 0;
-	let b = bitmap;
-	while (b != 0) { b = b & (b - 1); n += 1; }
-	return n;
+function withStart(this stats: Stats, id: int32): Stats {
+	return match (id as Region) {
+		Region.Worker => ({ ...stats, yield_: stats.yield_ + START_BONUS }),
+		Region.Fighter => ({ ...stats, might: stats.might + START_BONUS }),
+		Region.Survivor => ({ ...stats, grit: stats.grit + START_BONUS }),
+	};
+}
+
+function withSmall(this stats: Stats, id: int32): Stats {
+	const region = regionOf(id);
+	const primaryStat: Stats = match (region) {
+		Region.Worker => ({ ...stats, yield_: stats.yield_ + 1 }),
+		Region.Fighter => ({ ...stats, might: stats.might + 1 }),
+		Region.Survivor => ({ ...stats, grit: stats.grit + 1 }),
+	};
+	const secondaryStat: Stats = match (region) {
+		Region.Survivor => ({ ...stats, might: stats.might + 1 }),
+		_ => ({ ...stats, grit: stats.grit + 1 }),
+	};
+	const extraHeart: Stats = { ...stats, maxHearts: stats.maxHearts + 1 };
+	return match (offsetOf(id)) {
+		2 => extraHeart,
+		4 => secondaryStat,
+		_ => primaryStat,
+	};
+}
+
+function withMod(this stats: Stats, granted: Mod): Stats {
+	return { ...stats, mods: stats.mods.incl(granted) };
+}
+
+function withNotable(this stats: Stats, id: int32): Stats {
+	return match (regionOf(id)) {
+		Region.Worker => stats.withMod(Mod.Overtime),
+		Region.Fighter => stats.withMod(Mod.Scavenger),
+		Region.Survivor => stats.withMod(Mod.ThickHide),
+	};
+}
+
+function withKeystone(this stats: Stats, id: int32): Stats {
+	return match (id) {
+		KEYSTONE_PACIFIST => stats.withMod(Mod.Pacifist),
+		KEYSTONE_CANNIBAL => stats.withMod(Mod.Cannibal),
+		_ => ({ ...stats, maxHearts: 2, mods: stats.mods.incl(Mod.GlassCannon) }),
+	};
+}
+
+function applyNode(this stats: Stats, id: int32): Stats {
+	return match (nodeKind(id)) {
+		NodeKind.Start => stats.withStart(id),
+		NodeKind.Small => stats.withSmall(id),
+		NodeKind.Notable => stats.withNotable(id),
+		NodeKind.Keystone => stats.withKeystone(id),
+	};
+}
+
+export function fromTree(this typeof Stats, tree: Tree): Stats {
+	let stats = Stats.base();
+	for (let id = 0; id < TREE_NODES; id++) {
+		if (tree.has(id)) { stats = stats.applyNode(id); }
+	}
+	return stats;
+}
+
+function refused(result: Result<Tree, AllocationError>, expected: AllocationError): boolean {
+	if (result.ok) { return false; }
+	return result.error == expected;
 }
 
 test "adjacency is symmetric over all pairs" {
-	let a = 0;
-	while (a < TREE_NODES) {
-		let b = 0;
-		while (b < TREE_NODES) {
-			assert adjacent(a, b) == adjacent(b, a);
-			assert !(a == b && adjacent(a, b));
-			b += 1;
+	for (let first = 0; first < TREE_NODES; first++) {
+		for (let second = 0; second < TREE_NODES; second++) {
+			assert adjacent(first, second) == adjacent(second, first);
+			assert !(first == second && adjacent(first, second));
 		}
-		a += 1;
 	}
 }
 
 test "every node is reachable from every start" {
-	let start = 0;
-	while (start < 3) {
-		let seen: uint64 = withNode(0, start);
+	for (let start = 0; start < 3; start++) {
+		let seen = Tree.empty().withNode(start);
 		let grew = true;
 		while (grew) {
 			grew = false;
-			let id = 0;
-			while (id < TREE_NODES) {
-				if (!isSet(seen, id) && (neighbors(id) & (seen as uint32)) != 0) { seen = withNode(seen, id); grew = true; }
-				id += 1;
+			for (let id = 0; id < TREE_NODES; id++) {
+				if (!seen.has(id) && seen.touches(id)) { seen = seen.withNode(id); grew = true; }
 			}
 		}
-		assert popcount(seen) == TREE_NODES;
-		start += 1;
+		assert seen.nodeCount() == TREE_NODES;
 	}
 }
 
 test "allocation rules" {
-	assert canAllocate(0, 1, 1);
-	assert !canAllocate(0, 0, 1);
-	assert !canAllocate(0, 9, 1);
-	const b1 = withNode(0, 1);
-	assert canAllocate(b1, 9, 1);
-	assert canAllocate(b1, 10, 1);
-	assert !canAllocate(b1, 11, 1);
-	assert !canAllocate(b1, 1, 1);
-	assert !canAllocate(b1, 0, 1);
+	const none = Tree.empty();
+	const started = none.allocate(1, Region.Fighter);
+	assert started.ok;
+	if (started.ok) { assert started.value == none.withNode(1); }
+	assert refused(none.allocate(0, Region.Fighter), AllocationError.WrongStart);
+	assert refused(none.allocate(9, Region.Fighter), AllocationError.NotAdjacent);
+	assert refused(none.allocate(TREE_NODES, Region.Fighter), AllocationError.OutOfRange);
+	const fighterStart = none.withNode(1);
+	assert fighterStart.allocate(9, Region.Fighter).ok;
+	assert fighterStart.allocate(10, Region.Fighter).ok;
+	assert refused(fighterStart.allocate(11, Region.Fighter), AllocationError.NotAdjacent);
+	assert refused(fighterStart.allocate(1, Region.Fighter), AllocationError.Taken);
+	assert refused(fighterStart.allocate(0, Region.Fighter), AllocationError.WrongStart);
+	assert refused(fighterStart.allocate(0, Region.Worker), AllocationError.AlreadyStarted);
 }
 
 test "keystone is four points from its own start" {
-	let b: uint64 = withNode(0, 1);
-	b = withNode(b, 9);
-	b = withNode(b, 11);
-	assert !canAllocate(b, KEYSTONE_GLASS_CANNON, 1);
-	b = withNode(b, 13);
-	assert canAllocate(b, KEYSTONE_GLASS_CANNON, 1);
-	assert canAllocate(b, KEYSTONE_CANNIBAL, 1);
-	assert !canAllocate(b, KEYSTONE_PACIFIST, 1);
+	const threePoints = Tree.empty().withNode(1).withNode(9).withNode(11);
+	const tooEarly = threePoints.allocate(KEYSTONE_GLASS_CANNON, Region.Fighter);
+	assert refused(tooEarly, AllocationError.NotAdjacent);
+	const fourPoints = threePoints.withNode(13);
+	assert fourPoints.allocate(KEYSTONE_GLASS_CANNON, Region.Fighter).ok;
+	assert fourPoints.allocate(KEYSTONE_CANNIBAL, Region.Fighter).ok;
+	const otherBorder = fourPoints.allocate(KEYSTONE_PACIFIST, Region.Fighter);
+	assert refused(otherBorder, AllocationError.NotAdjacent);
 }
 
 test "derived stats for a fighter path" {
-	let b: uint64 = withNode(0, 1);
-	b = withNode(b, 9);
-	b = withNode(b, 11);
-	b = withNode(b, 13);
-	b = withNode(b, 14);
-	b = withNode(b, KEYSTONE_GLASS_CANNON);
-	let s: Stats = { yield_: 0, might: 0, grit: 0, maxHearts: 0, mods: 0 };
-	derivedStats(b, out s);
-	assert s.might == BASE_STAT + START_BONUS + 1;
-	assert s.grit == BASE_STAT + 1;
-	assert s.yield_ == BASE_STAT;
-	assert s.maxHearts == 2;
-	assert (s.mods & MOD_SCAVENGER) != 0;
-	assert (s.mods & MOD_GLASS_CANNON) != 0;
-	assert (s.mods & MOD_THICK_HIDE) == 0;
+	const tree = Tree.empty()
+		.withNode(1)
+		.withNode(9)
+		.withNode(11)
+		.withNode(13)
+		.withNode(14)
+		.withNode(KEYSTONE_GLASS_CANNON);
+	const stats = Stats.fromTree(tree);
+	assert stats.might == 9;
+	assert stats.grit == 6;
+	assert stats.yield_ == 5;
+	assert stats.maxHearts == 2;
+	assert stats.mods.has(Mod.Scavenger);
+	assert stats.mods.has(Mod.GlassCannon);
+	assert !stats.mods.has(Mod.ThickHide);
+}
+
+test "node kinds and regions" {
+	assert nodeKind(0) == NodeKind.Start;
+	assert nodeKind(8) == NodeKind.Notable;
+	assert nodeKind(9) == NodeKind.Small;
+	assert nodeKind(23) == NodeKind.Keystone;
+	assert regionOf(2) == Region.Survivor;
+	assert regionOf(14) == Region.Fighter;
+	assert regionOf(20) == Region.Survivor;
 }

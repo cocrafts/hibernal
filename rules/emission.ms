@@ -1,87 +1,26 @@
-import { EPOCH_SECONDS, HBRN_UNIT, NEWBORN_EPOCHS, BPS, GROWTH_CAP_BPS } from "./layout";
+import { EPOCH_SECONDS, HBRN_UNIT, BPS } from "./units";
 
-export const ACC_SCALE: uint64 = 100000;
-export const E0: uint64 = 100000 * HBRN_UNIT;
-export const E_FLOOR: uint64 = E0 / 20;
-export const DECAY_EPOCHS: uint64 = 90;
+export const NEWBORN_EPOCHS: uint64 = 3;
+export const GROWTH_CAP_BPS: int32 = 12000;
+export const REWARD_SCALE: uint64 = 100000;
+export const EMISSION_START: uint64 = 100000 * HBRN_UNIT;
+export const EMISSION_FLOOR: uint64 = EMISSION_START / 20;
+export const EMISSION_DECAY_EPOCHS: uint64 = 90;
+export const EMISSION_DECAY_NUMERATOR: uint64 = 3;
+export const EMISSION_DECAY_DENOMINATOR: uint64 = 4;
 
 export const LEVEL_COST_BASE: uint64 = 100 * HBRN_UNIT;
+export const LEVEL_COST_GROWTH_PERCENT: uint64 = 112;
 export const LEVEL_CAP: int32 = 60;
-export const RESERVE_RATIO_BPS: int32 = 5000;
 
-export function epochOf(now: uint64, genesis: uint64): uint64 {
-	if (now < genesis) { return 0; }
-	return (now - genesis) / EPOCH_SECONDS;
-}
+export const SPEND_PROTOCOL_PERCENT: uint64 = 10;
+export const SPEND_BURN_PERCENT: uint64 = 30;
+export const STAKE_PROTOCOL_PERCENT: uint64 = 5;
 
-export function emissionFor(epoch: uint64): uint64 {
-	let e = E0;
-	let k = epoch / DECAY_EPOCHS;
-	while (k > 0 && e > E_FLOOR) { e = e * 3 / 4; k -= 1; }
-	return e < E_FLOOR ? E_FLOOR : e;
-}
-
-export function accAdvance(acc: uint64, totalWp: uint64, amount: uint64): uint64 {
-	if (totalWp == 0) { return acc; }
-	return acc + amount * ACC_SCALE / totalWp;
-}
-
-export function settleGlobal(acc: uint64, accEpoch: uint64, current: uint64, totalWp: uint64, recycled: uint64): uint64 {
-	let a = acc;
-	let e = accEpoch;
-	let extra = recycled;
-	while (e < current) {
-		e += 1;
-		a = accAdvance(a, totalWp, emissionFor(e) + extra);
-		extra = 0;
-	}
-	return a;
-}
-
-export function pendingReward(wp: uint64, acc: uint64, accSnapshot: uint64): uint64 {
-	if (acc <= accSnapshot) { return 0; }
-	return wp * (acc - accSnapshot) / ACC_SCALE;
-}
-
-export function growthBonus(pending: uint64, multBps: int32): uint64 {
-	const m = multBps > GROWTH_CAP_BPS ? GROWTH_CAP_BPS : (multBps < BPS ? BPS : multBps);
-	return pending * ((m - BPS) as uint64) / (BPS as uint64);
-}
-
-export function levelCost(level: int32): uint64 {
-	let c = LEVEL_COST_BASE;
-	let l = 0;
-	const cap = level > LEVEL_CAP ? LEVEL_CAP : level;
-	while (l < cap) { c = c * 112 / 100; l += 1; }
-	return c;
-}
-
-export function foodCost(tier: int32, level: int32): uint64 {
-	const base: uint64 = match (tier) {
-		1 => 8,
-		2 => 15,
-		_ => 21,
-	};
-	return base * HBRN_UNIT * ((20 + level) as uint64) / 20;
-}
-
-export function foodHearts(tier: int32): int32 {
-	return tier < 1 ? 1 : (tier > 3 ? 3 : tier);
-}
-
-export function hungerStepsBetween(lastTick: uint64, current: uint64, bornEpoch: uint64): int32 {
-	let steps = 0;
-	let e = lastTick;
-	while (e < current) {
-		e += 1;
-		const newborn = e < bornEpoch + NEWBORN_EPOCHS;
-		if (!newborn || (e - bornEpoch) % 2 == 1) { steps += 1; }
-	}
-	return steps;
-}
-
-export function isShielded(epoch: uint64, bornEpoch: uint64): boolean {
-	return epoch < bornEpoch + NEWBORN_EPOCHS;
+export enum Food {
+	Small,
+	Medium,
+	Large,
 }
 
 export struct Split {
@@ -90,48 +29,142 @@ export struct Split {
 	protocol: uint64;
 }
 
-export function spendSplit(amount: uint64, out s: Split): void {
-	const protocol = amount / 10;
-	const burned = amount * 3 / 10;
-	s = { recycled: amount - protocol - burned, burned: burned, protocol: protocol };
+export function epochOf(now: uint64, genesis: uint64): uint64 {
+	return now < genesis ? 0 : (now - genesis) / EPOCH_SECONDS;
 }
 
-export function stakeSplit(amount: uint64, out winner: uint64, out protocol: uint64): void {
-	protocol = amount / 20;
-	winner = amount - protocol;
+export function emissionFor(epoch: uint64): uint64 {
+	let emission = EMISSION_START;
+	let decaySteps = epoch / EMISSION_DECAY_EPOCHS;
+	while (decaySteps > 0 && emission > EMISSION_FLOOR) {
+		emission = emission * EMISSION_DECAY_NUMERATOR / EMISSION_DECAY_DENOMINATOR;
+		decaySteps -= 1;
+	}
+	return Math.max(emission, EMISSION_FLOOR);
 }
 
-export function deathSplit(wallet: uint64, livingMates: int32, out perMate: uint64, out burned: uint64): void {
-	const pot = wallet / 2;
-	if (livingMates <= 0) { perMate = 0; burned = wallet; return; }
-	perMate = pot / (livingMates as uint64);
-	burned = wallet - perMate * (livingMates as uint64);
+export function accrueReward(
+	rewardPerWorkPower: uint64,
+	totalWorkPower: uint64,
+	amount: uint64,
+): uint64 {
+	if (totalWorkPower == 0) { return rewardPerWorkPower; }
+	return rewardPerWorkPower + amount * REWARD_SCALE / totalWorkPower;
+}
+
+export function settleGlobal(
+	rewardPerWorkPower: uint64,
+	rewardEpoch: uint64,
+	currentEpoch: uint64,
+	totalWorkPower: uint64,
+	recycled: uint64,
+): uint64 {
+	let accrued = rewardPerWorkPower;
+	let extra = recycled;
+	for (let epoch = rewardEpoch + 1; epoch <= currentEpoch; epoch++) {
+		accrued = accrueReward(accrued, totalWorkPower, emissionFor(epoch) + extra);
+		extra = 0;
+	}
+	return accrued;
+}
+
+export function pendingReward(
+	workPower: uint64,
+	rewardPerWorkPower: uint64,
+	rewardSnapshot: uint64,
+): uint64 {
+	if (rewardPerWorkPower <= rewardSnapshot) { return 0; }
+	return workPower * (rewardPerWorkPower - rewardSnapshot) / REWARD_SCALE;
+}
+
+export function growthBonus(pending: uint64, multiplierBps: int32): uint64 {
+	const multiplier = match (multiplierBps) {
+		_ when multiplierBps > GROWTH_CAP_BPS => GROWTH_CAP_BPS,
+		_ when multiplierBps < BPS => BPS,
+		_ => multiplierBps,
+	};
+	return pending * ((multiplier - BPS) as uint64) / (BPS as uint64);
+}
+
+export function levelCost(level: int32): uint64 {
+	const cappedLevel = Math.min(level, LEVEL_CAP);
+	let cost = LEVEL_COST_BASE;
+	for (let step = 0; step < cappedLevel; step++) {
+		cost = cost * LEVEL_COST_GROWTH_PERCENT / 100;
+	}
+	return cost;
+}
+
+export function foodCost(food: Food, level: int32): uint64 {
+	const base: uint64 = match (food) {
+		Food.Small => 8,
+		Food.Medium => 15,
+		Food.Large => 21,
+	};
+	return base * HBRN_UNIT * ((20 + level) as uint64) / 20;
+}
+
+export function foodHearts(food: Food): int32 {
+	return (food as int32) + 1;
+}
+
+export function isShielded(epoch: uint64, bornEpoch: uint64): boolean {
+	return epoch < bornEpoch + NEWBORN_EPOCHS;
+}
+
+export function hungerStepsBetween(
+	lastTickEpoch: uint64,
+	currentEpoch: uint64,
+	bornEpoch: uint64,
+): int32 {
+	let steps = 0;
+	for (let epoch = lastTickEpoch + 1; epoch <= currentEpoch; epoch++) {
+		if (!isShielded(epoch, bornEpoch) || (epoch - bornEpoch) % 2 == 1) { steps += 1; }
+	}
+	return steps;
+}
+
+export function ofSpend(this typeof Split, amount: uint64): Split {
+	const protocol = amount * SPEND_PROTOCOL_PERCENT / 100;
+	const burned = amount * SPEND_BURN_PERCENT / 100;
+	return { recycled: amount - protocol - burned, burned: burned, protocol: protocol };
+}
+
+export function stakeSplit(amount: uint64): [uint64, uint64] {
+	const protocol = amount * STAKE_PROTOCOL_PERCENT / 100;
+	return [amount - protocol, protocol];
+}
+
+export function deathSplit(wallet: uint64, livingMates: int32): [uint64, uint64] {
+	if (livingMates <= 0) { return [0, wallet]; }
+	const perMate = wallet / 2 / (livingMates as uint64);
+	return [perMate, wallet - perMate * (livingMates as uint64)];
 }
 
 test "emission decays by quarter every 90 epochs and floors" {
-	assert emissionFor(0) == E0;
-	assert emissionFor(89) == E0;
-	assert emissionFor(90) == E0 * 3 / 4;
-	assert emissionFor(180) == E0 * 9 / 16;
-	assert emissionFor(100000) == E_FLOOR;
+	assert emissionFor(0) == EMISSION_START;
+	assert emissionFor(89) == EMISSION_START;
+	assert emissionFor(90) == EMISSION_START * 3 / 4;
+	assert emissionFor(180) == EMISSION_START * 9 / 16;
+	assert emissionFor(100000) == EMISSION_FLOOR;
 }
 
-test "accumulator pays each pet its share exactly once" {
-	const wpA: uint64 = 25;
-	const wpB: uint64 = 75;
-	const acc1 = settleGlobal(0, 0, 1, wpA + wpB, 0);
-	const payA = pendingReward(wpA, acc1, 0);
-	const payB = pendingReward(wpB, acc1, 0);
-	assert payA + payB <= E0;
-	assert E0 - (payA + payB) < 100;
-	assert payB == payA * 3;
-	assert pendingReward(wpA, acc1, acc1) == 0;
+test "reward accumulator pays each pet its share exactly once" {
+	const smallWorkPower: uint64 = 25;
+	const largeWorkPower: uint64 = 75;
+	const afterOneEpoch = settleGlobal(0, 0, 1, smallWorkPower + largeWorkPower, 0);
+	const smallPay = pendingReward(smallWorkPower, afterOneEpoch, 0);
+	const largePay = pendingReward(largeWorkPower, afterOneEpoch, 0);
+	assert smallPay + largePay <= EMISSION_START;
+	assert EMISSION_START - (smallPay + largePay) < 100;
+	assert largePay == smallPay * 3;
+	assert pendingReward(smallWorkPower, afterOneEpoch, afterOneEpoch) == 0;
 }
 
 test "recycled pot lands in the next settled epoch only" {
-	const plain = settleGlobal(0, 0, 3, 100, 0);
-	const boosted = settleGlobal(0, 0, 3, 100, 1000 * HBRN_UNIT);
-	assert boosted - plain == 1000 * HBRN_UNIT * ACC_SCALE / 100;
+	const withoutRecycled = settleGlobal(0, 0, 3, 100, 0);
+	const withRecycled = settleGlobal(0, 0, 3, 100, 1000 * HBRN_UNIT);
+	assert withRecycled - withoutRecycled == 1000 * HBRN_UNIT * REWARD_SCALE / 100;
 }
 
 test "growth bonus is capped at 20 percent" {
@@ -145,8 +178,11 @@ test "level and food cost curves" {
 	assert levelCost(1) == 112 * HBRN_UNIT;
 	assert levelCost(10) > levelCost(9);
 	assert levelCost(LEVEL_CAP + 5) == levelCost(LEVEL_CAP);
-	assert foodCost(1, 0) == 8 * HBRN_UNIT;
-	assert foodCost(3, 20) == 42 * HBRN_UNIT;
+	assert foodCost(Food.Small, 0) == 8 * HBRN_UNIT;
+	assert foodCost(Food.Large, 20) == 42 * HBRN_UNIT;
+	assert foodHearts(Food.Small) == 1;
+	assert foodHearts(Food.Medium) == 2;
+	assert foodHearts(Food.Large) == 3;
 }
 
 test "newborn hunger is halved" {
@@ -156,20 +192,15 @@ test "newborn hunger is halved" {
 }
 
 test "splits conserve value" {
-	let s: Split = { recycled: 0, burned: 0, protocol: 0 };
-	spendSplit(1001, out s);
-	assert s.recycled + s.burned + s.protocol == 1001;
-	assert s.protocol == 100;
-	assert s.burned == 300;
-	let w: uint64 = 0;
-	let p: uint64 = 0;
-	stakeSplit(999, out w, out p);
-	assert w + p == 999;
-	let per: uint64 = 0;
-	let burn: uint64 = 0;
-	deathSplit(1000, 3, out per, out burn);
-	assert per == 166;
-	assert per * 3 + burn == 1000;
-	deathSplit(1000, 0, out per, out burn);
-	assert per == 0 && burn == 1000;
+	const spend = Split.ofSpend(1001);
+	assert spend.recycled + spend.burned + spend.protocol == 1001;
+	assert spend.protocol == 100;
+	assert spend.burned == 300;
+	const [winner, fee] = stakeSplit(999);
+	assert winner + fee == 999;
+	const [perMate, burned] = deathSplit(1000, 3);
+	assert perMate == 166;
+	assert perMate * 3 + burned == 1000;
+	const [toMates, allBurned] = deathSplit(1000, 0);
+	assert toMates == 0 && allBurned == 1000;
 }

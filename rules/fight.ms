@@ -1,144 +1,197 @@
-import { Combatant, FightResult, Outcome, BPS } from "./layout";
-import { MOD_SCAVENGER, MOD_THICK_HIDE, MOD_PACIFIST, MOD_GLASS_CANNON } from "./layout";
-import { pct, rangeRoll } from "./rng";
+import { Combatant, Mod } from "./stats";
+import { BPS } from "./units";
+import { Dice } from "./rng";
+
+export const INCOMING_CAP: int32 = 3;
+export const BITES_CAP: int32 = 1;
 
 export const FIGHT_HP_BASE: int32 = 100;
 export const FIGHT_HP_PER_GRIT: int32 = 4;
-export const DMG: int32 = 3;
-export const ROLL_LO: int32 = 20;
-export const ROLL_HI: int32 = 180;
-export const COUNTER_NUM: int32 = 1;
-export const COUNTER_DEN: int32 = 1;
+export const DAMAGE: int32 = 3;
+export const ROLL_MIN: int32 = 20;
+export const ROLL_MAX: int32 = 180;
+export const COUNTER_NUMERATOR: int32 = 1;
+export const COUNTER_DENOMINATOR: int32 = 1;
 export const DODGE_CAP: int32 = 30;
-export const DODGE_DIV: int32 = 2;
+export const DODGE_GRIT_DIVISOR: int32 = 2;
 export const THICK_HIDE_DODGE: int32 = 10;
 export const CRIT_BASE: int32 = 5;
-export const CRIT_DIV: int32 = 4;
+export const CRIT_MIGHT_DIVISOR: int32 = 4;
 export const SCAVENGER_CRIT: int32 = 15;
-export const CRIT_NUM: int32 = 200;
+export const CRIT_DAMAGE_PERCENT: int32 = 200;
 export const MAX_ROUNDS: int32 = 8;
 
-export const K_BPS: int32 = 15000;
+export const LOOT_PER_STAKE_BPS: int32 = 15000;
 export const MIN_BITE_STAKE: uint64 = 5000000;
 export const PACIFIST_LOOT_CUT_BPS: int32 = 7000;
 export const THICK_HIDE_LOOT_CUT_BPS: int32 = 5000;
 export const THICK_HIDE_FIGHTS: int32 = 3;
 
-export function fightHp(c: Combatant): int32 {
-	const base = FIGHT_HP_BASE + FIGHT_HP_PER_GRIT * c.grit;
-	return (c.mods & MOD_GLASS_CANNON) != 0 ? base / 2 : base;
+export enum Outcome {
+	DefenderWins,
+	AttackerWins,
 }
 
-export function dodgePct(c: Combatant): int32 {
-	let d = c.grit / DODGE_DIV;
-	if ((c.mods & MOD_THICK_HIDE) != 0) { d += THICK_HIDE_DODGE; }
-	return d > DODGE_CAP ? DODGE_CAP : d;
+export enum AttackError {
+	Pacifist,
+	OutOfAttacks,
 }
 
-export function critPct(attacker: Combatant, target: Combatant): int32 {
-	let c = CRIT_BASE + attacker.might / CRIT_DIV;
-	if ((attacker.mods & MOD_SCAVENGER) != 0 && target.hearts < attacker.hearts) { c += SCAVENGER_CRIT; }
-	return c;
+export struct FightResult {
+	outcome: Outcome;
+	rounds: int32;
+	attackerHp: int32;
+	defenderHp: int32;
 }
 
-function strike(seed: uint64, draw: int32, striker: Combatant, target: Combatant, num: int32, den: int32): int32 {
-	if (pct(seed, draw) < dodgePct(target)) { return 0; }
-	let dmg = striker.might * DMG * rangeRoll(seed, draw + 1, ROLL_LO, ROLL_HI) / 100;
-	if ((striker.mods & MOD_GLASS_CANNON) != 0) { dmg *= 2; }
-	if (pct(seed, draw + 2) < critPct(striker, target)) { dmg = dmg * CRIT_NUM / 100; }
-	return dmg * num / den;
+export function fightHp(this combatant: Combatant): int32 {
+	const base = FIGHT_HP_BASE + FIGHT_HP_PER_GRIT * combatant.grit;
+	return combatant.mods.has(Mod.GlassCannon) ? base / 2 : base;
 }
 
-export function fight(seed: uint64, a: Combatant, d: Combatant, out res: FightResult): int32 {
-	const hpA0 = fightHp(a);
-	const hpD0 = fightHp(d);
-	let hpA = hpA0;
-	let hpD = hpD0;
+export function dodgePercent(this combatant: Combatant): int32 {
+	const thickHide = combatant.mods.has(Mod.ThickHide) ? THICK_HIDE_DODGE : 0;
+	const raw = combatant.grit / DODGE_GRIT_DIVISOR + thickHide;
+	return Math.min(raw, DODGE_CAP);
+}
+
+export function critPercent(this attacker: Combatant, target: Combatant): int32 {
+	const scavenger = attacker.mods.has(Mod.Scavenger) && target.hearts < attacker.hearts;
+	return CRIT_BASE + attacker.might / CRIT_MIGHT_DIVISOR + (scavenger ? SCAVENGER_CRIT : 0);
+}
+
+function strike(
+	this striker: Combatant,
+	target: Combatant,
+	dice: Dice,
+	damageNumerator: int32,
+	damageDenominator: int32,
+): int32 {
+	if (dice.percent(0) < target.dodgePercent()) { return 0; }
+	const hit = striker.might * DAMAGE * dice.roll(1, ROLL_MIN, ROLL_MAX) / 100;
+	const heavy = striker.mods.has(Mod.GlassCannon) ? hit * 2 : hit;
+	const critical = dice.percent(2) < striker.critPercent(target);
+	const landed = critical ? heavy * CRIT_DAMAGE_PERCENT / 100 : heavy;
+	return landed * damageNumerator / damageDenominator;
+}
+
+export function fight(this attacker: Combatant, defender: Combatant, seed: uint64): FightResult {
+	const attackerHpStart = attacker.fightHp();
+	const defenderHpStart = defender.fightHp();
+	let attackerHp = attackerHpStart;
+	let defenderHp = defenderHpStart;
 	let round = 0;
-	let draw = 0;
-	while (round < MAX_ROUNDS && hpA > 0 && hpD > 0) {
+	let dice: Dice = { seed: seed, draw: 0 };
+	while (round < MAX_ROUNDS && attackerHp > 0 && defenderHp > 0) {
 		round += 1;
-		hpD -= strike(seed, draw, a, d, 1, 1);
-		hpA -= strike(seed, draw + 3, d, a, COUNTER_NUM, COUNTER_DEN);
-		draw += 6;
+		defenderHp -= attacker.strike(defender, dice, 1, 1);
+		const counter = dice.advance(3);
+		attackerHp -= defender.strike(attacker, counter, COUNTER_NUMERATOR, COUNTER_DENOMINATOR);
+		dice = dice.advance(6);
 	}
-	const outcome = hpA * hpD0 > hpD * hpA0 ? (Outcome.AttackerWins as int32) : (Outcome.DefenderWins as int32);
-	const built: FightResult = { outcome: outcome, rounds: round, hpA: hpA < 0 ? 0 : hpA, hpD: hpD < 0 ? 0 : hpD };
-	res = built;
-	return outcome;
+	const attackerAhead = attackerHp * defenderHpStart > defenderHp * attackerHpStart;
+	return {
+		outcome: attackerAhead ? Outcome.AttackerWins : Outcome.DefenderWins,
+		rounds: round,
+		attackerHp: attackerHp < 0 ? 0 : attackerHp,
+		defenderHp: defenderHp < 0 ? 0 : defenderHp,
+	};
 }
 
-export function canAttack(a: Combatant, fightsOutToday: int32): boolean {
-	if ((a.mods & MOD_PACIFIST) != 0) { return false; }
-	return fightsOutToday < attacksPerEpoch(a.might);
+export function attacksPerEpoch(this attacker: Combatant): int32 {
+	return 1 + attacker.might / 10;
 }
 
-export function attacksPerEpoch(might: int32): int32 {
-	return 1 + might / 10;
+export function attacksLeft(
+	this attacker: Combatant,
+	fightsOutToday: int32,
+): Result<int32, AttackError> {
+	if (attacker.mods.has(Mod.Pacifist)) { return Result.err(AttackError.Pacifist); }
+	const left = attacker.attacksPerEpoch() - fightsOutToday;
+	return left > 0 ? Result.ok(left) : Result.err(AttackError.OutOfAttacks);
 }
 
-export function maxStake(harvestD: uint64): uint64 {
-	const cap = harvestD * (BPS as uint64) / (K_BPS as uint64);
-	return cap < MIN_BITE_STAKE ? MIN_BITE_STAKE : cap;
+export function maxStake(defenderHarvest: uint64): uint64 {
+	const cap = defenderHarvest * (BPS as uint64) / (LOOT_PER_STAKE_BPS as uint64);
+	return Math.max(cap, MIN_BITE_STAKE);
 }
 
-export function lootFor(stake: uint64, harvestD: uint64, d: Combatant, fightsInTodayD: int32): uint64 {
-	const kS = stake * (K_BPS as uint64) / (BPS as uint64);
-	let loot = kS < harvestD ? kS : harvestD;
-	loot = loot * ((100 - d.grit) as uint64) / 100;
-	if ((d.mods & MOD_PACIFIST) != 0) { loot = loot * ((BPS - PACIFIST_LOOT_CUT_BPS) as uint64) / (BPS as uint64); }
-	if ((d.mods & MOD_THICK_HIDE) != 0 && fightsInTodayD < THICK_HIDE_FIGHTS) { loot = loot * ((BPS - THICK_HIDE_LOOT_CUT_BPS) as uint64) / (BPS as uint64); }
-	return loot;
+function applyCut(loot: uint64, cutBps: int32): uint64 {
+	return loot * ((BPS - cutBps) as uint64) / (BPS as uint64);
 }
 
-export function biteAllowed(harvestDBefore: uint64, powerA: int32, powerD: int32, bitesInTodayD: int32): boolean {
-	return harvestDBefore == 0 && powerD * 2 >= powerA && bitesInTodayD < 1;
+export function lootFor(
+	this defender: Combatant,
+	stake: uint64,
+	harvest: uint64,
+	fightsInToday: int32,
+): uint64 {
+	const stakeLoot = stake * (LOOT_PER_STAKE_BPS as uint64) / (BPS as uint64);
+	const reachable = Math.min(stakeLoot, harvest);
+	const afterGrit = reachable * ((100 - defender.grit) as uint64) / 100;
+	const pacifist = defender.mods.has(Mod.Pacifist);
+	const afterPacifist = pacifist ? applyCut(afterGrit, PACIFIST_LOOT_CUT_BPS) : afterGrit;
+	const thickHide = defender.mods.has(Mod.ThickHide) && fightsInToday < THICK_HIDE_FIGHTS;
+	return thickHide ? applyCut(afterPacifist, THICK_HIDE_LOOT_CUT_BPS) : afterPacifist;
+}
+
+export function biteAllowed(
+	defenderHarvestBefore: uint64,
+	attackerPower: int32,
+	defenderPower: int32,
+	defenderBitesToday: int32,
+): boolean {
+	const comparable = defenderPower * 2 >= attackerPower;
+	return defenderHarvestBefore == 0 && comparable && defenderBitesToday < BITES_CAP;
 }
 
 test "fight is deterministic per seed" {
-	const a: Combatant = { might: 8, grit: 5, hearts: 5, mods: 0 };
-	const d: Combatant = { might: 8, grit: 5, hearts: 5, mods: 0 };
-	let r1: FightResult = { outcome: 0, rounds: 0, hpA: 0, hpD: 0 };
-	let r2: FightResult = { outcome: 0, rounds: 0, hpA: 0, hpD: 0 };
-	fight(42, a, d, out r1);
-	fight(42, a, d, out r2);
-	assert r1.outcome == r2.outcome && r1.rounds == r2.rounds && r1.hpA == r2.hpA && r1.hpD == r2.hpD;
-	assert r1.rounds >= 1 && r1.rounds <= MAX_ROUNDS;
+	const attacker = Combatant.plain(8, 5, 5);
+	const defender = Combatant.plain(8, 5, 5);
+	const first = attacker.fight(defender, 42);
+	const second = attacker.fight(defender, 42);
+	assert first == second;
+	assert first.rounds >= 1 && first.rounds <= MAX_ROUNDS;
 }
 
 test "zero might attacker never wins" {
-	const a: Combatant = { might: 0, grit: 5, hearts: 5, mods: 0 };
-	const d: Combatant = { might: 8, grit: 5, hearts: 5, mods: 0 };
-	let r: FightResult = { outcome: 0, rounds: 0, hpA: 0, hpD: 0 };
-	let seed: uint64 = 0;
-	while (seed < 200) {
-		assert fight(seed, a, d, out r) == (Outcome.DefenderWins as int32);
-		seed += 1;
+	const attacker = Combatant.plain(0, 5, 5);
+	const defender = Combatant.plain(8, 5, 5);
+	for (let seed: uint64 = 0; seed < 200; seed++) {
+		assert attacker.fight(defender, seed).outcome == Outcome.DefenderWins;
 	}
 }
 
-test "loot caps at k times stake and at harvest" {
-	const d: Combatant = { might: 5, grit: 10, hearts: 5, mods: 0 };
-	assert lootFor(100, 1000000, d, 0) == 135;
-	assert lootFor(100, 120, d, 0) == 108;
-	const p: Combatant = { might: 5, grit: 0, hearts: 5, mods: MOD_PACIFIST };
-	assert lootFor(100, 1000000, p, 0) == 45;
-	const t: Combatant = { might: 5, grit: 0, hearts: 5, mods: MOD_THICK_HIDE };
-	assert lootFor(100, 1000000, t, 0) == 75;
-	assert lootFor(100, 1000000, t, 3) == 150;
+test "loot caps at the stake multiple and at harvest" {
+	const defender = Combatant.plain(5, 10, 5);
+	assert defender.lootFor(100, 1000000, 0) == 135;
+	assert defender.lootFor(100, 120, 0) == 108;
+	const bare = Combatant.plain(5, 0, 5);
+	const pacifist: Combatant = { ...bare, mods: Mod.Pacifist | Mod.Pacifist };
+	assert pacifist.lootFor(100, 1000000, 0) == 45;
+	const thickHide: Combatant = { ...bare, mods: Mod.ThickHide | Mod.ThickHide };
+	assert thickHide.lootFor(100, 1000000, 0) == 75;
+	assert thickHide.lootFor(100, 1000000, 3) == 150;
 }
 
 test "stake bounds and attack budget" {
 	assert maxStake(0) == MIN_BITE_STAKE;
 	assert maxStake(1500) == MIN_BITE_STAKE;
 	assert maxStake(15000000) == 10000000;
-	assert attacksPerEpoch(5) == 1;
-	assert attacksPerEpoch(25) == 3;
-	const p: Combatant = { might: 50, grit: 0, hearts: 5, mods: MOD_PACIFIST };
-	assert !canAttack(p, 0);
-	const f: Combatant = { might: 12, grit: 0, hearts: 5, mods: 0 };
-	assert canAttack(f, 1);
-	assert !canAttack(f, 2);
+	assert Combatant.plain(5, 0, 5).attacksPerEpoch() == 1;
+	assert Combatant.plain(25, 0, 5).attacksPerEpoch() == 3;
+	const strong = Combatant.plain(50, 0, 5);
+	const pacifist: Combatant = { ...strong, mods: Mod.Pacifist | Mod.Pacifist };
+	const refusal = pacifist.attacksLeft(0);
+	assert !refusal.ok;
+	if (!refusal.ok) { assert refusal.error == AttackError.Pacifist; }
+	const fighter = Combatant.plain(12, 0, 5);
+	const oneLeft = fighter.attacksLeft(1);
+	assert oneLeft.ok;
+	if (oneLeft.ok) { assert oneLeft.value == 1; }
+	const noneLeft = fighter.attacksLeft(2);
+	assert !noneLeft.ok;
+	if (!noneLeft.ok) { assert noneLeft.error == AttackError.OutOfAttacks; }
 }
 
 test "bite needs empty harvest, comparable power and no bite yet" {

@@ -1,25 +1,37 @@
-import { Combatant, FightResult, Stats, Outcome, fight, derivedStats, withNode, emissionFor, E0, canAllocate, KEYSTONE_GLASS_CANNON } from "../rules/index";
+import {
+	Combatant,
+	Stats,
+	Tree,
+	Outcome,
+	Region,
+	Mod,
+	fight,
+	emissionFor,
+	EMISSION_START,
+	allocate,
+	KEYSTONE_GLASS_CANNON,
+} from "../rules/index";
 
-function check(): boolean {
-	const weak: Combatant = { might: 0, grit: 5, hearts: 5, mods: 0 };
-	const d: Combatant = { might: 8, grit: 5, hearts: 5, mods: 0 };
-	let r: FightResult = { outcome: 0, rounds: 0, hpA: 0, hpD: 0 };
-	if (fight(42, weak, d, out r) != (Outcome.DefenderWins as int32)) { return false; }
-	if (r.rounds < 1) { return false; }
-	let b: uint64 = withNode(0, 1);
-	b = withNode(b, 9);
-	b = withNode(b, 11);
-	b = withNode(b, 13);
-	if (!canAllocate(b, KEYSTONE_GLASS_CANNON, 1)) { return false; }
-	let s: Stats = { yield_: 0, might: 0, grit: 0, maxHearts: 0, mods: 0 };
-	derivedStats(withNode(b, KEYSTONE_GLASS_CANNON), out s);
-	if (s.might != 9 || s.maxHearts != 2) { return false; }
-	if (emissionFor(90) != E0 * 3 / 4) { return false; }
-	return true;
+function fightHolds(): boolean {
+	const result = Combatant.plain(0, 5, 5).fight(Combatant.plain(8, 5, 5), 42);
+	return result.outcome == Outcome.DefenderWins && result.rounds >= 1;
+}
+
+function treeHolds(): boolean {
+	const path = Tree.empty().withNode(1).withNode(9).withNode(11).withNode(13);
+	const grown = path.allocate(KEYSTONE_GLASS_CANNON, Region.Fighter);
+	if (!grown.ok) { return false; }
+	const derived = Stats.fromTree(grown.value);
+	return derived.might == 9 && derived.maxHearts == 2 && derived.mods.has(Mod.GlassCannon);
+}
+
+function emissionHolds(): boolean {
+	return emissionFor(90) == EMISSION_START * 3 / 4;
 }
 
 function main(): int32 {
-	if (check()) { console.log("rules ok"); } else { console.log("rules BAD"); }
+	const allHold = fightHolds() && treeHolds() && emissionHolds();
+	console.log(allHold ? "rules ok" : "rules BAD");
 	return 0;
 }
 main();
