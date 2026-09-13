@@ -1,6 +1,6 @@
 # Hibernal
 
-Tamagotchi that permanently dies, one per Seeker Genesis Token, fully on Solana L1. Everything is MetaScript end to end: on-chain program, native core, sim. Design: `docs/BRIEF.md`. Plan and package status: `docs/ROADMAP.md`. Renderer: `docs/RENDERER-BRIEF.md`.
+Tamagotchi that permanently dies, one per Seeker Genesis Token, on Solana L1 with game state and the pet brain in a MagicBlock Ephemeral Rollup. Everything is MetaScript end to end: on-chain program, native core, sim. Design: `docs/BRIEF.md` (spec) and `docs/GAME-DESIGN.md` (decisions, measurements, open numbers). Chain surface and ER probe: `docs/SOLANA.md`. Plan and package status: `docs/ROADMAP.md`. Renderer: `docs/RENDERER-BRIEF.md`.
 
 ## Layout
 
@@ -8,8 +8,8 @@ Tamagotchi that permanently dies, one per Seeker Genesis Token, fully on Solana 
 rules/     game rules, integer only, compiled 3 ways (native, js, --os=solana)
 sim/       harnesses on rules/ (msc run)
 tools/     probes and chain harnesses
-program/   on-chain program (--os=solana)
-native/    renderer, hud, brain → libhibernal.so
+program/   on-chain program (--os=solana), brain included (act)
+native/    renderer, hud, rpc → libhibernal.so
 android/   Kotlin shell
 docs/      briefs and roadmap
 ```
