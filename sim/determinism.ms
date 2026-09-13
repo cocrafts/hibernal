@@ -53,7 +53,7 @@ function digestTree(): uint64 {
 	for (let id = 0; id < TREE_NODES; id++) {
 		tree = tree.withNode(id);
 		const derived = Stats.fromTree(tree);
-		digest = digest.absorb((derived.yield_ as uint64) ^
+		digest = digest.absorb((derived.forage as uint64) ^
 			((derived.might as uint64) << 8) ^
 			((derived.grit as uint64) << 16) ^
 			((derived.maxHearts as uint64) << 24) ^

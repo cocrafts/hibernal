@@ -139,7 +139,7 @@ export function nodeCount(this tree: Tree): int32 {
 
 function withStart(this stats: Stats, id: int32): Stats {
 	return match (id as Region) {
-		Region.Worker => ({ ...stats, yield_: stats.yield_ + START_BONUS }),
+		Region.Worker => ({ ...stats, forage: stats.forage + START_BONUS }),
 		Region.Fighter => ({ ...stats, might: stats.might + START_BONUS }),
 		Region.Survivor => ({ ...stats, grit: stats.grit + START_BONUS }),
 	};
@@ -148,7 +148,7 @@ function withStart(this stats: Stats, id: int32): Stats {
 function withSmall(this stats: Stats, id: int32): Stats {
 	const region = regionOf(id);
 	const primaryStat: Stats = match (region) {
-		Region.Worker => ({ ...stats, yield_: stats.yield_ + 1 }),
+		Region.Worker => ({ ...stats, forage: stats.forage + 1 }),
 		Region.Fighter => ({ ...stats, might: stats.might + 1 }),
 		Region.Survivor => ({ ...stats, grit: stats.grit + 1 }),
 	};
@@ -268,7 +268,7 @@ test "derived stats for a fighter path" {
 	const stats = Stats.fromTree(tree);
 	assert stats.might == 9;
 	assert stats.grit == 6;
-	assert stats.yield_ == 5;
+	assert stats.forage == 5;
 	assert stats.maxHearts == 2;
 	assert stats.mods.has(Mod.Scavenger);
 	assert stats.mods.has(Mod.GlassCannon);

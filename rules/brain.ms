@@ -130,7 +130,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		region: 0,
 		hearts: fighter.hearts as uint8,
 		maxHearts: 5,
-		yield_: 5,
+		forage: 5,
 		might: fighter.might as uint16,
 		grit: fighter.grit as uint16,
 		level: 0,

@@ -20,7 +20,7 @@ export struct Pet {
 	region: uint8;
 	hearts: uint8;
 	maxHearts: uint8;
-	yield_: uint16;
+	forage: uint16;
 	might: uint16;
 	grit: uint16;
 	level: uint16;
@@ -68,7 +68,7 @@ export struct FightRecord {
 
 export function stats(this pet: Pet): Stats {
 	return {
-		yield_: pet.yield_ as int32,
+		forage: pet.forage as int32,
 		might: pet.might as int32,
 		grit: pet.grit as int32,
 		maxHearts: pet.maxHearts as int32,
