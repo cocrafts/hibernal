@@ -29,7 +29,6 @@ msc build tools/rulesProbe.ms --os=solana --output=out/rulesProbe.so
 - **camelCase for file names and identifiers** whenever the language allows: `winOdds.ms`, `rulesProbe.ms`, `rewardSnapshot`, `fightsOutToday`. Snake_case only where the other side dictates it (Solana account field names in docs, C symbols in shims).
 - **Spell names out.** A reader should not have to ask what a name means: `winChanceBps` not `pwinBps`, `attackExpectedValue` not `attackEv`, `defenderHarvest` not `harvestD`, `winOdds.ms` not `pwinMc.ms`. Abbreviate only when the full name would be unreasonably long, and then only with terms `docs/BRIEF.md` already uses (`BPS`, `HP`, `HBRN`, `crit`).
 - Constants stay `UPPER_SNAKE`. Struct and enum names `PascalCase`.
-- `yield` is reserved, so the stat is `yield_`.
 
 ## Rules for `rules/`
 

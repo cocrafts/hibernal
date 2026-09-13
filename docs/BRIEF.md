@@ -104,7 +104,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `block_id`, `slot` | u32, u8 | Fixed for life. |
 | `alive` | bool | |
 | `hearts`, `max_hearts` | u8 | Base max 5. 0 = dead. |
-| `yield_`, `might`, `grit` | u16 | Derived from tree bitmap; cached. Base 5 each; start region +3 to its stat. |
+| `forage`, `might`, `grit` | u16 | Derived from tree bitmap; cached. Base 5 each; start region +3 to its stat. |
 | `level`, `points_unspent` | u16, u8 | 1 point per level. |
 | `tree_bitmap` | u64 | Allocated nodes (24 for the hackathon, ≤ 64). Adjacency is computed in `rules/tree.ms`, no table. |
 | `harvest` | u64 | Unclaimed earnings. **Lootable.** |
@@ -116,8 +116,8 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `min_hearts` | u8 | Auto-eat floor set by the brain (D22). |
 | `insurance` | enum {None, Armed, Used} | Once per pet. |
 | `scars`, `lineage_generation` | u8, u16 | Cosmetic/prestige. |
-| `power` | derived | `yield_ + might + grit` |
-| `work_power` | derived | `10 + yield_ × 3` `[strawman — sim must make Worker ≈ 3× base, see §6]` |
+| `power` | derived | `forage + might + grit` |
+| `work_power` | derived | `10 + forage × 3` `[strawman — sim must make Worker ≈ 3× base, see §6]` |
 
 Session authorization lives in the MagicBlock Session Token PDA, not in `Pet`. Brain state (grudges, policy knobs) is client-side only.
 
@@ -216,9 +216,9 @@ SKR **never** buys: $HBRN from protocol, levels/points/power, a second revive, o
 - No node table in the program: `rules/tree.ms` computes kind, stat delta, mods and neighbours arithmetically from the node id (`u64` bitmap, `N ≤ 64`). Hackathon: **~24 nodes** — 3 start nodes, 5 small + 1 notable per region, 3 keystones at center/borders (36 is the post-hackathon target).
 - `allocate(node_id)`: require `points_unspent > 0`, node not set, and at least one adjacent node set (or node is the chosen start). Set bit; recompute cached stats; settle pet first (D23), then update `total_work_power`.
 - Node kinds:
-  - **Small:** +1 Yield / +1 Might / +1 Grit / +1 max_hearts
-  - **Notable** (examples): *Scavenger* +crit vs targets with fewer hearts; *Thick Hide* +dodge, first 3 incoming fights/day yield 50% loot; *Overtime* Yield ×1.5 on days with no fights in/out; *Nightwatch* one chosen neighbor gets +50% of your Grit
-  - **Keystone** (rule-changing, always with a cost): *Glass Cannon* damage ×2, max_hearts = 2 · *Hibernate* no upkeep after ≥3 idle epochs, Yield 0 while idle, −2 hearts on wake · *Cannibal* killing blow → 50% of victim's wallet to you instead of block · *Pacifist* cannot attack, incoming loot −70%, Yield +30% · *Tithe* 10% Yield → block pot, +1 max_hearts per living neighbor · *Bloodline* heir gets 60% (post-hackathon), max level −20%
+  - **Small:** +1 Forage / +1 Might / +1 Grit / +1 max_hearts
+  - **Notable** (examples): *Scavenger* +crit vs targets with fewer hearts; *Thick Hide* +dodge, first 3 incoming fights/day yield 50% loot; *Overtime* Forage ×1.5 on days with no fights in/out; *Nightwatch* one chosen neighbor gets +50% of your Grit
+  - **Keystone** (rule-changing, always with a cost): *Glass Cannon* damage ×2, max_hearts = 2 · *Hibernate* no upkeep after ≥3 idle epochs, Forage 0 while idle, −2 hearts on wake · *Cannibal* killing blow → 50% of victim's wallet to you instead of block · *Pacifist* cannot attack, incoming loot −70%, Forage +30% · *Tithe* 10% Forage → block pot, +1 max_hearts per living neighbor · *Bloodline* heir gets 60% (post-hackathon), max level −20%
 - Keystones sit far from starts and on region borders → cross-region pathing costs levels.
 - **Respec:** none, except **one refund of up to 3 points per Winter** (post-hackathon).
 
