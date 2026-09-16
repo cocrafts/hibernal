@@ -7,4 +7,5 @@ export * from "./fight";
 export * from "./winOdds";
 export * from "./layout";
 export * from "./level";
+export * from "./life";
 export * from "./brain";
