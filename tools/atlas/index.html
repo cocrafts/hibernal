@@ -1,0 +1,2117 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hibernal Rules Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+	--ground: #eef2f1;
+	--panel: #fbfcfc;
+	--sunk: #e3e9e8;
+	--ink: #17222a;
+	--ink-soft: #4b5a64;
+	--ink-faint: #7d8b93;
+	--line: #cfd9d9;
+	--ember: #b9531c;
+	--ember-soft: #f3dccd;
+	--frost: #2c6c8a;
+	--worker: #a87a12;
+	--fighter: #b8382c;
+	--survivor: #23806f;
+	--keystone: #6a4d9e;
+	--good: #2f7d4a;
+	--bad: #b23a3a;
+	--display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+	--body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+	--mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--ground: #0d1318;
+		--panel: #141c22;
+		--sunk: #1b252c;
+		--ink: #e1e8ec;
+		--ink-soft: #a0afb8;
+		--ink-faint: #6f7e87;
+		--line: #26333b;
+		--ember: #f08a4b;
+		--ember-soft: #3a2518;
+		--frost: #70b2d0;
+		--worker: #e2b24c;
+		--fighter: #ee6d5d;
+		--survivor: #4ec3aa;
+		--keystone: #a88bdb;
+		--good: #5cc27f;
+		--bad: #ef7373;
+	}
+}
+:root[data-theme="dark"] {
+	--ground: #0d1318;
+	--panel: #141c22;
+	--sunk: #1b252c;
+	--ink: #e1e8ec;
+	--ink-soft: #a0afb8;
+	--ink-faint: #6f7e87;
+	--line: #26333b;
+	--ember: #f08a4b;
+	--ember-soft: #3a2518;
+	--frost: #70b2d0;
+	--worker: #e2b24c;
+	--fighter: #ee6d5d;
+	--survivor: #4ec3aa;
+	--keystone: #a88bdb;
+	--good: #5cc27f;
+	--bad: #ef7373;
+}
+
+* { box-sizing: border-box; }
+body {
+	background: var(--ground);
+	color: var(--ink);
+	font-family: var(--body);
+	font-size: 15.5px;
+	line-height: 1.6;
+	padding-inline: 20px;
+	padding-block: 0 64px;
+}
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 3.1rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 1.12rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--sunk); padding: 0.05em 0.35em; border-radius: 4px; }
+a { color: var(--frost); }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+.masthead {
+	max-width: 1180px;
+	margin: 0 auto;
+	padding-block: 44px 28px;
+	display: grid;
+	gap: 14px;
+	border-bottom: 1px solid var(--line);
+}
+.eyebrow {
+	font-family: var(--mono);
+	font-size: 0.74rem;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ember);
+}
+.lede { color: var(--ink-soft); font-size: 1.05rem; }
+.comment-hint {
+	display: flex;
+	gap: 10px;
+	align-items: baseline;
+	flex-wrap: wrap;
+	font-size: 0.92rem;
+	color: var(--ink-soft);
+}
+.comment-hint strong { color: var(--ink); }
+
+.shell {
+	max-width: 1180px;
+	margin: 0 auto;
+	display: grid;
+	grid-template-columns: 196px minmax(0, 1fr);
+	gap: 44px;
+	padding-top: 28px;
+}
+nav.toc {
+	position: sticky;
+	top: 18px;
+	align-self: start;
+	display: grid;
+	gap: 2px;
+	font-size: 0.9rem;
+}
+nav.toc a {
+	text-decoration: none;
+	color: var(--ink-soft);
+	padding: 5px 10px;
+	border-radius: 6px;
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+}
+nav.toc a:hover { background: var(--sunk); color: var(--ink); }
+nav.toc a span { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); }
+main { display: grid; gap: 64px; min-width: 0; }
+section { display: grid; gap: 18px; scroll-margin-top: 16px; }
+.section-head { display: grid; gap: 6px; }
+.file-tag { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-faint); }
+.file-tag b { color: var(--ember); font-weight: 600; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+th {
+	font-family: var(--mono);
+	font-size: 0.7rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+	font-weight: 600;
+	background: var(--sunk);
+}
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td .mono { white-space: nowrap; }
+.group-row td {
+	font-family: var(--mono);
+	font-size: 0.7rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ember);
+	background: var(--ground);
+	padding-block: 5px;
+}
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.note { font-size: 0.9rem; color: var(--ink-soft); }
+.note b { color: var(--ink); }
+
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-family: var(--mono);
+	font-size: 0.72rem;
+	padding: 2px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	color: var(--ink-soft);
+	white-space: nowrap;
+}
+.chip.done { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.chip.todo { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.chip.partial { color: var(--worker); border-color: color-mix(in srgb, var(--worker) 45%, transparent); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.worker { color: var(--worker); }
+.fighter { color: var(--fighter); }
+.survivor { color: var(--survivor); }
+.keystone { color: var(--keystone); }
+
+pre.mermaid { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; margin: 0; }
+
+.formula {
+	font-family: var(--mono);
+	font-size: 0.86rem;
+	background: var(--sunk);
+	border-radius: 8px;
+	padding: 12px 14px;
+	overflow-x: auto;
+	white-space: pre;
+	line-height: 1.7;
+}
+
+.dice-strip { display: grid; grid-template-columns: 64px repeat(4, minmax(0, 1fr)); gap: 3px; font-family: var(--mono); font-size: 0.72rem; }
+.dice-strip .x { background: color-mix(in srgb, var(--keystone) 16%, transparent); color: var(--ink); }
+.dice-strip div { padding: 5px 4px; text-align: center; border-radius: 4px; }
+.dice-strip .h { color: var(--ink-faint); background: none; }
+.dice-strip .a { background: color-mix(in srgb, var(--fighter) 16%, transparent); color: var(--ink); }
+.dice-strip .d { background: color-mix(in srgb, var(--frost) 18%, transparent); color: var(--ink); }
+.dice-strip .r { color: var(--ink-soft); text-align: left; }
+
+.tree-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(250px, 1fr); gap: 18px; align-items: start; }
+.tree-svg { width: 100%; max-width: 560px; height: auto; display: block; margin: 0 auto; }
+.tree-svg .ring-guide { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 5; }
+.tree-svg .ring-label { fill: var(--ink-faint); font-family: var(--mono); font-size: 11px; text-anchor: end; }
+.tree-svg .edge { stroke: var(--line); stroke-width: 2; }
+.tree-svg .edge.gate { stroke: var(--ink-faint); stroke-dasharray: 6 4; }
+.tree-svg .edge.lit { stroke: var(--ember); stroke-width: 3; stroke-dasharray: none; }
+.tree-svg .node circle { fill: var(--panel); stroke-width: 2.5; cursor: pointer; transition: fill 0.15s; }
+.tree-svg .node text { font-family: var(--mono); font-size: 11px; text-anchor: middle; dominant-baseline: central; pointer-events: none; fill: var(--ink); }
+.tree-svg .node.owned text { fill: var(--panel); font-weight: 600; }
+.tree-svg .node:focus-visible circle { stroke: var(--ember); stroke-width: 4; }
+.tree-svg .node:focus { outline: none; }
+.tree-svg .region-label { font-family: var(--display); font-size: 15px; font-weight: 700; text-anchor: middle; }
+.model-switch { display: inline-flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; justify-self: start; }
+.model-switch button { background: transparent; color: var(--ink-soft); border: none; border-radius: 0; padding: 7px 14px; }
+.model-switch button[aria-pressed="true"] { background: var(--ink); color: var(--ground); }
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--sunk); border-radius: 8px; padding: 8px 10px; display: grid; gap: 1px; }
+.stat span { font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+.stat b { font-family: var(--display); font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.message { min-height: 1.6em; font-size: 0.9rem; }
+.message.err { color: var(--bad); }
+.message.ok { color: var(--good); }
+.node-card { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 12px; }
+.mods-line { display: flex; flex-wrap: wrap; gap: 6px; }
+
+button {
+	font: inherit;
+	font-size: 0.88rem;
+	font-weight: 600;
+	border: 1px solid var(--ink);
+	background: var(--ink);
+	color: var(--ground);
+	border-radius: 7px;
+	padding: 7px 14px;
+	cursor: pointer;
+}
+button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+button:hover { filter: brightness(1.12); }
+
+.fighters { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.fighter-card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; background: var(--panel); }
+.fighter-card h3 { display: flex; justify-content: space-between; align-items: baseline; }
+.field { display: grid; grid-template-columns: 62px minmax(0, 1fr) 34px; gap: 10px; align-items: center; font-size: 0.86rem; }
+.field label { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-soft); }
+.field output { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--ember); }
+.checks { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.82rem; }
+.checks label { display: flex; gap: 5px; align-items: center; }
+.derived { display: flex; flex-wrap: wrap; gap: 6px; }
+.sim-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.sim-controls label { display: grid; gap: 2px; font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); }
+.sim-controls input[type="number"] { font: inherit; font-family: var(--mono); font-size: 0.9rem; width: 110px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.odds-result { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.hp-rows { display: grid; gap: 8px; }
+.hp-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 96px; gap: 10px; align-items: center; font-size: 0.86rem; }
+.hp-name { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-soft); }
+.hp-num { text-align: right; font-variant-numeric: tabular-nums; font-size: 0.8rem; }
+.hp-bar { height: 16px; border-radius: 8px; background: var(--sunk); overflow: hidden; }
+.hp-bar i { display: block; height: 100%; background: var(--fighter); transition: width 0.45s ease-out; }
+.hp-bar.defender i { background: var(--frost); }
+.replay-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button:disabled { opacity: 0.4; cursor: default; filter: none; }
+.events { margin: 0; padding-left: 20px; display: grid; gap: 4px; min-height: 5.5em; font-size: 0.92rem; }
+.events b.crit { color: var(--ember); }
+td b.crit { color: var(--ember); }
+#fightLog tr.current td { background: var(--ember-soft); }
+.odds-bar { height: 12px; border-radius: 6px; background: color-mix(in srgb, var(--frost) 30%, transparent); overflow: hidden; }
+.odds-bar i { display: block; height: 100%; background: var(--ember); transition: width 0.3s; }
+@media (prefers-reduced-motion: reduce) { .odds-bar i, .hp-bar i, .tree-svg .node circle { transition: none; } }
+
+.chart svg { width: 100%; height: auto; display: block; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis-text { fill: var(--ink-faint); font-family: var(--mono); font-size: 11px; }
+.chart .series { fill: none; stroke: var(--ember); stroke-width: 2.5; }
+.chart .area { fill: var(--ember); opacity: 0.12; }
+.chart .floor { stroke: var(--frost); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .floor-text { fill: var(--frost); font-family: var(--mono); font-size: 11px; }
+.chart .end { fill: var(--ember); }
+.chart .end-text { fill: var(--ink); font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.chart .series.alt { stroke: var(--frost); stroke-width: 2; stroke-dasharray: 6 4; }
+.chart .series.alt1 { stroke: var(--ink-faint); }
+
+.split { display: grid; gap: 6px; }
+.split-bar { display: flex; height: 30px; border-radius: 6px; overflow: hidden; font-family: var(--mono); font-size: 0.74rem; }
+.split-bar div { display: flex; align-items: center; justify-content: center; color: #fff; white-space: nowrap; overflow: hidden; }
+.s-recycled { background: var(--survivor); }
+.s-burn { background: var(--fighter); }
+.s-protocol { background: var(--keystone); }
+.s-winner { background: var(--worker); }
+
+.hunger { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; font-family: var(--mono); font-size: 0.72rem; text-align: center; }
+.hunger div { padding: 6px 2px; border-radius: 5px; background: var(--sunk); display: grid; gap: 2px; }
+.hunger .shield { box-shadow: inset 0 0 0 1.5px var(--frost); }
+.hunger .step b { color: var(--bad); }
+.hunger .skip b { color: var(--ink-faint); }
+
+.pipeline { display: grid; gap: 0; counter-reset: gate; }
+.gate { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.gate:last-child { border-bottom: none; }
+.gate::before { counter-increment: gate; content: counter(gate); font-family: var(--mono); font-size: 0.78rem; color: var(--ink-faint); text-align: center; }
+.gate .chip { justify-self: end; }
+
+.gaps { display: grid; gap: 10px; }
+.gap-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.gap-row:last-child { border-bottom: none; }
+
+@media (max-width: 860px) {
+	.shell { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+	nav.toc { position: static; display: flex; flex-wrap: wrap; gap: 4px; }
+	nav.toc a { background: var(--sunk); }
+	nav.toc a span { display: none; }
+	.tree-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+	.stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.gap-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+	.hunger { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	.dice-strip { font-size: 0.62rem; grid-template-columns: 44px repeat(4, minmax(0, 1fr)); }
+}
+</style>
+
+<header class="masthead">
+	<div class="eyebrow">hibernal · rules/ · msc 0.2.54 · commit c80563f + gói 2 và audit 2026-09-17 chưa commit</div>
+	<h1>Luật game đang có trong <code style="background:none;padding:0">rules/</code></h1>
+	<p class="lede">Mười ba file MetaScript, chỉ dùng số nguyên, không cấp phát. Cùng một mã nguồn build ra native, JS và <code>--os=solana</code>. Tất cả là hàm thuần: nhận input, trả output. Gói 2 thêm <code>level.ms</code>, <code>life.ms</code>, <code>actions.ms</code>: pet sinh ra, tick, ăn, cất tiền, allocate và đánh nhau đã chạy bằng code. Các mục đánh dấu <b>đã chốt</b> là thiết kế đã thống nhất hướng nhưng chưa code, số liệu còn chỉnh bằng sim, ghi đầy đủ trong <code>docs/GAME-DESIGN.md</code>, chưa có trong <code>rules/</code>.</p>
+	<p class="comment-hint"><strong>Bản local:</strong> trang gọi thẳng bản build JS của <code>rules/</code>. Sửa rules xong chạy <code>./tools/atlas/build.sh</code> rồi tải lại trang.</p>
+</header>
+
+<div class="shell">
+	<nav class="toc" aria-label="Mục lục">
+		<a href="#files">Tổng quan <span>13 file</span></a>
+		<a href="#data">Dữ liệu <span>stats · layout</span></a>
+		<a href="#rng">RNG <span>rng</span></a>
+		<a href="#tree">Cây kỹ năng <span>tree</span></a>
+		<a href="#combat">Combat <span>rev 5 · replay</span></a>
+		<a href="#randomness">Ngẫu nhiên <span>VRF · chốt</span></a>
+		<a href="#economy">Kinh tế <span>emission</span></a>
+		<a href="#leveling">Lên cấp <span>level · strawman</span></a>
+		<a href="#actions">Hành động <span>life · actions</span></a>
+		<a href="#lifecycle">Vòng đời <span>đã chốt</span></a>
+		<a href="#talent">Thiên phú <span>đã chốt</span></a>
+		<a href="#rewards">Chia thưởng <span>đã chốt</span></a>
+		<a href="#wild">Pet hoang <span>đã chốt</span></a>
+		<a href="#items">Item <span>đã chốt hướng</span></a>
+		<a href="#bonding">Gắn bó <span>đã chốt hướng</span></a>
+		<a href="#brain">Brain <span>on-chain · chốt</span></a>
+		<a href="#social">Xã hội <span>đề xuất</span></a>
+		<a href="#decisions">Cần chốt <span>8 mục</span></a>
+		<a href="#gaps">Còn thiếu <span>todo</span></a>
+	</nav>
+
+	<main>
+		<section id="files">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/index.ms</b> re-export tất cả · 49 test</div>
+				<h2>Tổng quan và phụ thuộc</h2>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>File</th><th>Vai trò</th><th class="num">Dòng</th><th class="num">Test</th></tr></thead>
+					<tbody>
+						<tr><td class="mono">units.ms</td><td>Đơn vị: epoch 86400s, 1 HBRN = 10⁶, BPS = 10000</td><td class="num">3</td><td class="num">0</td></tr>
+						<tr><td class="mono">stats.ms</td><td><code>Region</code>, <code>Mod</code>, <code>Stats</code>, <code>Combatant</code> (8 chỉ số), work power</td><td class="num">114</td><td class="num">2</td></tr>
+						<tr><td class="mono">rng.ms</td><td>splitmix64, trộn seed trận đấu, <code>Dice</code> không trạng thái</td><td class="num">64</td><td class="num">3</td></tr>
+						<tr><td class="mono">tree.ms</td><td>Cây 24 node dạng bitmask, luật allocate, keystone tốn 3 điểm, tính chỉ số từ cây</td><td class="num">296</td><td class="num">6</td></tr>
+						<tr><td class="mono">emission.ms</td><td>Phát hành, reward accumulator, giá food, đói, chia tiền</td><td class="num">193</td><td class="num">7</td></tr>
+						<tr><td class="mono">fight.ms</td><td>Từng round (<code>nextRound</code>), trận đấu, lượt tấn công, stake, loot, cắn</td><td class="num">469</td><td class="num">11</td></tr>
+						<tr><td class="mono">winOdds.ms</td><td>Monte Carlo tỉ lệ thắng bằng chính hàm <code>fight</code></td><td class="num">50</td><td class="num">1</td></tr>
+						<tr><td class="mono">layout.ms</td><td>Struct account: <code>Pet</code>, <code>GlobalConfig</code>, <code>FightRecord</code>; <code>BlockSlot</code>, reset bộ đếm theo ngày</td><td class="num">132</td><td class="num">0</td></tr>
+						<tr><td class="mono">level.ms <span class="chip done">gói 2</span></td><td>XP cần cho mỗi cấp, cấp theo XP, XP từ làm việc, cướp và thủ; trần 20</td><td class="num">66</td><td class="num">2</td></tr>
+						<tr><td class="mono">life.ms <span class="chip done">gói 2</span></td><td>Sinh (<code>born</code>), tick bắt kịp (<code>tickTo</code>), chôn và chia ví (<code>bury</code>), cập nhật <code>GlobalConfig</code></td><td class="num">269</td><td class="num">5</td></tr>
+						<tr><td class="mono">actions.ms <span class="chip done">gói 2</span></td><td>Danh sách hành động cố định, mask hợp lệ, cất tiền, ăn, allocate, chọn stake và chốt trận</td><td class="num">562</td><td class="num">7</td></tr>
+						<tr><td class="mono">brain.ms</td><td>Persona, ăn, chọn stake, chấm điểm mục tiêu (heuristic)</td><td class="num">210</td><td class="num">5</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<pre class="mermaid">
+flowchart LR
+  units[units.ms]
+  stats[stats.ms]
+  rng[rng.ms]
+  tree[tree.ms]
+  emission[emission.ms]
+  fight[fight.ms]
+  winOdds[winOdds.ms]
+  layout[layout.ms]
+  level[level.ms]
+  life[life.ms]
+  actions[actions.ms]
+  brain[brain.ms]
+  stats --> tree
+  units --> emission
+  stats --> fight
+  units --> fight
+  rng --> fight
+  fight --> winOdds
+  tree --> layout
+  fight --> layout
+  emission --> layout
+  layout --> level
+  level --> life
+  life --> actions
+  layout --> brain
+  winOdds --> brain
+  classDef added stroke-width:2px,stroke-dasharray:4 3
+  class level,life,actions added
+			</pre>
+			<p class="note">Mũi tên đọc là "được import bởi". Chỉ vẽ import không suy ra được qua file khác: <code>actions.ms</code> còn import thẳng <code>units</code>, <code>stats</code>, <code>tree</code>, <code>emission</code>, <code>fight</code>, <code>layout</code>, <code>level</code>. Viền đứt là ba file của gói 2. <code>units.ms</code>, <code>stats.ms</code>, <code>rng.ms</code> không import gì. <code>brain.ms</code> chưa dùng <code>actions.ms</code>: nó vẫn là heuristic cũ, gói 6 thay bằng policy chọn trong mask.</p>
+		</section>
+
+		<section id="data">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/stats.ms</b> · <b>rules/layout.ms</b></div>
+				<h2>Dữ liệu</h2>
+				<p>Hai tầng: <code>Stats</code>/<code>Combatant</code> là giá trị dùng để tính toán; <code>Pet</code>, <code>GlobalConfig</code>, <code>FightRecord</code> là layout account sẽ nằm trên chain.</p>
+			</div>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Stats</h3>
+					<div class="formula">forage    int32   gốc 50
+might     int32   gốc 50
+grit      int32   gốc 50
+speed     int32   gốc 50
+armor     int32   gốc 0
+accuracy  int32   gốc 0
+lifesteal int32   gốc 0
+bleed     int32   gốc 0
+maxHearts int32   gốc 5
+mods      BitSet&lt;Mod&gt;</div>
+					<p class="note">Chỉ số nhân 10 so với bản đầu: Start +30, node thường +10, heart vẫn +1.<br><b>workPower</b> = 10 + 3 × forage ÷ 10 (gốc 25, Worker start 34)<br><b>power</b> = forage + might + grit (gốc 150)</p>
+					<p class="note"><b><code>forage</code></b>: khả năng kiếm ăn của pet, quyết định <code>workPower</code>. Trước đây tên là <code>yield_</code>.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Combatant</h3>
+					<div class="formula">might, grit, speed, armor, accuracy  int32
+lifesteal, bleed, hearts            int32
+mods                                BitSet&lt;Mod&gt;</div>
+					<p class="note">Lát cắt của pet khi vào trận: <code>stats.asCombatant(hearts)</code> hoặc <code>Combatant.plain(might, grit, hearts)</code>.</p>
+					<h3 style="margin-top:6px">Region · Mod</h3>
+					<div class="mods-line">
+						<span class="chip worker"><i class="dot" style="background:var(--worker)"></i>Worker</span>
+						<span class="chip fighter"><i class="dot" style="background:var(--fighter)"></i>Fighter</span>
+						<span class="chip survivor"><i class="dot" style="background:var(--survivor)"></i>Survivor</span>
+					</div>
+					<div class="mods-line">
+						<span class="chip">Overtime</span><span class="chip">Scavenger</span><span class="chip">ThickHide</span><span class="chip">Pacifist</span><span class="chip">GlassCannon</span><span class="chip">Cannibal</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Pet · field</th><th>Kiểu</th><th>Ý nghĩa</th></tr></thead>
+					<tbody>
+						<tr class="group-row"><td colspan="3">Vị trí và sống chết</td></tr>
+						<tr><td class="mono">blockId, slot</td><td class="mono">uint32, uint8</td><td>Block chứa pet và chỗ ngồi (10 slot/block, <code>pet.blockSlot()</code> trả <code>BlockSlot</code>)</td></tr>
+						<tr><td class="mono">alive, region</td><td class="mono">boolean, uint8</td><td>Còn sống; region đã chọn khi sinh</td></tr>
+						<tr class="group-row"><td colspan="3">Chỉ số và cây</td></tr>
+						<tr><td class="mono">hearts, maxHearts</td><td class="mono">uint8, uint8</td><td>Máu thật; về 0 là chết</td></tr>
+						<tr><td class="mono">forage, might, grit</td><td class="mono">uint16 × 3</td><td>Chỉ số đã cộng từ cây. speed, armor, accuracy, lifesteal, bleed không lưu, tính lại từ cây khi cần</td></tr>
+						<tr><td class="mono">level, pointsUnspent, xp</td><td class="mono">uint16, uint8, uint32</td><td>Cấp tính từ <code>xp</code> (<code>rules/level.ms</code>), điểm cây chưa dùng, XP tích luỹ</td></tr>
+						<tr><td class="mono">tree</td><td class="mono">Tree { bits: uint64 }</td><td>24 bit, mỗi bit một node</td></tr>
+						<tr class="group-row"><td colspan="3">Tiền</td></tr>
+						<tr><td class="mono">harvest</td><td class="mono">uint64</td><td>Thu hoạch chưa cất; <b>bị cướp được</b></td></tr>
+						<tr><td class="mono">burrow</td><td class="mono">uint64</td><td>Đã cất vào hang; không cướp được, dùng mua food và đặt stake khi đi đánh</td></tr>
+						<tr><td class="mono">rewardSnapshot</td><td class="mono">uint64</td><td>Giá trị accumulator ở lần settle trước</td></tr>
+						<tr class="group-row"><td colspan="3">Thời gian và bộ đếm</td></tr>
+						<tr><td class="mono">bornEpoch, lastTickEpoch</td><td class="mono">uint64 × 2</td><td>Tuổi và lần tick cuối (tick lười)</td></tr>
+						<tr><td class="mono">fightsOutToday, fightsInToday, bitesInToday, fightDay</td><td class="mono">uint8 × 3, uint64</td><td>Tự coi như 0 khi <code>fightDay</code> khác epoch hiện tại; <code>onFightDay(epoch)</code> reset hẳn</td></tr>
+						<tr><td class="mono">slotsAttackedToday</td><td class="mono">BitSet&lt;BlockSlot&gt;</td><td>Slot đã bị pet này đánh hôm nay: mỗi cặp attacker, target một trận mỗi epoch</td></tr>
+						<tr class="group-row"><td colspan="3">Buff, brain, lịch sử</td></tr>
+						<tr><td class="mono">growthMultiplierBps, growthMultiplierExpiry</td><td class="mono">uint16, uint64</td><td>Thuốc tăng trưởng mua bằng SKR, trần 12000</td></tr>
+						<tr><td class="mono">minHearts</td><td class="mono">uint8</td><td>Ngưỡng tự ăn do brain đặt</td></tr>
+						<tr><td class="mono">insurance, scars, lineageGeneration</td><td class="mono">uint8, uint8, uint16</td><td>None/Armed/Used; vết sẹo; đời thứ mấy</td></tr>
+						<tr class="group-row"><td colspan="3">Đề xuất thêm (GAME-DESIGN §16)</td></tr>
+						<tr><td class="mono">talentKind, talentGrade</td><td class="mono">uint8 × 2</td><td>Thiên phú, ghi bằng VRF khi lên cấp 10</td></tr>
+						<tr><td class="mono">bonding</td><td class="mono">int8</td><td>Gắn bó với chủ, −127 ghét tới +127 quấn, giảm mỗi epoch</td></tr>
+						<tr><td class="mono">equipment</td><td class="mono">4 × 8 byte</td><td>Nón, áo, tay, chân: slot, rarity, chỉ số, giá trị, độ mòn</td></tr>
+						<tr><td class="mono">heirloom slots</td><td class="mono">1–2 ô</td><td>Item mang sang đời sau</td></tr>
+						<tr><td class="mono">persona, soft signals</td><td class="mono">vài byte</td><td>Chủ đặt; input của mọi model trong brain</td></tr>
+						<tr><td class="mono">Block.relationships</td><td class="mono">45 byte</td><td>Quan hệ giữa 45 cặp trong 10 slot, −127 thù tới +127 thân</td></tr>
+					</tbody>
+				</table>
+			</div>
+
+			<div class="two">
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>GlobalConfig</th><th>Kiểu</th></tr></thead>
+						<tbody>
+							<tr><td class="mono">genesisTimestamp</td><td class="mono">uint64</td></tr>
+							<tr><td class="mono">rewardPerWorkPower</td><td class="mono">uint64</td></tr>
+							<tr><td class="mono">rewardEpoch</td><td class="mono">uint64</td></tr>
+							<tr><td class="mono">totalWorkPower</td><td class="mono">uint64</td></tr>
+							<tr><td class="mono">recycledPending</td><td class="mono">uint64</td></tr>
+							<tr><td class="mono">protocolPending, burned</td><td class="mono">uint64 × 2</td></tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>FightRecord (ring 32)</th><th>Kiểu</th></tr></thead>
+						<tbody>
+							<tr><td class="mono">epoch, seed</td><td class="mono">uint64 × 2</td></tr>
+							<tr><td class="mono">attackerSlot, defenderSlot</td><td class="mono">int32 × 2</td></tr>
+							<tr><td class="mono">attacker, defender</td><td class="mono">Combatant × 2</td></tr>
+							<tr><td class="mono">stake, loot</td><td class="mono">uint64 × 2</td></tr>
+							<tr><td class="mono">outcome, rounds</td><td class="mono">Outcome, int32</td></tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</section>
+
+		<section id="rng">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/rng.ms</b> · 3 test</div>
+				<h2>RNG tất định</h2>
+				<p>Không có trạng thái ẩn. Mọi con số ngẫu nhiên là <code>splitmix64(seed + draw + offset)</code>, nên native, JS và chain luôn ra cùng một dãy. Test khoá <code>splitmix(1) = 10451216379200822465</code>.</p>
+			</div>
+			<div class="formula">fightSeed(entropy, attackerSlot, defenderSlot, epoch, nonce)
+  = mix(mix(mix(entropy, attackerSlot≪8 | defenderSlot), epoch), nonce)
+mix(a, b) = splitmix(a ^ splitmix(b))
+
+Dice { seed, draw }
+  percent(offset)          = splitmix(seed + draw + offset) % 100
+  roll(offset, low, high)  = low + splitmix(seed + draw + offset) % (high − low + 1)
+  advance(n)               = { seed, draw: draw + n }</div>
+			<div class="panel" style="display:grid;gap:10px">
+				<h3>Một trận đấu tiêu thụ xúc xắc như thế nào</h3>
+				<p class="note">Mỗi round dành 13 ô: 4 cho đòn của attacker (dùng 3: né, roll, chí mạng), 4 cho đòn của defender, 1 để gieo đánh thêm, 4 cho đòn đánh thêm. Tối đa 6 round. Đổi thứ tự này là digest đổi.</p>
+				<div class="dice-strip" id="diceStrip"></div>
+			</div>
+		</section>
+
+		<section id="tree">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/tree.ms</b> · 6 test</div>
+				<h2>Cây kỹ năng 64 node</h2>
+				<p>Đã chốt <b>64 node</b> hình vòng tròn, dùng trọn <code>uint64</code>. Layout dưới đây <b>đã chốt</b>: loại node, hiệu ứng và kề nhau đều tính bằng công thức từ id, không cần bảng. Độ lớn hiệu ứng của notable và attribute còn chỉnh bằng sim như mọi con số khác. Bấm node để allocate theo luật <code>allocate</code>: chọn một Start trước, sau đó chỉ lấy được node kề node đã có. Nút bên dưới chuyển giữa layout đã chốt và cây 24 node đang có trong code.</p>
+				<div class="model-switch" role="group" aria-label="Chọn cây">
+					<button type="button" id="modelRing" aria-pressed="true">Đã chốt: vòng tròn 64 node</button>
+					<button type="button" id="modelLegacy" aria-pressed="false">Hiện tại: rules/tree.ms (24 node)</button>
+				</div>
+				<p class="note" id="treeModelNote"></p>
+			</div>
+			<div class="tree-layout">
+				<div class="panel">
+					<svg class="tree-svg" id="treeSvg" viewBox="-20 -20 640 640" role="group" aria-label="Cây kỹ năng"></svg>
+				</div>
+				<div class="panel" style="display:grid;gap:12px">
+					<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+						<h3>Stats.fromTree</h3>
+						<div style="display:flex;gap:6px">
+							<button class="ghost" id="treeExample" type="button">Đường Fighter mẫu</button>
+							<button class="ghost" id="treeReset" type="button">Xoá cây</button>
+						</div>
+					</div>
+					<div class="stat-grid">
+						<div class="stat"><span>forage</span><b id="sForage">50</b></div>
+						<div class="stat"><span>might</span><b id="sMight">50</b></div>
+						<div class="stat"><span>grit</span><b id="sGrit">50</b></div>
+						<div class="stat"><span>hearts</span><b id="sHearts">5</b></div>
+					</div>
+					<div class="note">bits = <span class="mono" id="treeBits">0x0</span> · <span id="treeCount">0</span> node · <span id="treePoints">0</span>/<span id="treeBudget">20</span> điểm · <label for="treeBonus">điểm thưởng</label> <input id="treeBonus" type="number" min="0" max="10" value="0" style="width:3.5em"> · workPower <span class="mono" id="treeWork">25</span></div>
+					<div class="mods-line" id="treeMods"></div>
+					<div class="message" id="treeMessage" role="status">Chọn một Start ở giữa.</div>
+					<div class="node-card" id="nodeCard"></div>
+				</div>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Vị trí</th><th>Loại</th><th>Hiệu ứng</th><th>Kề với</th></tr></thead>
+					<tbody id="treeRows"></tbody>
+				</table>
+			</div>
+		</section>
+
+		<section id="combat">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/fight.ms</b> · 11 test · <b>rules/winOdds.ms</b> · 1 test · rev 5</div>
+				<h2>Combat</h2>
+				<p>Tối đa 6 round. Bên có speed cao hơn ra đòn trước; hạ gục ngay thì đối thủ mất lượt. Bằng tốc thì hai bên đánh cùng lúc. Hết round mà chưa ai gục thì so phần trăm HP còn lại, nhân chéo để không cần số thực; bằng nhau thì defender thắng.</p>
+			</div>
+			<div class="formula">HP trận     = 800 + 7 × grit                                  GlassCannon: ÷ 2
+Né (%)      = min(30, grit ÷ 8 + ThickHide 10) − accuracy ÷ 2    thấp nhất 0
+Sát thương  = might × 3 × roll(10..160) ÷ 100                  GlassCannon: × 2
+Giáp        = trừ 2 × armor mỗi đòn thường, còn tối thiểu 20%
+Chí mạng(%) = 10 + accuracy ÷ 9 + Scavenger 15                 × 2, xuyên giáp
+Đánh thêm   = min(70, (speed nhanh − chậm) × 100 ÷ (chậm × 3)) %  chỉ bên nhanh hơn
+Hút máu     = sát thương × lifesteal × 0.8%                     không vượt HP ban đầu
+Chảy máu    = sát thương × bleed × 0.4% mỗi round, 3 round
+Thắng       = attackerHp × defenderHpStart  &gt;  defenderHp × attackerHpStart
+Lượt/epoch  = 1 + might ÷ 100                                   Pacifist: Err(Pacifist)</div>
+
+			<div class="panel" style="display:grid;gap:16px">
+				<div style="display:grid;gap:4px">
+					<h3>Thử một cặp đấu</h3>
+					<p class="note">Chạy bằng chính <code>rules/</code> build sang JS (<code>msc build --target=js --split</code>), không phải bản port. Cặp 80/80 cho 4985 bps, khớp <code>sim/curve.ms</code> native.</p>
+				</div>
+				<div class="fighters">
+					<div class="fighter-card" id="cardA"></div>
+					<div class="fighter-card" id="cardD"></div>
+				</div>
+				<div class="sim-controls">
+					<label for="simSeed">firstSeed<input type="number" id="simSeed" value="7" min="0"></label>
+					<label for="simRuns">số trận<input type="number" id="simRuns" value="4000" min="1" max="20000"></label>
+					<button type="button" id="simRun">Mô phỏng</button>
+				</div>
+				<div class="odds-result">
+					<div class="stat"><span>Attacker thắng</span><b id="oddsWin">–</b><div class="odds-bar"><i id="oddsBar" style="width:0%"></i></div></div>
+					<div class="stat"><span>Round trung bình</span><b id="oddsRounds">–</b></div>
+					<div class="stat"><span>winChanceBps</span><b id="oddsBps">–</b></div>
+				</div>
+			</div>
+
+			<div class="panel replay" style="display:grid;gap:14px">
+				<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+					<h3>Replay trận đầu tiên</h3>
+					<span class="note mono" id="replaySeed"></span>
+				</div>
+				<div class="hp-rows">
+					<div class="hp-row"><span class="hp-name">Attacker</span><div class="hp-bar"><i id="hpA"></i></div><span class="mono hp-num" id="hpANum"></span></div>
+					<div class="hp-row"><span class="hp-name">Defender</span><div class="hp-bar defender"><i id="hpD"></i></div><span class="mono hp-num" id="hpDNum"></span></div>
+				</div>
+				<div class="replay-controls">
+					<button type="button" class="ghost" id="replayReset">Về đầu</button>
+					<button type="button" class="ghost" id="replayBack">Round trước</button>
+					<button type="button" id="replayNext">Round sau</button>
+					<button type="button" class="ghost" id="replayPlay">Tự chạy</button>
+					<span class="note" id="replayCounter" role="status"></span>
+				</div>
+				<ol class="events" id="replayEvents"></ol>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th class="num">Round</th><th>Ra đòn</th><th>Attacker</th><th>Defender</th><th>Thêm</th><th class="num">HP A</th><th class="num">HP D</th></tr></thead>
+						<tbody id="fightLog"></tbody>
+					</table>
+				</div>
+			</div>
+
+			<div class="two">
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Stake và loot</h3>
+					<div class="formula">maxStake = max(harvest_D ÷ 1.5, 5 HBRN)
+stake    = max(maxStake × {25, 50, 75, 100}%, 5 HBRN)
+           ← StakeLevel trong rules/actions.ms, phải có đủ trong burrow
+đề xuất  =min(stake × 1.5, harvest_D, harvest_D × 2 × might_A ÷ (might_A + grit_D))
+           ← thay hệ số grit bên dưới: cướp nhiều hay ít theo might kẻ cướp và grit nạn nhân
+hiện tại = min(stake × 1.5, harvest_D)
+         × (1000 − grit_D) ÷ 1000
+         × Pacifist 30% · ThickHide 50%*</div>
+					<p class="note">* ThickHide chỉ giảm trong 3 trận bị đánh đầu tiên mỗi ngày.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Cắn (mất 1 heart)</h3>
+					<p class="note">Chỉ khi cả ba điều kiện đúng:</p>
+					<div class="formula">harvest_D trước trận == 0
+power_D × 2 ≥ power_A
+bitesInToday_D &lt; 1</div>
+					<p class="note">Pet không có gì để cướp thì bị cắn thay, nhưng kẻ mạnh hơn hẳn không được bắt nạt, và mỗi ngày chỉ một lần.</p>
+				</div>
+			</div>
+		</section>
+
+		<section id="randomness">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt</b> · GAME-DESIGN §4 · thay BRIEF §3.6 và §10 Q8</div>
+				<h2>Ngẫu nhiên</h2>
+				<p>Mọi lần gieo có ảnh hưởng (seed trận đấu, mở thiên phú, đánh pet hoang) lấy từ <b>MagicBlock VRF chạy trong Ephemeral Rollup</b>. Câu hỏi không chỉ là giá, mà là ai nhìn thấy seed trước khi giao dịch vào block.</p>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Nguồn</th><th>Phí mỗi lần</th><th>Độ trễ</th><th>Simulate trước được?</th></tr></thead>
+					<tbody>
+						<tr><td><b>MagicBlock VRF trong ER</b> <span class="chip done">chọn</span></td><td><b>0</b></td><td>&lt; 50 ms</td><td>không</td></tr>
+						<tr><td>MagicBlock VRF trên L1</td><td>0.0005 SOL (~1 s) · 0.0008 SOL (&lt;500 ms)</td><td>request + callback</td><td>không</td></tr>
+						<tr><td>ORAO VRF</td><td>0.001 SOL</td><td>4–20 s</td><td>không</td></tr>
+						<tr><td>Switchboard</td><td>~0.002 SOL</td><td>lâu hơn</td><td>không</td></tr>
+						<tr><td>SlotHashes</td><td>0, chỉ tốn compute</td><td>ngay</td><td>có</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Vì sao bỏ SlotHashes</h3>
+					<p class="note">Slot hash đọc được trước khi tx vào block. Người ký simulate tx, thấy kết quả, và chỉ gửi khi có lợi; leader của slot cũng tác động được một phần (quy tắc bảo mật SOL-051, mức high). Chủ pet vẫn được tự ký hành động cho pet của mình, nên bất kỳ lần gieo nào người ký thấy trước đều cày được.</p>
+					<p class="note">VRF chỉ trả kết quả sau khi request đã vào block, simulate không lộ gì. Cặp request/callback thay luôn cơ chế commit-reveal hai bước bàn trước đó.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Một trận đấu: hai instruction, 0 phí</h3>
+					<div class="pipeline">
+						<div class="gate"><span>Khoá stake, mở <code>FightPending</code>, gửi request VRF</span><span class="chip">attack</span></div>
+						<div class="gate"><span>Oracle trả 32 byte ngẫu nhiên, ký bằng <code>VRF_PROGRAM_IDENTITY</code></span><span class="chip">VRF</span></div>
+						<div class="gate"><span>Seed = output VRF, chạy <code>fight</code>, chuyển loot, đóng pending</span><span class="chip">consume_fight</span></div>
+					</div>
+				</div>
+			</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip done">trận đấu</span><p>VRF trong ER cho mọi trận, kể cả trận với pet hoang. Không còn nhánh SlotHashes.</p></div>
+				<div class="gap-row"><span class="chip done">thiên phú</span><p>Request VRF ở lần lên cấp 10, callback ghi thiên phú vào Pet. Trong ER nên không tốn phí.</p></div>
+				<div class="gap-row"><span class="chip todo">phải đo</span><p>Độ trễ và luồng callback thật trên devnet, cách chọn oracle queue ephemeral, phí có đúng bằng 0 (<code>docs/SOLANA.md</code> §7).</p></div>
+			</div>
+		</section>
+
+		<section id="economy">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/emission.ms</b> · 7 test</div>
+				<h2>Kinh tế</h2>
+				<p>HBRN phát ra mỗi epoch được chia theo work power qua một accumulator kiểu MasterChef. Pet ngủ bao lâu cũng chỉ cần một phép nhân khi tick lại.</p>
+			</div>
+			<div class="panel chart" style="display:grid;gap:8px">
+				<h3>Phát hành mỗi epoch (HBRN)</h3>
+				<div id="emissionChart"></div>
+				<p class="note">Bắt đầu 100.000; cứ 90 epoch × 3/4; sàn 5.000 (chạm ở epoch 990).</p>
+			</div>
+			<div class="formula">settleGlobal:  với mỗi epoch còn thiếu
+                 rewardPerWorkPower += (emission(epoch) + recycled) × 100000 ÷ totalWorkPower
+                 recycled chỉ cộng vào epoch đầu tiên
+pendingReward:   workPower × (rewardPerWorkPower − rewardSnapshot) ÷ 100000
+growthBonus:     pending × (clamp(multiplierBps, 10000, 12000) − 10000) ÷ 10000   ← mint thêm, không pha loãng người khác</div>
+
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Food</h3>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th>Loại</th><th class="num">Hearts</th><th class="num">Lv 1</th><th class="num">Lv 10</th><th class="num">Lv 20</th></tr></thead>
+							<tbody id="foodTable"></tbody>
+						</table>
+					</div>
+					<p class="note">Giá = gốc × (20 + level) ÷ 20, tính bằng HBRN.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:12px">
+					<h3>Chia tiền</h3>
+					<div class="split">
+						<div class="note">Chi tiêu (food)</div>
+						<div class="split-bar"><div class="s-recycled" style="width:60%">recycled 60</div><div class="s-burn" style="width:30%">burn 30</div><div class="s-protocol" style="width:10%">10</div></div>
+					</div>
+					<div class="split">
+						<div class="note">Loot khi thắng</div>
+						<div class="split-bar"><div class="s-winner" style="width:95%">attacker 95</div><div class="s-protocol" style="width:5%">5</div></div>
+					</div>
+					<div class="split">
+						<div class="note">Khi chết: nửa ví chia đều cho bạn còn sống trong block, phần dư vào pot</div>
+						<div class="split-bar"><div class="s-recycled" style="width:50%">bạn cùng block 50</div><div class="s-burn" style="width:50%">pot 50</div></div>
+					</div>
+					<p class="note">Không còn ai sống thì cả ví vào pot.</p>
+				</div>
+			</div>
+
+			<div class="panel" style="display:grid;gap:10px">
+				<h3>Đói theo epoch (sinh ở epoch 0)</h3>
+				<div class="hunger" id="hungerRow"></div>
+				<p class="note">Viền xanh là epoch còn khiên (epoch 0–2, không bị đánh). Trong khiên chỉ đói ở epoch lẻ (<code>hungerOn</code>), nên hunger của pet mới sinh giảm một nửa. Đói là mất 1 heart. <code>tickTo</code> tự mua một phần Small thay vì mất heart khi hearts sắp xuống dưới <code>minHearts</code> (mặc định 2) và burrow đủ tiền; hết heart là chết giữa chừng, các epoch sau không tính.</p>
+			</div>
+		</section>
+
+		<section id="leveling">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/level.ms</b> · 2 test · số XP là strawman để đo bằng sim</div>
+				<h2>Lên cấp</h2>
+				<p>Mục tiêu bro đặt: cấp tối đa 20, lên cấp 10 trong khoảng một tuần, cấp 20 sau khoảng một tháng. Mỗi cấp cho một điểm cây kỹ năng như Path of Exile. XP chỉ đến từ làm việc và đánh nhau, <b>không tốn $HBRN</b>; mỗi class lên cấp bằng lối chơi của nó.</p>
+			</div>
+			<div class="two">
+				<div class="panel chart" style="display:grid;gap:8px">
+					<h3>Ngày cần để đạt mỗi cấp</h3>
+					<div id="levelDaysChart"></div>
+					<p class="note">Đường mục tiêu: pet chăm khoảng 350 XP mỗi ngày, được tặng sẵn 190 XP lúc sinh. Bảng mốc lấy từ <code>xpToReach</code> trong code.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Mốc</h3>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th class="num">Cấp</th><th class="num">Tổng XP</th><th class="num">XP cấp này</th><th class="num">Ngày</th></tr></thead>
+							<tbody id="levelMilestones"></tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+			<div class="formula">XP để đạt cấp L  = 190 × (L − 1) + (L − 1)³                     xpToReach · trần LEVEL_CAP 20
+                   phần tuyến tính cho các cấp đầu đều tay, phần bậc ba làm các cấp cuối chậm dần
+Làm việc         7 XP × workPower mỗi epoch, cộng trong tickTo       Worker mới sinh 34 → 238/ngày
+Cướp             3 XP mỗi HBRN loot, tối đa 500 mỗi trận thắng        raidXp
+Thủ              thắng 60 XP · thua 20 XP                            DEFENSE_WIN_XP · DEFENSE_LOSS_XP
+                 không có phí $HBRN · mọi con số là strawman
+Pet mới sinh     tặng sẵn 190 XP (cấp 1) → Worker lên cấp 3 ở tick đầu: 190 + 238 = 428 XP
+Điểm cây         1 điểm mỗi cấp, tính cả cấp 1 → 20 điểm ở cấp 20    gainXp cộng vào pointsUnspent
+                 + tối đa 10 từ sách kỹ năng và dòng họ → trần 30 (chưa code)
+Đo               10 pet × 30 epoch, policy ngây thơ: cấp 16–20 ở epoch 30, native = JS</div>
+
+			<div class="two">
+				<div class="panel" style="display:grid;gap:12px">
+					<h3>20 điểm phủ bao nhiêu phần cây</h3>
+					<div class="split"><div class="note">24 node (đang có)</div><div class="split-bar"><div class="s-burn" style="width:83%">83%</div><div style="flex:1;background:var(--sunk)"></div></div></div>
+					<div class="split"><div class="note">48 node</div><div class="split-bar"><div class="s-recycled" style="width:42%">42%</div><div style="flex:1;background:var(--sunk)"></div></div></div>
+					<div class="split"><div class="note"><b>64 node (đã chốt, hết uint64)</b></div><div class="split-bar"><div class="s-winner" style="width:31%">31%</div><div style="flex:1;background:var(--sunk)"></div></div></div>
+					<div class="split"><div class="note">64 node, trần 30 điểm (có sách)</div><div class="split-bar"><div class="s-winner" style="width:47%">47%</div><div style="flex:1;background:var(--sunk)"></div></div></div>
+					<div class="split"><div class="note">Path of Exile: 123 điểm trên 1325 node</div><div class="split-bar"><div class="s-protocol" style="width:9%">9%</div><div style="flex:1;background:var(--sunk)"></div></div></div>
+					<p class="note">Với 24 node, pet cấp 20 lấy gần hết cây, không còn phải chọn. 64 node thì 20 điểm đi được một keystone cộng gần hết một hướng. Sách kỹ năng và dòng họ thêm tối đa 10 điểm, trần 30; keystone tốn 3 nên 30 điểm thực tế mở ít hơn 47% số node.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Căn cứ</h3>
+					<ul class="note" style="margin:0;padding-left:18px;display:grid;gap:6px">
+						<li><a href="https://doi.org/10.1509/jmkr.43.1.39">Kivetz, Urminsky, Zheng 2006</a>: người ta tăng tốc khi gần đích, và thẻ tích điểm có sẵn 2 dấu được hoàn thành nhanh hơn thẻ trống. Căn cứ cho XP tặng sẵn và thanh tiến độ luôn hiện.</li>
+						<li><a href="https://pokemongohub.net/post/tips-and-tricks/xp-requirements-and-rewards-from-level-1-to-level-40/">Pokémon GO</a>: tổng XP cấp 20 gấp 4.7 lần cấp 10 (210.000 so với 45.000). Đường đề xuất ở đây gấp 4.3 lần.</li>
+						<li><a href="https://www.pathofexile.com/passive-skill-tree">Path of Exile</a>: 1325 node dùng chung, người chơi chỉ có tối đa 123 điểm.</li>
+						<li><a href="https://segwise.ai/blog/mobile-gaming-app-user-retention-strategies">Benchmark retention 2026</a>: RPG khoảng 30.5% D1 · 9.9% D7 · 3.5% D30. D7 là lúc hệ thống tiến độ phải gánh thay cho sự mới lạ.</li>
+						<li><a href="https://eprints.whiterose.ac.uk/id/eprint/135461/1/BusyDoingNothingWhatDoPlayersDoInIdleGames.pdf">Cutting và cộng sự 2018</a> (Neko Atsume, 1972 người): game chờ đợi giữ người chơi bằng thói quen ghé xem, không bằng thời gian chơi.</li>
+						<li><a href="https://www.gamerefinery.com/keep-your-players-in-game-with-appointment-mechanics/">GameRefinery</a>: phần thưởng theo ngày là điểm chung của các game doanh thu cao nhất.</li>
+						<li><a href="https://yukaichou.com/gamification-analysis/endgame-dead-ends-game-loop-design/">Yu-kai Chou</a>: người chơi giỏi nhất bỏ đi khi đạt tối đa mà không còn lựa chọn mới.</li>
+					</ul>
+				</div>
+			</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip done">đã code</span><p><b>D6</b>: <code>levelCost</code> đã bỏ khỏi <code>rules/emission.ms</code>, cấp đi theo XP với trần 20. BRIEF D6 và §6 invariant 1 (cấp 10 khoảng 7 epoch, cấp 20 khoảng 30) đã sửa theo. Chỗ tiêu $HBRN chuyển sang item.</p></div>
+				<div class="gap-row"><span class="chip partial">lệch thiết kế</span><p><b>XP theo class</b>: D6 muốn Survivor lên cấp bằng thủ thắng và sát thương phản đòn. Code mới cho XP thủ cố định 60/20, chưa tính sát thương phản đòn.</p></div>
+				<div class="gap-row"><span class="chip todo">rủi ro</span><p><b>Hết việc sau ngày 30.</b> Pet có thể sống qua epoch 80 (Fading). Cần mục tiêu sau cấp tối đa: Winter hoàn 3 điểm, thứ hạng trong block, dòng dõi.</p></div>
+			</div>
+		</section>
+
+		<section id="actions">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/life.ms</b> · 5 test · <b>rules/actions.ms</b> · 7 test · gói 2 · docs/ON-CHAIN-AI.md §6</div>
+				<h2>Hành động của pet</h2>
+				<p>Mọi việc pet làm là một hàm thuần nhận <code>Pet</code> và <code>GlobalConfig</code>, trả <code>Result&lt;…, enum lỗi&gt;</code>. Mask hợp lệ được dựng bằng cách chạy chính hàm đó, nên action nào mask cho qua thì chắc chắn áp dụng được. Đây là bề mặt mà policy của brain sẽ chọn trên đó (gói 3–6).</p>
+			</div>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Một lần act</h3>
+					<div class="pipeline">
+						<div class="gate"><span>Settle accumulator, trả thưởng và growth bonus, đói và tự ăn, XP làm việc, reset bộ đếm ngày</span><span class="chip">tickTo</span></div>
+						<div class="gate"><span>Nghỉ, cất harvest vào hang, hoặc ăn Small, Medium, Large</span><span class="chip">doEconomy</span></div>
+						<div class="gate"><span>Lấy một node kề, trừ điểm, tính lại chỉ số và work power</span><span class="chip">allocateNode</span></div>
+						<div class="gate"><span>Đánh một hàng xóm cùng block với một mức stake</span><span class="chip">settleAttack</span></div>
+						<div class="gate"><span>Pet đã chết thì chia ví cho bạn cùng block</span><span class="chip">bury</span></div>
+					</div>
+					<p class="note">Pet mới sinh (<code>Pet.born</code>) có sẵn Start theo region, 190 XP, cấp 1 và 1 điểm, <code>minHearts</code> 2, và cộng work power của nó vào <code>GlobalConfig</code>.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Cổng của attackable, theo thứ tự · rồi stakeAt cho từng mức</h3>
+					<div class="pipeline">
+						<div class="gate"><span>Attacker hoặc target đã chết</span><span class="chip">Dead · TargetDead</span></div>
+						<div class="gate"><span>Khác block, hoặc tự đánh mình</span><span class="chip">NotANeighbor</span></div>
+						<div class="gate"><span>Một trong hai chưa tick tới epoch này</span><span class="chip">Unsettled</span></div>
+						<div class="gate"><span>Attacker hoặc target còn khiên pet mới sinh</span><span class="chip">Shielded · TargetShielded</span></div>
+						<div class="gate"><span>Pacifist, hoặc hết lượt (1 + might ÷ 100 mỗi epoch)</span><span class="chip">Pacifist · OutOfAttacks</span></div>
+						<div class="gate"><span>Hôm nay đã đánh slot này rồi</span><span class="chip">AlreadyAttacked</span></div>
+						<div class="gate"><span>Target đã bị đánh 3 trận hôm nay</span><span class="chip">TargetBusy</span></div>
+						<div class="gate"><span><code>stakeAt</code>: stake = maxStake × mức, tối thiểu 5 HBRN; burrow không đủ</span><span class="chip">Broke</span></div>
+					</div>
+					<p class="note"><code>attackable</code> chạy một lần cho mỗi target và trả về maxStake; bốn mức chỉ còn nhân chia. Mask đánh của một block là 9 lượt cổng, không phải 40.</p>
+				</div>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Đầu ra</th><th>Action id</th><th>Mask hợp lệ</th><th>Lỗi</th></tr></thead>
+					<tbody>
+						<tr><td>Kinh tế</td><td><code>EconomyAction</code>: Rest, Bank, EatSmall, EatMedium, EatLarge</td><td><code>legalEconomy</code> → <code>BitSet&lt;EconomyAction&gt;</code></td><td>Dead, EmptyHarvest, Full, Broke</td></tr>
+						<tr><td>Cây</td><td>node id 0–23; <code>ALLOCATE_HOLD</code> = 24 là không lấy</td><td><code>legalNodes</code> → <code>NodeMask</code>, bắt đầu từ <code>nodeHoldMask()</code></td><td>Dead, Unsettled, NoPoints (kiểm trước kề) và lỗi của <code>allocate</code></td></tr>
+						<tr><td>Đánh</td><td><code>attackChoice</code> = slot × 4 + <code>StakeLevel</code>; <code>ATTACK_HOLD</code> = 40</td><td><code>attackHoldMask().attacksOn(attacker, target, epoch)</code> cho từng bạn cùng block → <code>AttackMask</code></td><td><code>AttackError</code>, 11 lý do</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="formula">mọi trận   attacker: burrow − stake, fightsOutToday + 1,
+                     slotsAttackedToday thêm slot target
+           target: fightsInToday + 1 · trả về FightRecord
+thắng      loot = lootFor(stake, harvest_D, fightsInToday_D)
+           attacker lấy lại stake, cộng loot × 95%, + raidXp(loot)
+           target mất loot, + 20 XP; biteAllowed thì − 1 heart
+thua       stake × 95% vào burrow target; attacker − 1 heart
+           target + 60 XP · 5% còn lại là phí protocol
+chết       về 0 heart thì rút work power khỏi GlobalConfig
+bury       nửa ví chia đều bạn còn sống cùng block, dư vào burned
+allocate   đòi pet đã tick tới epoch của GlobalConfig,
+           để đổi work power không làm lệch phần thưởng</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip done">kiểm</span><p><code>msc test rules/index.ms</code> 341/341 (con số gồm cả test của các module std được import; riêng <code>rules/</code> có 49 test). Tổng tiền bảo toàn qua 60 seed trận đấu. <code>sim/determinism.ms</code> native bằng JS; digest <code>economy</code> đổi vì <code>levelCost</code> rời khỏi digest.</p></div>
+				<div class="gap-row"><span class="chip done">probe</span><p>10 pet × 30 epoch với policy ngây thơ: 64 trận, 36 lần cướp, cấp 16–20 ở epoch 30, digest native bằng JS.</p></div>
+				<div class="gap-row"><span class="chip done">audit 17/09</span><p>Hold nằm trong mask của mọi đầu ra (<code>Rest</code>, <code>nodeHoldMask()</code>, <code>attackHoldMask()</code>), pet chết thì mask rỗng: trainer che logit bằng đúng một word, không cần luật riêng. <code>attackable</code> tách khỏi <code>stakeAt</code>: cổng chạy 9 lần mỗi block thay vì 40, và cũng là vector feature per-target của fight policy. <code>allocateNode</code> kiểm điểm trước kề: pet hết điểm từ chối 24 node bằng một phép so mỗi node. 341/341, 4 digest không đổi.</p></div>
+				<div class="gap-row"><span class="chip todo">chưa đo</span><p>CU dựng mask trên chain (chạy thử apply là chi phí ẩn của <code>act</code>); <code>tickTo</code> lặp theo số epoch bỏ trống, chưa có cap. Đo bằng LiteSVM khi <code>std/solana</code> build lại được.</p></div>
+				<div class="gap-row"><span class="chip partial">lệch thiết kế</span><p>Mục Kinh tế ghi phần dư ví khi chết vào pot; <code>bury</code> hiện cộng vào <code>burned</code>.</p></div>
+				<div class="gap-row"><span class="chip todo">chưa có</span><p>Ngoài gói 2: cây 64 node, công thức loot D26, thiên phú, suy yếu và chết già, thừa kế, item, gắn bó, xã hội.</p></div>
+				<div class="gap-row"><span class="chip todo">compiler</span><p>JS backend: biến đếm <code>for</code> kiểu <code>uint64</code> ra <code>Number</code>, truyền vào gọi dạng <code>pet.tickTo(global, epoch)</code> thì lỗi <code>Cannot mix BigInt</code>. <code>rules/</code> không dính; <code>sim/world.ms</code> sẽ dính.</p></div>
+			</div>
+		</section>
+
+		<section id="lifecycle">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt</b> · BRIEF §3.7, §7.2</div>
+				<h2>Vòng đời và dòng họ</h2>
+				<p>Mỗi pet sống 90 ngày, đúng một chu kỳ Winter. Mỗi đời lại có một lần lên 1→20 nhanh, dòng họ giữ tiến bộ chậm qua các đời, nên cảm giác tiến lên lặp lại thay vì cạn dần. Cái chết thành cột mốc chứ không chỉ là mất trắng.</p>
+			</div>
+			<div class="panel" style="display:grid;gap:8px">
+				<h3>Một đời 90 ngày</h3>
+				<div class="split-bar"><div class="s-winner" style="width:33.3%">0–30 lên cấp</div><div class="s-recycled" style="width:22.2%">30–50 sung sức</div><div class="s-burn" style="width:11.1%">50–60 tụt</div><div class="s-protocol" style="width:33.4%">60–90 yếu dần → chết già</div></div>
+				<p class="note">Sung sức: build keystone, đánh nhau, leo hạng trong block. Yếu dần: brain có thể cho nghỉ hưu sớm để truyền đời.</p>
+			</div>
+			<div class="two">
+				<div class="panel chart" style="display:grid;gap:8px">
+					<h3>Sức mạnh theo tuổi (% lúc sung sức)</h3>
+					<div id="agingChart"></div>
+					<p class="note">Đường cam: mọi chỉ số từ cây (might, grit, speed, forage...) theo tuổi. Tụt mạnh ngày 50–60, phanh lại ở 70% ngày 60, rồi gần như tuyến tính xuống 50% ở ngày 90. Nét đứt: thu nhập emission, vì weight = workPower² nên còn 49% ở ngày 60 và 25% ở ngày 90.</p>
+					<div class="formula">ngày ≤ 50   100%
+50 < d ≤ 60 70 + 30 × (60 − d)² ÷ 100     ngày 52: 89 · 55: 77.5 · 58: 71
+60 < d ≤ 90 70 − 20 × (d − 60) ÷ 30       ngày 75: 60 · 90: 50</div>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Người thừa kế mang theo</h3>
+					<ul class="note" style="margin:0;padding-left:18px;display:grid;gap:6px">
+						<li><b>Tiền</b>: <b>đã chốt</b> thuế thừa kế 30% vào pot chung, 70% vào túi người thừa kế. Thay cho 30% heir · 20% block · 50% burn trong BRIEF.</li>
+						<li><b>+1 điểm kỹ năng khởi đầu</b> mỗi đời, tối đa +5, tính chung trong 10 điểm thưởng với sách kỹ năng: đời sau đi xa hơn đời trước một chút.</li>
+						<li><b>Chọn region khác</b>: cả dòng họ thử class mới, nên cây phải đủ lớn (64 node ≈ 3–4 đời mới đi hết các hướng).</li>
+						<li><b>1–2 ô gia bảo</b>: món đồ duy nhất truyền đời, vài byte trong Pet.</li>
+						<li><b>Tỉ lệ thiên phú rare</b> nhích lên một chút.</li>
+					</ul>
+				</div>
+			</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip partial">lệch BRIEF</span><p><b>§3.7</b> cho pet già từ epoch 80, −2%/epoch, sau hackathon. Đề xuất chuyển mốc về ngày 50 và cho chết già ở ngày 90.</p></div>
+				<div class="gap-row"><span class="chip partial">item</span><p>Có item với rarity (xem mục Item). Ô gia bảo mang item đã chọn sang đời sau.</p></div>
+				<div class="gap-row"><span class="chip done">có sẵn</span><p><code>lineageGeneration</code>, <code>scars</code> trong Pet, huy hiệu Fading, keystone Bloodline, Winter mỗi 90 epoch hoàn 3 điểm.</p></div>
+			</div>
+		</section>
+
+		<section id="talent">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt</b> · VRF trong ER · GAME-DESIGN §8 · con số bản D còn chốt</div>
+				<h2>Thiên phú ẩn</h2>
+				<p>Mỗi pet có một thiên phú, chỉ lộ khi lên cấp 10 (khoảng ngày 6–7), đủ sớm để đổi hướng build. Muốn biết phải nuôi; muốn thử lại phải sang đời sau.</p>
+			</div>
+			<div class="two">
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>Bậc (bản D)</th><th class="num">Tỉ lệ</th><th class="num">Hệ số</th></tr></thead>
+						<tbody>
+							<tr><td>Common</td><td class="num">60%</td><td class="num">×1.0–1.1</td></tr>
+							<tr><td>Rare</td><td class="num">28%</td><td class="num">×1.1–1.2</td></tr>
+							<tr><td>Epic</td><td class="num">10%</td><td class="num">×1.3–1.4</td></tr>
+							<tr><td class="worker"><b>Legendary</b></td><td class="num">1.8%</td><td class="num">×1.6</td></tr>
+							<tr><td style="color:var(--ember)"><b>Mythic</b></td><td class="num">0.2%</td><td class="num">×2</td></tr>
+							<tr><td colspan="3" class="note">Loại: làm việc nhân <code>forage</code>, đánh nhau nhân <code>might</code>, sống sót nhân <code>grit</code>. Lưu 2 byte trong Pet. Bản A, B, C đã bỏ.</td></tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Vì sao không tính sẵn lúc mint</h3>
+					<p class="note">Account và program trên Solana ai cũng đọc được, salt lưu on-chain cũng vậy. Nếu thiên phú là <code>hash(ví, mint_epoch, salt)</code> thì ai cũng tự tính ra rarity từ ngày 0, và bot sẽ chỉ giữ những con legendary.</p>
+					<div class="pipeline">
+						<div class="gate"><span>Lên cấp 10 gửi yêu cầu VRF</span><span class="chip">level_up</span></div>
+						<div class="gate"><span>Callback ghi thiên phú vào Pet (vài byte)</span><span class="chip">VRF</span></div>
+						<div class="gate"><span>UI mở thiên phú như một khoảnh khắc</span><span class="chip">reveal</span></div>
+					</div>
+				</div>
+			</div>
+			<p class="note">Thiên phú chỉ nổ khi đúng build: Mythic làm việc trên pet đi Fighter thì phí. Riêng thiên phú cho tối đa khoảng ×9 thu nhập, phần còn lại tới ×20 do item. Đó là lý do để nuôi thêm đời nữa.</p>
+		</section>
+
+		<section id="rewards">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt mục tiêu</b> · BRIEF §3.3, §6 invariant 3, §10 Q7 · thông số đo bằng mô phỏng</div>
+				<h2>Chia thưởng: vài con ×20, còn lại ×1–3</h2>
+				<p>Chênh lệch đến từ <b>thiên phú</b>, không từ cày. Đa số pet có hệ số ×1.0–1.2; hiếm lắm mới ra ×1.6 hay ×2. Riêng thiên phú cho tối đa khoảng ×9; phần còn lại tới ×20 là đồ mua cho đúng con đó (mục Item). Thiên phú có <b>loại</b>: làm việc thì kiếm emission gấp bội nhưng vẫn bị cướp; đánh nhau thì thắng gần như chắc và cướp được nhiều lượt hơn.</p>
+			</div>
+			<div class="panel chart" style="display:grid;gap:10px">
+				<h3>1.000 pet xếp theo thu nhập emission (lần mức trung vị)</h3>
+				<div id="rewardChart"></div>
+				<div class="mods-line" id="rewardLegend"></div>
+				<p class="note">Trục ngang: hạng, thang log (hạng 1 bên trái). Trục dọc: thu nhập so với pet giữa bảng, thang log. Mỗi vạch là một pet, màu theo bậc; chỉ pet có thiên phú làm việc mới được nhân. Quần thể mẫu: 40% đi Worker, 30% lai, 30% Fighter, cấp 20, loại thiên phú chia đều ba.</p>
+			</div>
+			<div class="two">
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>Bậc</th><th class="num">Tỉ lệ</th><th class="num">Hệ số</th><th class="num">Worker tài làm việc</th><th class="num">+ full đồ Mythic</th></tr></thead>
+						<tbody>
+							<tr><td>Common</td><td class="num">60%</td><td class="num">×1.0–1.1</td><td class="num">×2.3–2.6</td><td class="num">×5–6</td></tr>
+							<tr><td>Rare</td><td class="num">28%</td><td class="num">×1.1–1.2</td><td class="num">×2.8–3.1</td><td class="num">×6.5–7</td></tr>
+							<tr><td>Epic</td><td class="num">10%</td><td class="num">×1.3–1.4</td><td class="num">×3.9–5.1</td><td class="num">×9–12</td></tr>
+							<tr><td class="worker"><b>Legendary</b></td><td class="num">1.8%</td><td class="num">×1.6</td><td class="num">×5.9–6.5</td><td class="num">×13.5–15</td></tr>
+							<tr><td style="color:var(--ember)"><b>Mythic</b></td><td class="num">0.2%</td><td class="num">×2</td><td class="num">×7.6–9.3</td><td class="num"><b>×17.5–21.5</b></td></tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Ba loại thiên phú = ba chỉ số chính</h3>
+					<div class="formula">làm việc   forage × hệ số   weight = workPower²  → thu nhập ≈ × hệ số²
+đánh nhau  might × hệ số    → thắng chắc, nhiều lượt hơn, cướp được nhiều hơn
+sống sót   grit × hệ số     → bị cướp ít hơn, khó chết
+sàn 500    tổng weight luôn tính ít nhất 500 slot (mục Pet hoang), không cần trần mỗi pet</div>
+					<p class="note"><b>Đã chốt</b>: thiên phú chỉ là hệ số nhân vào một trong ba chỉ số chính; bản D là đường cong các bậc. Loại và hệ số gieo bằng VRF khi lên cấp 10, lưu 2 byte trong Pet.</p>
+				</div>
+			</div>
+			<div class="panel" style="display:grid;gap:10px">
+				<h3>Thiên phú đánh nhau, đo bằng combat rev 5</h3>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th class="num">Hệ số</th><th class="num">might · speed</th><th class="num">Thắng pet lai 110/110</th><th class="num">Lượt/epoch</th><th class="num">Trận thắng/ngày</th></tr></thead>
+						<tbody>
+							<tr><td class="num">×1</td><td class="num">180 · 80</td><td class="num">88.0%</td><td class="num">2</td><td class="num">×1</td></tr>
+							<tr><td class="num">×1.2</td><td class="num">206 · 86</td><td class="num">93.3%</td><td class="num">3</td><td class="num">×1.6</td></tr>
+							<tr><td class="num">×2</td><td class="num">310 · 110</td><td class="num">99.0%</td><td class="num">4</td><td class="num">×2.3</td></tr>
+							<tr><td class="num">×3</td><td class="num">440 · 140</td><td class="num">99.9%</td><td class="num">5</td><td class="num">×2.8</td></tr>
+						</tbody>
+					</table>
+				</div>
+				<p class="note">Đo với hệ số bản C. Fighter tài năng thắng gần như mọi trận, nhưng số trận thắng mỗi ngày chỉ tăng ×2.8 vì bị giới hạn bởi lượt tấn công và harvest của nạn nhân. Muốn fighter ×3 cũng khoe được ×10–20 thì hệ số phải nhân cả phần cướp: stake tối đa hoặc tỉ lệ loot. Cần sim S1 để đo, vì mồi của nó chính là mấy con worker ×20.</p>
+			</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip partial">đuôi</span><p>Bản D, chỉ thiên phú: p90 ×2.6 · p99 ×3.8 · cao nhất ×9.3. Đồ gieo ngẫu nhiên gần như không đổi đuôi (cao nhất ×10.6); con ×20 là con có thiên phú Mythic <b>và</b> được mua đồ cho đúng nó: may trước, tiêu tiền sau. Cột "full đồ" chưa tính trung vị dịch lên khi cả server mua đồ, sim S1 phải mô phỏng việc mua.</p></div>
+				<div class="gap-row"><span class="chip partial">sai nghề</span><p>Thiên phú làm việc ×3 trên pet đi Fighter chỉ kiếm khoảng ×2, thiên phú đánh nhau trên Worker thì phí. Thiên phú chỉ nổ khi đúng build, lý do để nuôi đời sau.</p></div>
+				<div class="gap-row"><span class="chip done">hawk–dove</span><p>Worker ×20 vẫn bị cướp; fighter tài năng là thứ cướp được nó. Người chơi chụp màn hình cả hai phía: "con tao kiếm ×20" và "con tao vừa cướp con ×20".</p></div>
+				<div class="gap-row"><span class="chip done">chống sybil</span><p>workPower² vẫn lồi: chia một pet thành hai mất khoảng nửa weight. Nuôi nhiều ví để săn Mythic thì mỗi ví mất cả tuần mới tới cấp 10.</p></div>
+				<div class="gap-row"><span class="chip done">không trần</span><p>Bỏ trần % pot mỗi pet và sàn tuần đầu: sàn 500 slot đã chặn chuyện vài pet chia hết emission. Con ×20 lấy khoảng 2.4%, pet common vẫn nhận ×1–2.5 trung vị.</p></div>
+			</div>
+		</section>
+
+		<section id="wild">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt</b> · sàn 500 slot khi chia thưởng · đội quân pet hoang thật chờ probe ER</div>
+				<h2>Pet hoang (pet máy)</h2>
+				<p>Lấp slot trống để thế giới có người ngay từ đầu, và để 1–2 người chơi sớm không ôm hết pot. Pet hoang là một công thức, không phải account, nên không tốn phí giao dịch, không tốn rent, không cần keeper.</p>
+			</div>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Cách chạy</h3>
+					<div class="formula">chỉ số, tuổi   = f(block, slot, epoch sinh, seed), tính khi cần
+tổng weight   = weight người thật + max(0, 500 − số pet thật) × weight bot
+               ← sàn 500 slot, knob trong GlobalConfig; bot = pet common cấp 20
+phần của bot   = không ai claim (burn, về pot, hay không mint: còn mở)
+bị tấn công    = tính trong tx của người đánh (người đó trả phí)
+chết già       = hàm của tuổi, không cần lệnh nào</div>
+					<div class="split"><div class="note">2 người chơi: chia như có 500 pet</div><div class="split-bar"><div class="s-winner" style="width:2%"></div><div class="s-recycled" style="width:98%">498 slot bot → không ai claim</div></div></div>
+					<div class="split"><div class="note">300 người chơi</div><div class="split-bar"><div class="s-winner" style="width:60%">người thật 60%</div><div class="s-recycled" style="width:40%">bot 40%</div></div></div>
+					<div class="split"><div class="note">≥ 500 người chơi: sàn hết tác dụng</div><div class="split-bar"><div class="s-winner" style="width:100%">người thật 100%</div></div></div>
+					<p class="note">Vì sao 500 chứ không 10.000: người vào sớm vẫn ăn nhiều. Với 100.000 HBRN mỗi epoch, pet trung vị nhận khoảng 118 HBRN/ngày dưới sàn 500, so với khoảng 10 khi đủ 10.000 pet; con thiên phú ×20 lấy khoảng 2.4% emission.</p>
+					<p class="note"><b>Đội quân pet hoang hành xử y hệt người chơi</b> (chờ probe ER): Pet account thật của protocol, chạy cùng <code>act</code> và các model. Khoảng 0.0041 SOL rent mỗi con, lấy lại được: ~2 SOL cho 500 con, ~41 SOL cho 10.000. Chưa biết ER có chạy nổi <code>act</code> cho vài trăm tới vài nghìn pet mỗi chu kỳ crank không.</p>
+				</div>
+				<div class="panel gaps">
+					<h3>Lỗ hổng phải chặn</h3>
+					<div class="gap-row"><span class="chip done">cày</span><p>Chỉ số pet hoang công khai, nhưng seed trận là VRF: lúc gửi attack chưa ai biết kết quả, nên không simulate để chọn trận chắc thắng được.</p></div>
+					<div class="gap-row"><span class="chip todo">rút pot</span><p>Lấy loot từ pot mà không lưu gì thì một con bị cướp mãi. Lưu vài byte mỗi slot hoang trong Block, hoặc đặt trần loot hoang mỗi người mỗi epoch.</p></div>
+					<div class="gap-row"><span class="chip partial">né</span><p>Nếu pet hoang đi đột kích người thật, gieo bằng VRF trong <code>act</code> do crank chạy, không từ thứ chủ pet canh giờ được.</p></div>
+					<div class="gap-row"><span class="chip partial">minh bạch</span><p>Gắn nhãn pet hoang trên UI. Cho chúng yếu và nghèo: chỗ luyện tay, không phải mỏ vàng.</p></div>
+				</div>
+			</div>
+		</section>
+
+		<section id="items">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt hướng</b> · thiết kế đề xuất · GAME-DESIGN §11</div>
+				<h2>Item</h2>
+				<p>Chỗ tiêu $HBRN, vì lên cấp không còn tốn $HBRN. Pet tự mint đồ có rarity, mặc vào, bán lại cho hệ thống với giá tụt dần, hoặc mua bán với pet khác trên marketplace chạy trong ER. Brain tự quyết mua bán.</p>
+			</div>
+			<div class="two">
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>Rarity</th><th class="num">Tỉ lệ khi mint</th><th class="num">Cộng mỗi chỉ số</th><th class="num">Có skill</th></tr></thead>
+						<tbody>
+							<tr><td>Common</td><td class="num">55%</td><td class="num">+2%</td><td class="num">—</td></tr>
+							<tr><td>Rare</td><td class="num">30%</td><td class="num">+4%</td><td class="num">—</td></tr>
+							<tr><td>Epic</td><td class="num">12%</td><td class="num">+7%</td><td class="num">10%</td></tr>
+							<tr><td class="worker"><b>Legendary</b></td><td class="num">2.5%</td><td class="num">+10%</td><td class="num">40%</td></tr>
+							<tr><td style="color:var(--ember)"><b>Mythic</b></td><td class="num">0.5%</td><td class="num">+13%</td><td class="num">100%</td></tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Vòng đời một món đồ</h3>
+					<div class="pipeline">
+						<div class="gate"><span>Trả $HBRN, VRF gieo rarity và affix</span><span class="chip">mint</span></div>
+						<div class="gate"><span>Mặc vào một trong 4 ô: nón, áo, tay, chân</span><span class="chip">equip</span></div>
+						<div class="gate"><span>Dùng thì mòn, bonus và giá trị giảm</span><span class="chip">wear</span></div>
+						<div class="gate"><span>Bán cho pet khác trong ER, phí vào pot</span><span class="chip">market</span></div>
+						<div class="gate"><span>Hoặc bán lại hệ thống theo công thức, phần chênh bị burn</span><span class="chip">buyback</span></div>
+					</div>
+				</div>
+			</div>
+			<div class="formula">4 ô × affix Mythic +13% = +52% workPower  → thu nhập × 1.52² ≈ × 2.3
+chỉ số cộng trên mọi attribute (forage, might, grit, speed, armor, accuracy, lifesteal, bleed)
+skill đồ mạnh: hồi sinh (qua một lần chết mỗi đời) · chống cướp (−X% loot) · giảm X% sát thương
+           skill cùng loại trên hai món không cộng dồn
+giá mua lại = 50% giá mint × (1 − mòn)   ← công thức, wash trade không kéo giá được
+lưu trữ  = đồ đang mặc: 4 × 8 byte trong Pet · đồ trong túi và đang bán: account delegate sang ER</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip todo">rủi ro</span><p><b>Pay-to-win cộng dồn</b>: thu nhập mua đồ, đồ tăng thu nhập. Chặn bằng độ mòn, trần bonus mỗi affix, và việc pet giàu bị cướp. Đo trong sim S1.</p></div>
+				<div class="gap-row"><span class="chip todo">phải đo</span><p>Tạo account item ngay trong ER có được không (<code>docs/SOLANA.md</code> §7).</p></div>
+				<div class="gap-row"><span class="chip partial">còn mở</span><p>Danh sách và độ lớn skill; Fighter có cướp được đồ không; chết thì đồ đi đâu; giá mint; tỉ lệ burn và pot; phí market; item chỉ ở trong ER hay commit lên L1 thành NFT.</p></div>
+				<div class="gap-row"><span class="chip done">dòng họ</span><p>Ô gia bảo mang đồ đã chọn sang đời sau; thuế thừa kế 30% có thể tính cả giá trị đồ.</p></div>
+			</div>
+		</section>
+
+		<section id="bonding">
+			<div class="section-head">
+				<div class="file-tag"><b>đã chốt hướng</b> · số liệu đề xuất · GAME-DESIGN §14</div>
+				<h2>Tiền của pet và độ gắn bó với chủ</h2>
+				<p><b>Pet sở hữu toàn bộ $HBRN của nó và tự quyết tiêu thế nào</b>: mua đồ ăn, mua item, tặng bạn đời hay bạn bè, hoặc tặng lại chủ. Chủ không rút được. Tặng chủ là $HBRN thật, vào ví Seeker. Muốn được tặng thì phải chăm nó.</p>
+			</div>
+			<div class="two">
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>Chủ làm gì</th><th>Chủ tốn gì</th><th class="num">Gắn bó</th></tr></thead>
+						<tbody>
+							<tr><td>Cho ăn</td><td>tiền đồ ăn</td><td class="num">+</td></tr>
+							<tr><td>Mua skin, thuốc tăng trưởng, bảo hiểm</td><td>SKR</td><td class="num">++</td></tr>
+							<tr><td>Trò chuyện trong app</td><td>không</td><td class="num">+ nhỏ, có trần mỗi ngày</td></tr>
+							<tr><td>Bỏ bê</td><td>—</td><td class="num">trôi về 0, rồi xuống âm</td></tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Gắn bó ảnh hưởng gì</h3>
+					<div class="split"><div class="note">−127 ghét chủ · 0 · +127 quấn chủ (1 byte trong Pet, giảm dần mỗi epoch)</div><div class="split-bar"><div class="s-burn" style="width:30%">từ chối đồ ăn</div><div style="width:40%;background:var(--sunk);color:var(--ink-soft)">không tặng</div><div class="s-winner" style="width:30%">tặng $HBRN</div></div></div>
+					<p class="note">Cao: thỉnh thoảng tặng chủ một phần burrow, tỉ lệ theo độ gắn bó, có trần mỗi epoch. Thấp dưới ngưỡng: <code>feed</code> của chủ bị từ chối, UI hiện lý do. Độ gắn bó là input của mọi model trong brain, nên pet quấn chủ và pet oán chủ chơi khác nhau.</p>
+				</div>
+			</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip done">kinh tế</span><p>Cách duy nhất để token ra ví là lòng tốt của pet, nên dòng tiền rút ra bị giới hạn bởi độ gắn bó và nhu cầu của chính pet, không phải lúc nào chủ muốn claim.</p></div>
+				<div class="gap-row"><span class="chip todo">cày</span><p>Trò chuyện miễn phí nên có trần mỗi ngày và tăng ít hơn hành động tốn tiền. Chain chỉ thấy một lệnh <code>talk</code> do chủ ký, không đọc được nội dung chat.</p></div>
+				<div class="gap-row"><span class="chip todo">rút cạn</span><p>Quà có trần mỗi epoch và không bao giờ lấy vào phần tiền cần để ăn: pet quấn chủ cũng không tự bỏ đói mình.</p></div>
+				<div class="gap-row"><span class="chip todo">phải đo</span><p>Quà là chuyển token trên L1 trong khi pet đang delegate sang ER: xếp hàng rồi trả ở lần commit, hay pet phải undelegate (<code>docs/SOLANA.md</code> §7).</p></div>
+				<div class="gap-row"><span class="chip partial">còn mở</span><p>Thang và tốc độ giảm gắn bó; tỉ lệ và trần quà; ngưỡng từ chối đồ ăn; pet bị ghét lâu có bỏ nhà đi không.</p></div>
+			</div>
+		</section>
+
+		<section id="brain">
+			<div class="section-head">
+				<div class="file-tag"><b>rules/brain.ms</b> · 5 test · <b>đã chốt</b>: brain on-chain · GAME-DESIGN §12</div>
+				<h2>Brain</h2>
+				<p>Chính sách tự chơi thay chủ, và <b>là code của program</b>. Không server nào quyết định thay pet, nên không ai, kể cả team, thiên vị được. Mỗi quyết định trả <code>Result</code>: hoặc làm, hoặc một lý do <code>Skip</code> cụ thể để UI hiển thị.</p>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Mảnh</th><th>Ở đâu</th><th>Ghi chú</th></tr></thead>
+					<tbody>
+						<tr><td>Brain</td><td>instruction <code>act(pet)</code></td><td>đọc pet, block, thiết lập của chủ; chọn và làm các hành động hợp lệ</td></tr>
+						<tr><td>Kích hoạt</td><td>crank gốc của ER</td><td>lên lịch mỗi N phút, validator ER ký, không phí tx; <code>act</code> có thể đòi đúng chữ ký crank</td></tr>
+						<tr><td>Xúc xắc</td><td>VRF trong ER</td><td>xem mục Ngẫu nhiên</td></tr>
+						<tr><td>Trạng thái</td><td><code>Pet</code>, <code>Block</code>, <code>GlobalConfig</code> delegate sang ER</td><td>tick, ăn, lên cấp, allocate, đánh nhau đều 0 phí</td></tr>
+						<tr><td>L1</td><td>claim, mua bằng SKR, commit định kỳ</td><td>0.0003 SOL mỗi lần undelegate, 0.0001 SOL mỗi commit sau lần đầu</td></tr>
+						<tr><td>Chủ pet</td><td>persona và tín hiệu mềm lưu trong <code>Pet</code></td><td>"thù dai", "hôm nay ở nhà"; vẫn được tự ký hành động hoặc chạy brain riêng, VRF giữ công bằng</td></tr>
+						<tr><td>Server</td><td>UI và bản tin kể chuyện (LLM)</td><td>không giữ session key, không ảnh hưởng kết quả</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Persona</th><th class="num">Tỉ lệ thắng tối thiểu</th><th class="num">Giữ lại ví</th><th class="num">Stake / ví</th><th class="num">minHearts</th></tr></thead>
+					<tbody>
+						<tr><td>Cautious</td><td class="num">70%</td><td class="num">70%</td><td class="num">50%</td><td class="num">3</td></tr>
+						<tr><td>Greedy</td><td class="num">50%</td><td class="num">30%</td><td class="num">100%</td><td class="num">2</td></tr>
+						<tr><td>Vengeful</td><td class="num">45%</td><td class="num">50%</td><td class="num">100%</td><td class="num">2</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>scoreTarget: các cổng lọc</h3>
+					<div class="pipeline">
+						<div class="gate"><span>Defender đang trong khiên</span><span class="chip">Shielded</span></div>
+						<div class="gate"><span>Attacker hết lượt hoặc Pacifist</span><span class="chip">CannotAttack</span></div>
+						<div class="gate"><span>Harvest defender = 0</span><span class="chip">EmptyHarvest</span></div>
+						<div class="gate"><span>Stake chọn ra = 0</span><span class="chip">NoStake</span></div>
+						<div class="gate"><span>Monte Carlo 400 trận &lt; ngưỡng persona</span><span class="chip">OddsTooLow</span></div>
+					</div>
+					<div class="formula">Ok(EV) = loot × 95% × p − stake × (1 − p)</div>
+				</div>
+				<div class="panel" style="display:grid;gap:8px">
+					<h3>Ăn và chọn stake</h3>
+					<div class="formula">pickFood:      hearts ≤ minHearts + 1 → mua loại to nhất trả nổi
+               ngược lại Skip.NotHungry · không đủ tiền Skip.Broke
+chooseStake:   min(maxStake(harvest_D), burrow × stake%)</div>
+					<p class="note"><code>shouldLevelUp</code> đã bỏ cùng <code>levelCost</code>: lên cấp giờ tự xảy ra theo XP. Các hàm ở đây là heuristic, dùng làm thầy cho behavior cloning; policy thật chọn trong mask của <code>rules/actions.ms</code>.</p>
+					<p class="note"><b>Monte Carlo 400 trận</b> mỗi mục tiêu (tối đa 3.600 trận mỗi quyết định) chỉ hợp khi chạy off-chain. Trong <code>act</code> thay bằng policy chấm điểm trực tiếp, bảng odds tính sẵn theo tỉ lệ chỉ số, hoặc 16–32 mẫu.</p>
+				</div>
+			</div>
+		</section>
+
+		<section id="social">
+			<div class="section-head">
+				<div class="file-tag"><b>đề xuất</b> · GAME-DESIGN §13</div>
+				<h2>Brain nhiều model và tương tác xã hội</h2>
+				<p>Thay vì một mạng lớn, mỗi việc một model nhỏ. Model nào cũng chỉ chấm điểm một danh sách action có sẵn, program làm action hợp lệ có điểm cao nhất. <code>act</code> xét tình huống rồi gọi một hai model, không chạy cả bốn, nên CU mỗi tx có giới hạn.</p>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Model</th><th>Chạy khi</th><th>Chọn từ</th><th class="num">Cỡ</th></tr></thead>
+					<tbody>
+						<tr><td>Cây kỹ năng</td><td><code>pointsUnspent</code> &gt; 0</td><td>các node kề đang mở</td><td class="num">~1k</td></tr>
+						<tr><td>Kinh tế</td><td>mỗi <code>act</code></td><td>ăn, cất hang, nghỉ, mua bán item, tặng quà</td><td class="num">~500</td></tr>
+						<tr><td>Đánh nhau</td><td>còn lượt tấn công</td><td>9 mục tiêu × mức stake, hoặc không đánh</td><td class="num">~2k</td></tr>
+						<tr><td>Xã hội</td><td>mỗi <code>act</code>, với pet cùng block</td><td>kết bạn, tán tỉnh, chửi, tặng quà, làm hoà, lờ đi</td><td class="num">~1k</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="two">
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th>Action</th><th>Quan hệ</th><th>Ảnh hưởng tới game</th></tr></thead>
+						<tbody>
+							<tr><td>Kết bạn</td><td class="num">+</td><td>không đánh nhau; bạn có thể đỡ một đòn khi mình bị đánh</td></tr>
+							<tr><td>Tán tỉnh → thành đôi</td><td class="num">++</td><td>heir của cặp đôi được nhích tỉ lệ thiên phú hoặc thừa hưởng cả hai</td></tr>
+							<tr><td>Chửi</td><td class="num">−−</td><td>đối thủ "cay" trận kế: −accuracy, +might; có thể dụ nó lao vào</td></tr>
+							<tr><td>Tặng quà</td><td class="num">+</td><td>chuyển một ít harvest</td></tr>
+							<tr><td>Làm hoà</td><td class="num">về 0</td><td>hết thù</td></tr>
+							<tr><td>(thù)</td><td class="num">≤ −X</td><td>+X% sát thương vào đúng con đó, model đánh nhau ưu tiên nó</td></tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="panel gaps">
+					<h3>Lỗ hổng phải chặn</h3>
+					<div class="gap-row"><span class="chip todo">sybil</span><p>Pet cùng chủ không nhận hiệu ứng xã hội của nhau; hiệu ứng bạn yếu hơn hiệu ứng thù.</p></div>
+					<div class="gap-row"><span class="chip todo">dòng họ</span><p>Cặp đôi cùng chủ không được bonus dòng họ.</p></div>
+					<div class="gap-row"><span class="chip todo">spam</span><p>Tối đa một action xã hội mỗi <code>act</code>; quan hệ tự trôi về 0 theo epoch.</p></div>
+					<div class="gap-row"><span class="chip partial">train</span><p>Heuristic từng việc → behavior cloning từng model → PPO lần lượt, giữ nguyên các model khác → self-play chung. Luật xã hội phải vào <code>rules/</code> trước vì sim S1 là môi trường train.</p></div>
+				</div>
+			</div>
+			<p class="note">Quan hệ lưu 1 byte mỗi cặp trong <code>Block</code>: 10 slot là 45 cặp, 45 byte, không cần account mới. Sự kiện xã hội hiện trong replay và cho bản tin kể chuyện có drama thật để chia sẻ.</p>
+		</section>
+
+		<section id="decisions">
+			<div class="section-head">
+				<div class="file-tag">docs/GAME-DESIGN.md §0 · §17</div>
+				<h2>Cần chốt</h2>
+				<p>Hướng đi đã chốt hết. Còn lại là con số và vài cơ chế bên trong từng hướng.</p>
+			</div>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Đã chốt</h3>
+					<div class="gaps">
+						<div class="gap-row"><span class="chip done">cây</span><p>Vòng tròn kiểu Path of Exile, 64 node (trọn uint64), mỗi node 1 điểm, keystone 3. Layout: vòng 4 cấp attribute, 9 notable, 6 keystone ở biên, sang class khác chỉ qua cổng ở tâm.</p></div>
+						<div class="gap-row"><span class="chip done">lên cấp</span><p>XP chỉ từ làm việc và đánh nhau theo class, không phí $HBRN; trần 20, cấp 10 khoảng một tuần, cấp 20 khoảng một tháng.</p></div>
+						<div class="gap-row"><span class="chip done">tiền của pet</span><p>Pet sở hữu $HBRN và tự tiêu; chủ chỉ nhận quà khi độ gắn bó cao; gắn bó giảm dần, ghét chủ thì từ chối đồ ăn.</p></div>
+						<div class="gap-row"><span class="chip done">item</span><p>Có item rarity, pet tự mint, bán lại hệ thống giá tụt, mua bán với nhau trên ER: chỗ tiêu $HBRN.</p></div>
+						<div class="gap-row"><span class="chip done">vòng đời</span><p>Sống 90 ngày; từ ngày 50 tụt mạnh, 70% ở ngày 60, 50% ở ngày 90, forage yếu theo cùng đường; thừa kế đóng 30% vào pot, 70% cho heir, cùng gói người thừa kế.</p></div>
+						<div class="gap-row"><span class="chip done">thiên phú</span><p>Ẩn tới cấp 10, gieo bằng VRF; là hệ số nhân vào forage, might hoặc grit, bậc Common → Mythic. Lượng cướp theo might kẻ cướp và grit nạn nhân.</p></div>
+						<div class="gap-row"><span class="chip done">chia thưởng</span><p>Đường cong dốc do thiên phú: vài con ×20 mức trung vị, còn lại ×1–3.</p></div>
+						<div class="gap-row"><span class="chip done">pet hoang</span><p>Chia thưởng luôn tính sàn 500 slot, slot trống là bot chỉ số cố định; người vào sớm vẫn ăn nhiều nhưng không ôm hết emission.</p></div>
+						<div class="gap-row"><span class="chip done">ngẫu nhiên</span><p>VRF trong Ephemeral Rollup cho mọi lần gieo.</p></div>
+						<div class="gap-row"><span class="chip done">brain</span><p>On-chain: <code>act(pet)</code> do crank của ER chạy, policy integer train kiểu urg.</p></div>
+					</div>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Còn mở</h3>
+					<div class="gaps">
+																		<div class="gap-row"><span class="chip partial">thiên phú</span><p>Chốt con số cho đường cong và mốc các bậc (bản D: Mythic ×2, tỉ lệ Mythic).</p></div>
+												<div class="gap-row"><span class="chip partial">pet hoang</span><p>Pet hoang công thức hay đội quân Pet account thật chạy <code>act</code> (sau probe ER); weight của bot; phần của bot burn, về pot hay không mint; lưu loot; có đột kích người thật không.</p></div>
+						<div class="gap-row"><span class="chip partial">item</span><p>Danh sách skill của đồ (hồi sinh, chống cướp, giảm sát thương) và độ lớn; bảng rarity, giá mint, mua lại, phí market, độ mòn, cướp đồ và đồ khi chết.</p></div>
+						<div class="gap-row"><span class="chip partial">lên cấp</span><p>Số XP trong <code>rules/level.ms</code> là strawman: 7 XP × workPower, 3 XP mỗi HBRN cướp (trần 500), thủ 60/20, tặng 190 lúc sinh. Đo lại bằng <code>sim/world.ms</code> (gói 3) theo mục tiêu cấp 10 khoảng 7 ngày, cấp 20 khoảng 30.</p></div>
+						<div class="gap-row"><span class="chip partial">brain</span><p>Chu kỳ crank cho <code>act(pet)</code>; trọng số phần thưởng từng persona khi train.</p></div>
+						<div class="gap-row"><span class="chip partial">xã hội</span><p>Danh sách action và độ lớn hiệu ứng; chỉ trong block hay quen khác block; bạn bè và cặp đôi gắn vào dòng họ tới mức nào.</p></div>
+						<div class="gap-row"><span class="chip partial">gắn bó</span><p>Thang, tốc độ giảm, tỉ lệ và trần quà cho chủ, ngưỡng từ chối đồ ăn, có bỏ nhà đi không; quà ra L1 thế nào khi pet đang ở ER.</p></div>
+						<div class="gap-row"><span class="chip partial">tool cân bằng</span><p>Tool tự chạy trên sim S1: thử các biến thể hằng số và curve, chấm theo invariant BRIEF §6, tự tìm số gần mục tiêu (như cách đã hill-climb combat rev 5). Còn chốt: tool được chỉnh những knob nào, trọng số chấm điểm.</p></div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section id="gaps">
+			<div class="section-head">
+				<div class="file-tag">so với docs/BRIEF.md rev 4 · docs/ROADMAP.md</div>
+				<h2>Còn thiếu</h2>
+			</div>
+			<div class="panel gaps">
+				<div class="gap-row"><span class="chip done">gói 2</span><p><b>tick</b>: <code>tickTo</code> trong <code>rules/life.ms</code> chia thưởng cho các epoch đã qua, cộng growth bonus khi thuốc còn hạn, trừ tim theo ngày đói (tự ăn nếu burrow đủ tiền), cộng XP làm việc và reset bộ đếm ngày. Luật rev 4 (weight², sàn 500, suy yếu, gắn bó) vẫn chưa vào.</p></div>
+				<div class="gap-row"><span class="chip done">gói 2</span><p><b>attack</b>: <code>stakeFor</code> và <code>settleAttack</code> trong <code>rules/actions.ms</code> kiểm lượt, khiên, hàng xóm, slot đã đánh; đánh, chuyển loot, cắn, trả <code>FightRecord</code>. Ghi vào ring 32 là việc của program.</p></div>
+				<div class="gap-row"><span class="chip done">gói 2</span><p><b>Lên cấp</b> theo XP (<code>gainXp</code>) thay cho level_up trừ burrow. <b>Chết</b>: <code>bury</code> chia ví, rút work power.</p></div>
+				<div class="gap-row"><span class="chip todo">chưa có</span><p><b>Thừa kế</b> (heir vào slot, thuế 30%), <b>insurance</b>, suy yếu và <b>chết già</b>.</p></div>
+				<div class="gap-row"><span class="chip partial">chưa gắn</span><p><b>Attribute mới</b>: speed, armor, accuracy, lifesteal, bleed đã có trong combat; vòng 4 của cây 64 node cấp chúng, cây trong code thì chưa.</p></div>
+				<div class="gap-row"><span class="chip partial">một phần</span><p><b>Mod</b>: Scavenger, ThickHide, GlassCannon đã có tác dụng. Pacifist mới có phần cấm tấn công và giảm loot, chưa có Forage +30%. Overtime và Cannibal chưa được dùng ở đâu.</p></div>
+				<div class="gap-row"><span class="chip partial">chưa code</span><p><b>Cây vòng tròn 64 node</b>: đã chốt cả layout (mục Cây kỹ năng), chưa vào <code>rules/tree.ms</code>.</p></div>
+				<div class="gap-row"><span class="chip partial">chưa code</span><p><b>Keystone trong BRIEF</b>: Hibernate, Tithe, Bloodline đã có chỗ trong cây 64 node, chưa có trong code.</p></div>
+				<div class="gap-row"><span class="chip todo">chưa có</span><p><b>S1</b>: sim cả block (200 pet, 120 epoch, kiểm invariant BRIEF §6), mô phỏng thiên phú, dòng họ, item, gắn bó, pet hoang; kèm tool tự chỉnh số (ROADMAP S2). Hiện có <code>sim/curve.ms</code> và <code>sim/determinism.ms</code>; bước kế là <code>sim/world.ms</code> (gói 3: 20 block × 10 pet, 4 lần act mỗi epoch, 120 epoch).</p></div>
+				<div class="gap-row"><span class="chip todo">chặn</span><p><b>Lên chain</b>: probe MetaScript trên ER đang làm ở session khác theo <code>docs/SOLANA.md</code> (R2 + R12 → R3 → R6). R12, mọi <code>const</code> ngoài file entry làm link lỗi dưới <code>--os=solana</code>.</p></div>
+			</div>
+		</section>
+	</main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.15.0/mermaid.min.js"></script>
+<script type="module">
+import * as atlas from "./build/tools/atlas/atlas.js";
+
+(function () {
+	const REGIONS = ["Worker", "Fighter", "Survivor"];
+	const REGION_VAR = ["--worker", "--fighter", "--survivor"];
+	const PRIMARY = ["forage", "might", "grit"];
+	const KEYSTONE_NAMES = { 21: "Pacifist", 22: "GlassCannon", 23: "Cannibal" };
+	const NOTABLE = ["Overtime", "Scavenger", "ThickHide"];
+	const MOD_TEXT = {
+		Overtime: "Forage ×1.5 ngày không đánh nhau (chưa có tác dụng trong code)",
+		Scavenger: "+15% chí mạng khi đối thủ ít hearts hơn",
+		ThickHide: "+10% né; 3 trận bị đánh đầu mỗi ngày mất ít loot hơn 50%",
+		Pacifist: "Không tấn công được; bị lấy ít loot hơn 70%",
+		GlassCannon: "Sát thương ×2, HP trận ÷2, maxHearts = 2",
+		Cannibal: "Đòn kết liễu lấy nửa ví nạn nhân (chưa có tác dụng trong code)",
+		Thrifty: "Tự ăn rẻ hơn 25%",
+		Apprentice: "+25% XP từ làm việc",
+		Bloodthirst: "Lifesteal ×2 khi đối thủ còn dưới nửa HP",
+		Relentless: "+1 lượt tấn công mỗi ngày",
+		Nightwatch: "Một hàng xóm được +50% grit của mình (BRIEF)",
+		Spite: "Mỗi đòn trúng mình trả lại 20% sát thương",
+		Tithe: "10% forage vào pot block, +1 max heart mỗi hàng xóm còn sống (BRIEF)",
+		Bloodline: "Heir nhận gói thừa kế lớn hơn, cấp tối đa −20% (BRIEF)",
+		Hibernate: "Nghỉ từ 3 epoch thì không đói, forage 0 khi nghỉ, −2 hearts lúc thức (BRIEF)",
+	};
+	const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+	const strip = document.getElementById("diceStrip");
+	const heads = ["", "attacker", "defender", "gieo haste", "đòn haste"];
+	strip.innerHTML = heads.map((h) => `<div class="h">${h}</div>`).join("") +
+		[1, 2, 3].map((round) => {
+			const base = (round - 1) * 13;
+			return `<div class="r">round ${round}</div>` +
+				`<div class="a">${base}–${base + 2}</div><div class="d">${base + 4}–${base + 6}</div>` +
+				`<div class="x">${base + 8}</div><div class="x">${base + 9}–${base + 11}</div>`;
+		}).join("") + `<div class="r">…</div><div class="h" style="grid-column: span 4; text-align:left">đến round 6: draw 65–77</div>`;
+
+	const isStart = (id) => id < 3;
+	const isKeystone = (id) => model.kindOf(id) === "Keystone";
+	const secondaryOf = (region) => (region === 2 ? "might" : "grit");
+	const polar = (radius, degrees) => {
+		const radians = (degrees * Math.PI) / 180;
+		return [300 + radius * Math.cos(radians), 300 + radius * Math.sin(radians)];
+	};
+
+	const legacyModel = (() => {
+		const regionOf = (id) => (id < 3 ? id : Math.floor((id - 3) / 6));
+		const offsetOf = (id) => (id - 3) % 6;
+		const regionNode = (region, offset) => 3 + region * 6 + offset;
+		const keystonesTouching = (region) => [[21, 22], [22, 23], [21, 23]][region];
+		return {
+			count: 24,
+			keystonesPassThrough: true,
+			costOf: (id) => atlas.nodeCostAt(id),
+			focus: 22,
+			viewBox: "-20 -20 640 640",
+			labels: [[300, 0, 0], [555, 470, 1], [45, 470, 2]],
+			example: [1, 9, 11, 13, 14, 22],
+			exampleNote: "Test “derived stats for a fighter path”: might 90, grit 60, hearts 2, Scavenger + GlassCannon.",
+			note: "Đang là code trong rules/tree.ms: ba nhánh tách rời, chỉ gặp nhau ở keystone. Keystone gần nhất cách Start 4 node, tốn 6 điểm vì keystone giá 3 (nodeCost).",
+			regionOf,
+			kindOf: (id) => (isStart(id) ? "Start" : id >= 21 ? "Keystone" : offsetOf(id) === 5 ? "Notable" : "Small"),
+			neighbors(id) {
+				if (isStart(id)) return [regionNode(id, 0), regionNode(id, 1)];
+				if (id === 21) return [regionNode(0, 4), regionNode(2, 4)];
+				if (id === 22) return [regionNode(1, 4), regionNode(0, 4)];
+				if (id === 23) return [regionNode(1, 4), regionNode(2, 4)];
+				const region = regionOf(id);
+				switch (offsetOf(id)) {
+					case 0: return [region, regionNode(region, 2)];
+					case 1: return [region, regionNode(region, 3)];
+					case 2: return [regionNode(region, 0), regionNode(region, 4)];
+					case 3: return [regionNode(region, 1), regionNode(region, 4)];
+					case 4: return [regionNode(region, 2), regionNode(region, 3), regionNode(region, 5), ...keystonesTouching(region)];
+					default: return [regionNode(region, 4)];
+				}
+			},
+			delta(id) {
+				if (isStart(id)) return { stat: PRIMARY[id], amount: 30 };
+				if (id >= 21) return { mod: KEYSTONE_NAMES[id] };
+				const region = regionOf(id);
+				switch (offsetOf(id)) {
+					case 2: return { heart: true };
+					case 4: return { stat: secondaryOf(region), amount: 10 };
+					case 5: return { mod: NOTABLE[region] };
+					default: return { stat: PRIMARY[region], amount: 10 };
+				}
+			},
+			position(id) {
+				if (id === 22) return polar(250, -30);
+				if (id === 23) return polar(250, 90);
+				if (id === 21) return polar(250, 210);
+				const angle = [-90, 30, 150][regionOf(id)];
+				if (isStart(id)) return polar(52, angle);
+				const layout = [[118, -16], [118, 16], [182, -15], [182, 15], [232, 0], [284, 0]];
+				const [radius, spread] = layout[offsetOf(id)];
+				return polar(radius, angle + spread);
+			},
+			rows: [
+				["Start (0–2)", "Start", "+30 chỉ số chính", "offset 0, 1"],
+				["offset 0, 1, 3", "Small", "+10 chỉ số chính", "0: Start, 2 · 1: Start, 3 · 3: 1, 4"],
+				["offset 2", "Small", "+1 max heart", "0, 4"],
+				["offset 4", "Small, cổng", "+10 chỉ số phụ (grit; Survivor là might)", "2, 3, 5, 2 keystone"],
+				["offset 5", "Notable", "Overtime · Scavenger · ThickHide", "4"],
+				["21 · 22 · 23", "Keystone", "Pacifist · GlassCannon · Cannibal", "cổng của 2 region"],
+			],
+		};
+	})();
+
+	const ringModel = (() => {
+		const ANGLES = [-90, 30, 150];
+		const CORE = 3;
+		const RINGS = [[4, 1], [7, 2], [13, 4], [25, 8]];
+		const RADII = [95, 150, 205, 262];
+		const NOTABLE_BASE = 49;
+		const KEYSTONE_BASE = 58;
+		const NOTABLES = [["Thrifty", "Overtime", "Apprentice"], ["Bloodthirst", "Scavenger", "Relentless"], ["Nightwatch", "ThickHide", "Spite"]];
+		const KEYSTONES = ["GlassCannon", "Tithe", "Cannibal", "Bloodline", "Pacifist", "Hibernate"];
+		const THIRD_RING = ["heart", "main", "main", "secondary"];
+		const OUTER_RING = [
+			["speed", "forage", "armor", "forage", "accuracy", "forage", "grit", "speed"],
+			["speed", "might", "accuracy", "bleed", "might", "lifesteal", "accuracy", "speed"],
+			["armor", "grit", "lifesteal", "grit", "armor", "heart", "might", "speed"],
+		];
+		const levelOf = (id) => (id < 3 ? "start" : id === CORE ? "core" : id < 7 ? 1 : id < 13 ? 2 : id < 25 ? 3 : id < NOTABLE_BASE ? 4 : id < KEYSTONE_BASE ? "notable" : "keystone");
+		const place = (id) => {
+			const [base, perRegion] = RINGS[levelOf(id) - 1];
+			const index = id - base;
+			return { base, perRegion, index, total: 3 * perRegion, region: Math.floor(index / perRegion), lane: index % perRegion };
+		};
+		const outerId = (index) => RINGS[3][0] + ((index + 24) % 24);
+		const grant = (region, name) => {
+			if (name === "heart") return { heart: true };
+			const stat = name === "main" ? PRIMARY[region] : name === "secondary" ? secondaryOf(region) : name;
+			return { stat, amount: 10 };
+		};
+		return {
+			count: 64,
+			keystonesPassThrough: false,
+			costOf: (id) => (levelOf(id) === "keystone" ? 3 : 1),
+			viewBox: "-90 -90 780 780",
+			guides: [[95, "vòng 1 · 1 điểm"], [150, "vòng 2 · 2 điểm"], [205, "vòng 3 · 3 điểm"], [262, "vòng 4 · 4 điểm"], [322, "notable 5 điểm · keystone 7 điểm"]],
+			labels: ANGLES.map((angle, region) => [...polar(368, angle), region]),
+			example: [1, 5, 9, 17, 33, 34, 52, 58],
+			focus: 58,
+			exampleNote: "Đường Fighter: 7 điểm sau Start ra might 110, speed +10, hearts 2, Bloodthirst + GlassCannon.",
+			note: "Layout 64 đã chốt = 3 Start + 1 lõi + 3 × 18 node mỗi hướng + 6 keystone. Id tăng dần từ tâm ra, nên khi mở rộng lên 2 × u64 chỉ cần thêm vòng ngoài, không đánh số lại. Node thường và notable tốn 1 điểm, keystone tốn 3; ngoài ra chỉ cần kề node đã có. Vòng n tốn n điểm sau Start, notable của hướng mình 5, keystone của hướng mình 7. Sang class khác chỉ qua cổng C ở tâm: mở vòng 1 của mình, bấm C, rồi mở vòng 1 của hướng kia. Các vòng ngoài không nối qua biên; keystone ở biên lấy được từ hai bên nhưng là ngõ cụt. Notable của class khác tốn 7, keystone chỉ của class khác 9. Pet cấp 20 có 20 điểm, cộng tối đa 10 từ sách kỹ năng và dòng họ (trần 30).",
+			regionOf(id) {
+				const level = levelOf(id);
+				if (level === "start") return id;
+				if (level === "core") return null;
+				if (level === "notable") return Math.floor((id - NOTABLE_BASE) / 3);
+				if (level === "keystone") return Math.floor((id - KEYSTONE_BASE) / 2);
+				return place(id).region;
+			},
+			kindOf(id) {
+				const level = levelOf(id);
+				return level === "start" ? "Start" : level === "notable" ? "Notable" : level === "keystone" ? "Keystone" : level === "core" ? "Cổng" : "Small";
+			},
+			neighbors(id) {
+				const level = levelOf(id);
+				if (level === "start") return [RINGS[0][0] + id];
+				if (level === "core") return [4, 5, 6];
+				if (level === "notable") {
+					const offset = id - NOTABLE_BASE;
+					const first = 8 * Math.floor(offset / 3) + 1 + 2 * (offset % 3);
+					return [outerId(first), outerId(first + 1)];
+				}
+				if (level === "keystone") {
+					const border = Math.floor((id - KEYSTONE_BASE) / 2);
+					return [outerId(8 * border + 7), outerId(8 * border + 8)];
+				}
+				const { base, index, total, region, lane } = place(id);
+				const parent = level === 1 ? region : RINGS[level - 2][0] + Math.floor(index / 2);
+				const around = level === 1 ? [CORE] : [index - 1, index + 1].filter((other) => other >= 0 && other < total && Math.floor(other / (total / 3)) === region).map((other) => base + other);
+				if (level < 4) return [parent, ...around, RINGS[level][0] + 2 * index, RINGS[level][0] + 2 * index + 1];
+				if (lane === 7) return [parent, ...around, KEYSTONE_BASE + 2 * region, KEYSTONE_BASE + 2 * region + 1];
+				if (lane === 0) {
+					const border = (region + 2) % 3;
+					return [parent, ...around, KEYSTONE_BASE + 2 * border, KEYSTONE_BASE + 2 * border + 1];
+				}
+				return [parent, ...around, NOTABLE_BASE + 3 * region + Math.floor((lane - 1) / 2)];
+			},
+			delta(id) {
+				const level = levelOf(id);
+				if (level === "start") return { stat: PRIMARY[id], amount: 30 };
+				if (level === "core") return { heart: true };
+				if (level === "notable") {
+					const offset = id - NOTABLE_BASE;
+					return { mod: NOTABLES[Math.floor(offset / 3)][offset % 3] };
+				}
+				if (level === "keystone") return { mod: KEYSTONES[id - KEYSTONE_BASE] };
+				const { region, lane } = place(id);
+				if (level < 3) return grant(region, "main");
+				return grant(region, level === 3 ? THIRD_RING[lane] : OUTER_RING[region][lane]);
+			},
+			position(id) {
+				const level = levelOf(id);
+				if (level === "start") return polar(62, ANGLES[id] - 24);
+				if (level === "core") return [300, 300];
+				if (level === "notable") {
+					const offset = id - NOTABLE_BASE;
+					return polar(318, ANGLES[Math.floor(offset / 3)] - 30 + 30 * (offset % 3));
+				}
+				if (level === "keystone") {
+					const offset = id - KEYSTONE_BASE;
+					return polar(326, ANGLES[Math.floor(offset / 2)] + 60 + (offset % 2 === 0 ? -6 : 6));
+				}
+				const { perRegion, region, lane } = place(id);
+				return polar(RADII[level - 1], ANGLES[region] - 60 + ((lane + 0.5) * 120) / perRegion);
+			},
+			rows: [
+				["Start (0–2)", "Start", "+30 chỉ số chính", "vòng 1 cùng hướng"],
+				["Lõi (3)", "Cổng", "+1 max heart; cổng duy nhất sang class khác", "3 node vòng 1"],
+				["Vòng 1 (4–6)", "Small", "+10 chỉ số chính", "Start, lõi, 2 node vòng 2"],
+				["Vòng 2 (7–12)", "Small", "+10 chỉ số chính", "vòng 1, node bên cạnh cùng hướng, 2 node vòng 3"],
+				["Vòng 3 (13–24)", "Small", "4 lane mỗi hướng: +1 max heart · +10 chính · +10 chính · +10 phụ", "vòng 2, node bên cạnh cùng hướng, 2 node vòng 4"],
+				["Vòng 4 Worker (25–32)", "Small", "mỗi node +10: speed · forage · armor · forage · accuracy · forage · grit · speed", "vòng 3, node bên cạnh cùng hướng, 1 notable hoặc 2 keystone ở biên"],
+				["Vòng 4 Fighter (33–40)", "Small", "mỗi node +10: speed · might · accuracy · bleed · might · lifesteal · accuracy · speed", "như trên"],
+				["Vòng 4 Survivor (41–48)", "Small", "mỗi node +10: armor · grit · lifesteal · grit · armor · +1 heart · might · speed", "như trên"],
+				["Notable (49–57)", "Notable", "Worker: Thrifty · Overtime · Apprentice<br>Fighter: Bloodthirst · Scavenger · Relentless<br>Survivor: Nightwatch · ThickHide · Spite", "2 node vòng 4 cùng hướng"],
+				["Keystone (58–63), 3 điểm", "Keystone", "Worker|Fighter: GlassCannon, Tithe<br>Fighter|Survivor: Cannibal, Bloodline<br>Survivor|Worker: Pacifist, Hibernate", "2 node vòng 4 ở hai bên biên; ngõ cụt, không mở tiếp node nào từ keystone"],
+			],
+		};
+	})();
+
+	let model = ringModel;
+	const regionOf = (id) => model.regionOf(id);
+	const kindOf = (id) => model.kindOf(id);
+	const neighborList = (id) => model.neighbors(id);
+	const position = (id) => model.position(id);
+
+	function effectOf(id) {
+		const delta = model.delta(id);
+		if (delta.mod) return `${delta.mod}: ${MOD_TEXT[delta.mod]}`;
+		return delta.heart ? "+1 max heart" : `+${delta.amount} ${delta.stat}`;
+	}
+
+	function statsFrom(owned) {
+		const stats = { forage: 50, might: 50, grit: 50, maxHearts: 5, mods: [], speed: 0, armor: 0, accuracy: 0, lifesteal: 0, bleed: 0 };
+		for (let id = 0; id < model.count; id++) {
+			if (!owned.has(id)) continue;
+			const delta = model.delta(id);
+			if (delta.stat) stats[delta.stat] += delta.amount;
+			if (delta.heart) stats.maxHearts += 1;
+			if (delta.mod) stats.mods.push(delta.mod);
+			if (delta.mod === "GlassCannon") stats.maxHearts = 2;
+		}
+		return stats;
+	}
+
+	const svg = document.getElementById("treeSvg");
+	const NS = "http://www.w3.org/2000/svg";
+	const owned = new Set();
+	let chosenStart = null;
+	let focusedNode = null;
+
+	function colorOf(id) {
+		if (isKeystone(id)) return cssVar("--keystone");
+		return regionOf(id) === null ? cssVar("--ink-faint") : cssVar(REGION_VAR[regionOf(id)]);
+	}
+
+	function drawTree() {
+		svg.innerHTML = "";
+		svg.setAttribute("viewBox", model.viewBox);
+		for (const [radius, label] of model.guides || []) {
+			const guide = document.createElementNS(NS, "circle");
+			guide.setAttribute("cx", 300); guide.setAttribute("cy", 300); guide.setAttribute("r", radius);
+			guide.setAttribute("class", "ring-guide");
+			svg.appendChild(guide);
+			const text = document.createElementNS(NS, "text");
+			const [x, y] = polar(radius, -130);
+			text.setAttribute("x", x - 6); text.setAttribute("y", y - 6);
+			text.setAttribute("class", "ring-label");
+			text.textContent = label;
+			svg.appendChild(text);
+		}
+		const edges = document.createElementNS(NS, "g");
+		const drawn = new Set();
+		for (let id = 0; id < model.count; id++) {
+			for (const other of neighborList(id)) {
+				const key = Math.min(id, other) + "-" + Math.max(id, other);
+				if (drawn.has(key)) continue;
+				drawn.add(key);
+				const [x1, y1] = position(id);
+				const [x2, y2] = position(other);
+				const line = document.createElementNS(NS, "line");
+				line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+				line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+				const crossing = regionOf(id) === null || regionOf(other) === null;
+				line.setAttribute("class", "edge" + (crossing && model.count > 24 ? " gate" : "") + (owned.has(id) && owned.has(other) ? " lit" : ""));
+				edges.appendChild(line);
+			}
+		}
+		svg.appendChild(edges);
+		for (const [x, y, region] of model.labels) {
+			const text = document.createElementNS(NS, "text");
+			text.setAttribute("x", x); text.setAttribute("y", y);
+			text.setAttribute("class", "region-label");
+			text.style.fill = cssVar(REGION_VAR[region]);
+			text.textContent = REGIONS[region];
+			svg.appendChild(text);
+		}
+		for (let id = 0; id < model.count; id++) {
+			const [x, y] = position(id);
+			const group = document.createElementNS(NS, "g");
+			group.setAttribute("class", "node" + (owned.has(id) ? " owned" : ""));
+			group.setAttribute("tabindex", "0");
+			group.setAttribute("role", "button");
+			group.setAttribute("aria-label", `Node ${id}, ${kindOf(id)}, ${effectOf(id)}`);
+			const circle = document.createElementNS(NS, "circle");
+			circle.setAttribute("cx", x); circle.setAttribute("cy", y);
+			const scale = model.count > 24 ? 0.8 : 1;
+			circle.setAttribute("r", scale * (isKeystone(id) ? 19 : kindOf(id) === "Notable" ? 17 : isStart(id) || kindOf(id) === "Cổng" ? 18 : 14));
+			circle.style.stroke = colorOf(id);
+			if (owned.has(id)) circle.style.fill = colorOf(id);
+			if (kindOf(id) === "Notable" || isKeystone(id)) circle.style.strokeWidth = "4";
+			const text = document.createElementNS(NS, "text");
+			text.setAttribute("x", x); text.setAttribute("y", y);
+			text.textContent = isStart(id) ? "S" + id : kindOf(id) === "Cổng" ? "C" : id;
+			group.appendChild(circle);
+			group.appendChild(text);
+			group.addEventListener("click", () => tryAllocate(id));
+			group.addEventListener("mouseenter", () => showNode(id));
+			group.addEventListener("focus", () => showNode(id));
+			group.addEventListener("keydown", (event) => {
+				if (event.key === "Enter" || event.key === " ") { event.preventDefault(); tryAllocate(id); }
+			});
+			svg.appendChild(group);
+		}
+	}
+
+	function showNode(id) {
+		focusedNode = id;
+		const region = isKeystone(id) ? "giữa 2 region" : regionOf(id) === null ? "tâm, chung cho cả ba" : REGIONS[regionOf(id)];
+		const neighbors = neighborList(id).map((n) => (isStart(n) ? "S" + n : n)).join(", ");
+		document.getElementById("nodeCard").innerHTML =
+			`<div class="mono" style="color:var(--ink-faint)">node ${id} · ${kindOf(id)} · ${region}</div>` +
+			`<div>${effectOf(id)} · ${model.costOf(id)} điểm</div>` +
+			`<div class="note">kề: <span class="mono">${neighbors}</span></div>`;
+	}
+
+	const ERRORS = {
+		Taken: "Taken: node đã có trong cây.",
+		WrongStart: "WrongStart: Start phải đúng region đã chọn.",
+		AlreadyStarted: "AlreadyStarted: cây đã có Start.",
+		NotAdjacent: "NotAdjacent: node không kề node nào đã có. Sang class khác phải đi qua cổng C ở tâm; keystone không tính là đường đi.",
+		NoPoints: "NoPoints: không đủ điểm (20 điểm ở cấp 20 cộng điểm thưởng tối đa 10; keystone tốn 3).",
+	};
+	const POINTS_AT_LEVEL_CAP = 20;
+	const BONUS_POINTS_CAP = 10;
+	const pointBudget = () => POINTS_AT_LEVEL_CAP + Math.max(0, Math.min(BONUS_POINTS_CAP, Number(document.getElementById("treeBonus").value) || 0));
+	const pointsSpent = () => [...owned].filter((id) => !isStart(id)).reduce((sum, id) => sum + model.costOf(id), 0);
+
+	function allocate(id, start) {
+		if (owned.has(id)) return "Taken";
+		if (id < 3) {
+			if (id !== start) return "WrongStart";
+			if (owned.size > 0) return "AlreadyStarted";
+			return null;
+		}
+		if (owned.size === 0 || !neighborList(id).some((n) => owned.has(n) && (model.keystonesPassThrough || !isKeystone(n)))) return "NotAdjacent";
+		if (pointsSpent() + model.costOf(id) > pointBudget()) return "NoPoints";
+		return null;
+	}
+
+	function tryAllocate(id) {
+		const start = chosenStart === null && isStart(id) ? id : chosenStart;
+		const error = allocate(id, start);
+		const message = document.getElementById("treeMessage");
+		if (error) {
+			message.className = "message err";
+			message.textContent = ERRORS[error];
+		} else {
+			owned.add(id);
+			chosenStart = start;
+			message.className = "message ok";
+			message.textContent = `Ok: thêm node ${id}, ${model.costOf(id)} điểm (${effectOf(id)}).`;
+		}
+		render();
+		showNode(id);
+		const again = svg.querySelectorAll(".node")[id];
+		if (again) again.focus({ preventScroll: true });
+	}
+
+	function render() {
+		drawTree();
+		const stats = statsFrom(owned);
+		document.getElementById("sForage").textContent = stats.forage;
+		document.getElementById("sMight").textContent = stats.might;
+		document.getElementById("sGrit").textContent = stats.grit;
+		document.getElementById("sHearts").textContent = stats.maxHearts;
+		let bits = 0n;
+		for (const id of owned) bits |= 1n << BigInt(id);
+		document.getElementById("treeBits").textContent = "0x" + bits.toString(16);
+		document.getElementById("treeCount").textContent = owned.size;
+		document.getElementById("treePoints").textContent = pointsSpent();
+		document.getElementById("treeBudget").textContent = pointBudget();
+		document.getElementById("treeWork").textContent = 10 + Math.trunc(stats.forage * 3 / 10);
+		const attributes = ["speed", "armor", "accuracy", "lifesteal", "bleed"].filter((name) => stats[name] > 0);
+		const chips = [...stats.mods.map((m) => `<span class="chip">${m}</span>`), ...attributes.map((name) => `<span class="chip">${name} +${stats[name]}</span>`)];
+		document.getElementById("treeMods").innerHTML = chips.length ? chips.join("") : `<span class="note">Chưa có mod.</span>`;
+	}
+
+	document.getElementById("treeReset").addEventListener("click", () => {
+		owned.clear();
+		chosenStart = null;
+		const message = document.getElementById("treeMessage");
+		message.className = "message";
+		message.textContent = "Chọn một Start ở giữa.";
+		render();
+	});
+	document.getElementById("treeExample").addEventListener("click", () => showExample());
+	document.getElementById("treeBonus").addEventListener("input", () => render());
+
+	function showExample() {
+		owned.clear();
+		model.example.forEach((id) => owned.add(id));
+		chosenStart = model.example[0];
+		const message = document.getElementById("treeMessage");
+		message.className = "message ok";
+		message.textContent = model.exampleNote;
+		document.getElementById("treeModelNote").textContent = model.note;
+		document.getElementById("treeRows").innerHTML = model.rows.map((cells) =>
+			`<tr>${cells.map((cell, index) => `<td${index === 0 ? ' class="mono"' : ""}>${cell}</td>`).join("")}</tr>`).join("");
+		render();
+		showNode(model.focus);
+	}
+
+	function chooseModel(next) {
+		model = next;
+		document.getElementById("modelRing").setAttribute("aria-pressed", String(next === ringModel));
+		document.getElementById("modelLegacy").setAttribute("aria-pressed", String(next === legacyModel));
+		showExample();
+	}
+
+	document.getElementById("modelRing").addEventListener("click", () => chooseModel(ringModel));
+	document.getElementById("modelLegacy").addEventListener("click", () => chooseModel(legacyModel));
+	chooseModel(ringModel);
+
+	const ATTRIBUTES = [
+		["might", 0, 400, 80],
+		["grit", 0, 400, 80],
+		["speed", 10, 300, 50],
+		["armor", 0, 200, 0],
+		["accuracy", 0, 200, 0],
+		["lifesteal", 0, 200, 0],
+		["bleed", 0, 200, 0],
+		["hearts", 1, 8, 5],
+	];
+	const MOD_BITS = { Scavenger: 2, ThickHide: 4, Pacifist: 8, GlassCannon: 16 };
+	const fighters = { A: { mods: [] }, D: { mods: [] } };
+	for (const key of ["A", "D"]) for (const [field, , , initial] of ATTRIBUTES) fighters[key][field] = initial;
+	fighters.A.speed = 70;
+	fighters.A.armor = 20;
+	fighters.D.accuracy = 30;
+
+	function toCombatant(f) {
+		const mask = f.mods.reduce((sum, mod) => sum + MOD_BITS[mod], 0);
+		return atlas.makeCombatant(f.might, f.grit, f.speed, f.armor, f.accuracy, f.lifesteal, f.bleed, f.hearts, mask);
+	}
+
+	function buildCard(key) {
+		const card = document.getElementById("card" + key);
+		const title = key === "A" ? "Attacker" : "Defender";
+		const sliders = ATTRIBUTES.map(([field, min, max]) =>
+			`<div class="field"><label for="${key}-${field}">${field}</label>` +
+			`<input type="range" id="${key}-${field}" min="${min}" max="${max}" step="${field === "hearts" ? 1 : 10}" value="${fighters[key][field]}">` +
+			`<output id="${key}-${field}-out">${fighters[key][field]}</output></div>`).join("");
+		const checks = Object.keys(MOD_BITS).map((mod) =>
+			`<label><input type="checkbox" id="${key}-${mod}"> ${mod}</label>`).join("");
+		card.innerHTML = `<h3>${title}</h3>${sliders}<div class="checks">${checks}</div><div class="derived" id="${key}-derived"></div>`;
+		for (const [field] of ATTRIBUTES) {
+			document.getElementById(`${key}-${field}`).addEventListener("input", (event) => {
+				fighters[key][field] = Number(event.target.value);
+				document.getElementById(`${key}-${field}-out`).textContent = event.target.value;
+				updateDerived();
+			});
+		}
+		for (const mod of Object.keys(MOD_BITS)) {
+			document.getElementById(`${key}-${mod}`).addEventListener("change", (event) => {
+				const mods = fighters[key].mods.filter((m) => m !== mod);
+				if (event.target.checked) mods.push(mod);
+				fighters[key].mods = mods;
+				updateDerived();
+			});
+		}
+	}
+
+	function updateDerived() {
+		for (const [key, other] of [["A", "D"], ["D", "A"]]) {
+			const [hp, dodge, crit, haste, attacks] = atlas.derivedFor(toCombatant(fighters[key]), toCombatant(fighters[other]));
+			const attackText = fighters[key].mods.includes("Pacifist") ? "Err(Pacifist)" : attacks;
+			document.getElementById(`${key}-derived`).innerHTML =
+				`<span class="chip">HP ${hp}</span><span class="chip">né ${dodge}%</span>` +
+				`<span class="chip">crit ${crit}%</span><span class="chip">đánh thêm ${haste}%</span>` +
+				(key === "A" ? `<span class="chip">lượt/epoch ${attackText}</span>` : "");
+		}
+	}
+
+	const STRIKE_LABEL = ["mất lượt", "bị né", "trúng", "CHÍ MẠNG"];
+	const INITIATIVE_LABEL = ["Cùng lúc", "Attacker trước", "Defender trước"];
+
+	function strikeText(strike) {
+		if (strike.kind < 2) return `<span class="note">${STRIKE_LABEL[strike.kind]}</span>`;
+		const parts = [`<b class="${strike.kind === 3 ? "crit" : ""}">${STRIKE_LABEL[strike.kind]} ${strike.damage}</b>`];
+		if (strike.blocked > 0) parts.push(`giáp chặn ${strike.blocked}`);
+		if (strike.healed > 0) parts.push(`hút ${strike.healed}`);
+		if (strike.bleed > 0) parts.push(`chảy máu ${strike.bleed}`);
+		return parts.join(" · ");
+	}
+
+	const replayState = { rounds: [], start: null, index: 0, timer: null };
+
+	function describeRound(round) {
+		const lines = [`<li><span class="chip">${INITIATIVE_LABEL[round.initiative]}</span></li>`];
+		const attackerLine = `<li><b>Attacker</b>: ${strikeText(round.attackerStrike)}</li>`;
+		const defenderLine = `<li><b>Defender</b>: ${strikeText(round.defenderStrike)}</li>`;
+		if (round.initiative === 2) lines.push(defenderLine, attackerLine); else lines.push(attackerLine, defenderLine);
+		if (round.haste.kind !== 0) {
+			lines.push(`<li><b>${round.hasteSide === 1 ? "Defender" : "Attacker"} đánh thêm</b>: ${strikeText(round.haste)}</li>`);
+		}
+		if (round.attackerBleedTaken > 0) lines.push(`<li>Attacker mất ${round.attackerBleedTaken} vì chảy máu</li>`);
+		if (round.defenderBleedTaken > 0) lines.push(`<li>Defender mất ${round.defenderBleedTaken} vì chảy máu</li>`);
+		return lines.join("");
+	}
+
+	function showReplay() {
+		const { rounds, start, index } = replayState;
+		const state = index === 0 ? start : rounds[index - 1].after;
+		const fraction = (hp, total) => Math.max(0, Math.min(100, (hp / total) * 100));
+		document.getElementById("hpA").style.width = fraction(state.attackerHp, state.attackerHpStart) + "%";
+		document.getElementById("hpD").style.width = fraction(state.defenderHp, state.defenderHpStart) + "%";
+		document.getElementById("hpANum").textContent = `${Math.max(state.attackerHp, 0)} / ${state.attackerHpStart}`;
+		document.getElementById("hpDNum").textContent = `${Math.max(state.defenderHp, 0)} / ${state.defenderHpStart}`;
+		const finished = index === rounds.length;
+		const attackerWins = state.attackerHp * state.defenderHpStart > state.defenderHp * state.attackerHpStart;
+		document.getElementById("replayCounter").textContent = index === 0
+			? `Trước trận · ${rounds.length} round`
+			: `Round ${index} / ${rounds.length}` + (finished ? ` · ${attackerWins ? "Attacker thắng" : "Defender thắng"}` : "");
+		document.getElementById("replayEvents").innerHTML = index === 0
+			? `<li class="note">Bấm "Round sau" để xem từng đòn.</li>`
+			: describeRound(rounds[index - 1]);
+		document.querySelectorAll("#fightLog tr").forEach((row, rowIndex) => row.classList.toggle("current", rowIndex === index - 1));
+		document.getElementById("replayBack").disabled = index === 0;
+		document.getElementById("replayNext").disabled = finished;
+	}
+
+	function stopReplay() {
+		if (replayState.timer) clearInterval(replayState.timer);
+		replayState.timer = null;
+		document.getElementById("replayPlay").textContent = "Tự chạy";
+	}
+
+	function loadReplay(seed) {
+		stopReplay();
+		const attacker = toCombatant(fighters.A);
+		const defender = toCombatant(fighters.D);
+		replayState.rounds = atlas.replay(attacker, defender, seed);
+		replayState.start = atlas.startState(attacker, defender);
+		replayState.index = 0;
+		document.getElementById("replaySeed").textContent = `seed ${seed}`;
+		document.getElementById("fightLog").innerHTML = replayState.rounds.map((round, index) =>
+			`<tr><td class="num">${index + 1}</td><td>${INITIATIVE_LABEL[round.initiative]}</td>` +
+			`<td>${strikeText(round.attackerStrike)}</td><td>${strikeText(round.defenderStrike)}</td>` +
+			`<td>${round.haste.kind !== 0 ? (round.hasteSide === 1 ? "D " : "A ") + strikeText(round.haste) : ""}` +
+			`${round.attackerBleedTaken + round.defenderBleedTaken > 0 ? ` <span class="note">máu −${round.attackerBleedTaken}/−${round.defenderBleedTaken}</span>` : ""}</td>` +
+			`<td class="num">${Math.max(round.after.attackerHp, 0)}</td><td class="num">${Math.max(round.after.defenderHp, 0)}</td></tr>`).join("");
+		showReplay();
+	}
+
+	document.getElementById("replayReset").addEventListener("click", () => { stopReplay(); replayState.index = 0; showReplay(); });
+	document.getElementById("replayBack").addEventListener("click", () => { stopReplay(); replayState.index = Math.max(0, replayState.index - 1); showReplay(); });
+	document.getElementById("replayNext").addEventListener("click", () => { replayState.index = Math.min(replayState.rounds.length, replayState.index + 1); showReplay(); });
+	document.getElementById("replayPlay").addEventListener("click", () => {
+		if (replayState.timer) { stopReplay(); return; }
+		if (replayState.index === replayState.rounds.length) replayState.index = 0;
+		document.getElementById("replayPlay").textContent = "Dừng";
+		showReplay();
+		replayState.timer = setInterval(() => {
+			if (replayState.index >= replayState.rounds.length) { stopReplay(); return; }
+			replayState.index += 1;
+			showReplay();
+		}, 1100);
+	});
+
+	function runSimulation() {
+		const seed = Math.max(0, Math.floor(Number(document.getElementById("simSeed").value) || 0));
+		const runs = Math.min(20000, Math.max(1, Math.floor(Number(document.getElementById("simRuns").value) || 1)));
+		const result = atlas.odds(toCombatant(fighters.A), toCombatant(fighters.D), seed, runs);
+		document.getElementById("oddsWin").textContent = (result.winChanceBps / 100).toFixed(2) + "%";
+		document.getElementById("oddsBar").style.width = result.winChanceBps / 100 + "%";
+		document.getElementById("oddsRounds").textContent = (result.averageRoundsTimes100 / 100).toFixed(2);
+		document.getElementById("oddsBps").textContent = result.winChanceBps;
+		loadReplay(atlas.firstFightSeed(seed));
+	}
+
+	buildCard("A");
+	buildCard("D");
+	updateDerived();
+	document.getElementById("simRun").addEventListener("click", runSimulation);
+	runSimulation();
+
+	function lineChart(host, points, options) {
+		const width = 460, height = 240, left = 58, right = 64, top = 16, bottom = 34;
+		const xMax = options.xMax, yMax = options.yMax;
+		const sx = (x) => left + (x / xMax) * (width - left - right);
+		const sy = (y) => top + (1 - y / yMax) * (height - top - bottom);
+		let out = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${options.label}">`;
+		for (const tick of options.yTicks) {
+			out += `<line class="grid" x1="${left}" x2="${width - right}" y1="${sy(tick)}" y2="${sy(tick)}"></line>`;
+			out += `<text class="axis-text" x="${left - 8}" y="${sy(tick) + 4}" text-anchor="end">${tick.toLocaleString("vi-VN")}</text>`;
+		}
+		for (const tick of options.xTicks) {
+			out += `<text class="axis-text" x="${sx(tick)}" y="${height - 12}" text-anchor="middle">${tick}</text>`;
+		}
+		out += `<text class="axis-text" x="${width - right + 6}" y="${height - 12}">${options.xLabel}</text>`;
+		const path = points.map(([x, y], i) => `${i ? "L" : "M"}${sx(x).toFixed(1)},${sy(y).toFixed(1)}`).join(" ");
+		out += `<path class="area" d="${path} L${sx(points[points.length - 1][0])},${sy(0)} L${sx(points[0][0])},${sy(0)} Z"></path>`;
+		out += `<path class="series" d="${path}"></path>`;
+		(options.extraSeries || []).forEach((series, index) => {
+			const extraPath = series.map(([x, y], i) => `${i ? "L" : "M"}${sx(x).toFixed(1)},${sy(y).toFixed(1)}`).join(" ");
+			out += `<path class="series alt alt${index}" d="${extraPath}"></path>`;
+		});
+		if (options.floor !== undefined) {
+			out += `<line class="floor" x1="${left}" x2="${width - right}" y1="${sy(options.floor)}" y2="${sy(options.floor)}"></line>`;
+			out += `<text class="floor-text" x="${width - right + 6}" y="${sy(options.floor) + 4}">sàn</text>`;
+		}
+		for (const [markX, markY, markLabel] of options.marks || []) {
+			out += `<circle class="end" cx="${sx(markX)}" cy="${sy(markY)}" r="3.5"></circle>`;
+			out += `<text class="end-text" x="${sx(markX) - 8}" y="${sy(markY) - 8}" text-anchor="end">${markLabel}</text>`;
+		}
+		const [endX, endY] = options.endPoint;
+		out += `<circle class="end" cx="${sx(endX)}" cy="${sy(endY)}" r="4"></circle>`;
+		out += `<text class="end-text" x="${sx(endX) + 8}" y="${sy(endY) - 8}">${options.endLabel}</text>`;
+		out += "</svg>";
+		host.innerHTML = out;
+	}
+
+	const unit = 1;
+	const emissionPoints = [];
+	for (let epoch = 0; epoch <= 1170; epoch += 90) {
+		const value = atlas.emissionAt(epoch);
+		if (epoch > 0) emissionPoints.push([epoch, emissionPoints[emissionPoints.length - 1][1]]);
+		emissionPoints.push([epoch, value]);
+	}
+	emissionPoints.push([1260, atlas.emissionAt(1260)]);
+	lineChart(document.getElementById("emissionChart"), emissionPoints, {
+		xMax: 1260, yMax: 100000,
+		yTicks: [0, 25000, 50000, 75000, 100000],
+		xTicks: [0, 360, 720, 1080],
+		xLabel: "epoch",
+		floor: 5000,
+		endPoint: [990, 5000],
+		endLabel: "epoch 990",
+		label: "Phát hành mỗi epoch giảm theo bậc",
+	});
+
+	const XP_PER_DAY = 350;
+	const NEWBORN_XP = 190;
+	const xpToReach = (level) => atlas.xpToReachAt(level);
+	const daysToReach = (level) => Math.max(0, (xpToReach(level) - NEWBORN_XP) / XP_PER_DAY);
+	const levelDayPoints = [];
+	for (let level = 1; level <= 20; level++) levelDayPoints.push([level, daysToReach(level)]);
+	lineChart(document.getElementById("levelDaysChart"), levelDayPoints, {
+		xMax: 20, yMax: 32,
+		yTicks: [0, 7, 14, 21, 28],
+		xTicks: [1, 5, 10, 15, 20],
+		xLabel: "cấp",
+		marks: [[10, daysToReach(10), "cấp 10 · ngày " + daysToReach(10).toFixed(1)]],
+		endPoint: [20, daysToReach(20)],
+		endLabel: "ngày " + daysToReach(20).toFixed(1),
+		label: "Số ngày để đạt mỗi cấp",
+	});
+	document.getElementById("levelMilestones").innerHTML = [2, 3, 5, 8, 10, 12, 15, 18, 19, 20].map((level) =>
+		`<tr><td class="num">${level}</td><td class="num">${xpToReach(level).toLocaleString("vi-VN")}</td>` +
+		`<td class="num">${(xpToReach(level) - xpToReach(level - 1)).toLocaleString("vi-VN")}</td>` +
+		`<td class="num">${daysToReach(level).toFixed(1)}</td></tr>`).join("");
+
+	const strengthPercentAt = (day) => {
+		if (day <= 50) return 100;
+		if (day <= 60) return 70 + 30 * (60 - day) * (60 - day) / 100;
+		return 70 - 20 * (day - 60) / 30;
+	};
+	const agingPoints = [];
+	const incomePoints = [];
+	for (let day = 0; day <= 90; day += 1) {
+		agingPoints.push([day, strengthPercentAt(day)]);
+		incomePoints.push([day, strengthPercentAt(day) * strengthPercentAt(day) / 100]);
+	}
+	lineChart(document.getElementById("agingChart"), agingPoints, {
+		xMax: 90, yMax: 100,
+		yTicks: [0, 25, 50, 75, 100],
+		xTicks: [0, 30, 50, 60, 90],
+		xLabel: "ngày",
+		extraSeries: [incomePoints],
+		marks: [[50, 100, "bắt đầu yếu"], [60, 70, "70%"]],
+		endPoint: [90, 50],
+		endLabel: "50%",
+		label: "Sức mạnh theo tuổi",
+	});
+
+	const talentTiers = [
+		{ name: "Common", chance: 0.6, low: 100, high: 110, color: "var(--ink-faint)" },
+		{ name: "Rare", chance: 0.28, low: 110, high: 120, color: "var(--frost)" },
+		{ name: "Epic", chance: 0.1, low: 130, high: 140, color: "var(--keystone)" },
+		{ name: "Legendary", chance: 0.018, low: 160, high: 160, color: "var(--worker)" },
+		{ name: "Mythic", chance: 0.002, low: 200, high: 200, color: "var(--ember)" },
+	];
+	const rewardPopulation = (() => {
+		let state = 99;
+		const random = () => {
+			state = (state * 1103515245 + 12345) % 2147483648;
+			return state / 2147483648;
+		};
+		const pets = [];
+		for (let index = 0; index < 1000; index++) {
+			const style = random();
+			const worker = style < 0.4, hybrid = style < 0.7;
+			const forageNodes = worker ? 6 + Math.floor(random() * 5) : hybrid ? 2 + Math.floor(random() * 4) : Math.floor(random() * 2);
+			let roll = random(), tier = talentTiers[talentTiers.length - 1], sum = 0;
+			for (const candidate of talentTiers) {
+				sum += candidate.chance;
+				if (roll < sum) { tier = candidate; break; }
+			}
+			const workTalent = random() < 1 / 3;
+			const percent = tier.low + Math.floor(random() * (tier.high - tier.low + 1));
+			const forage = 50 + (worker ? 30 : 0) + forageNodes * 10;
+			let workPower = 10 + Math.floor(forage * 3 / 10);
+			if (workTalent) workPower = Math.floor(workPower * percent / 100);
+			pets.push({ tier, workTalent, weight: workPower * workPower });
+		}
+		pets.sort((a, b) => b.weight - a.weight);
+		const median = pets[500].weight;
+		return pets.map((pet) => ({ tier: pet.tier, workTalent: pet.workTalent, income: pet.weight / median }));
+	})();
+	(() => {
+		const width = 640, height = 280, left = 46, right = 16, top = 16, bottom = 36;
+		const yLow = 0.2, yHigh = 25;
+		const sx = (rank) => left + Math.log10(rank) / 3 * (width - left - right);
+		const sy = (value) => top + (1 - Math.log(value / yLow) / Math.log(yHigh / yLow)) * (height - top - bottom);
+		let out = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Thu nhập 1.000 pet theo hạng">`;
+		for (const tick of [0.5, 1, 2, 5, 10, 20]) {
+			out += `<line class="grid" x1="${left}" x2="${width - right}" y1="${sy(tick)}" y2="${sy(tick)}"></line>`;
+			out += `<text class="axis-text" x="${left - 8}" y="${sy(tick) + 4}" text-anchor="end">×${tick}</text>`;
+		}
+		for (const tick of [1, 10, 100, 1000]) {
+			out += `<text class="axis-text" x="${sx(tick)}" y="${height - 14}" text-anchor="middle">${tick}</text>`;
+		}
+		out += `<text class="axis-text" x="${width - right}" y="${height - 2}" text-anchor="end">hạng</text>`;
+		rewardPopulation.forEach((pet, index) => {
+			const x0 = sx(index + 1), x1 = sx(index + 2);
+			const barWidth = Math.max(0.6, x1 - x0 - (index < 30 ? 1 : 0));
+			const y = sy(Math.max(yLow, pet.income));
+			const color = pet.workTalent ? pet.tier.color : "var(--line)";
+			out += `<rect x="${x0.toFixed(2)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(2)}" height="${(sy(yLow) - y).toFixed(1)}" style="fill:${color}"></rect>`;
+		});
+		const best = rewardPopulation[0];
+		out += `<text class="end-text" x="${sx(1) + 14}" y="${sy(best.income) + 4}">${best.tier.name} làm việc ×${best.income.toFixed(1)}</text>`;
+		out += "</svg>";
+		document.getElementById("rewardChart").innerHTML = out;
+		const counts = new Map();
+		for (const pet of rewardPopulation) if (pet.workTalent) counts.set(pet.tier.name, (counts.get(pet.tier.name) || 0) + 1);
+		const overFive = rewardPopulation.filter((pet) => pet.income >= 5).length;
+		document.getElementById("rewardLegend").innerHTML = talentTiers.map((tier) =>
+			`<span class="chip"><i class="dot" style="background:${tier.color}"></i>${tier.name} làm việc ${counts.get(tier.name) || 0}</span>`).join("") +
+			`<span class="chip"><i class="dot" style="background:var(--line)"></i>loại khác</span><span class="chip">×5 trở lên: ${overFive}</span>`;
+	})();
+
+	const foodNames = ["Small", "Medium", "Large"];
+	document.getElementById("foodTable").innerHTML = foodNames.map((name, ordinal) =>
+		`<tr><td>${name}</td><td class="num">+${ordinal + 1}</td>` +
+		[1, 10, 20].map((level) => `<td class="num">${(atlas.foodCostAt(ordinal, level) / 100).toLocaleString("vi-VN")}</td>`).join("") +
+		"</tr>").join("");
+
+	const hunger = [];
+	for (let epoch = 1; epoch <= 8; epoch++) {
+		const shielded = epoch < 3;
+		const step = !shielded || epoch % 2 === 1;
+		hunger.push(`<div class="${shielded ? "shield " : ""}${step ? "step" : "skip"}"><span>e${epoch}</span><b>${step ? "−1" : "0"}</b></div>`);
+	}
+	document.getElementById("hungerRow").innerHTML = hunger.join("");
+
+	const diagrams = [...document.querySelectorAll("pre.mermaid")]
+		.map((block) => ({ block, source: block.textContent }));
+	const drawDiagrams = () => {
+		if (!window.mermaid) return;
+		const tokens = getComputedStyle(document.documentElement);
+		const token = (name) => tokens.getPropertyValue(name).trim();
+		window.mermaid.initialize({
+			startOnLoad: false,
+			theme: "base",
+			fontFamily: token("--mono"),
+			themeVariables: {
+				background: token("--panel"),
+				primaryColor: token("--sunk"),
+				primaryTextColor: token("--ink"),
+				primaryBorderColor: token("--line"),
+				lineColor: token("--ink-faint"),
+				fontFamily: token("--mono"),
+			},
+		});
+		for (const { block, source } of diagrams) {
+			block.removeAttribute("data-processed");
+			block.textContent = source;
+		}
+		window.mermaid.run({ nodes: diagrams.map(({ block }) => block) });
+	};
+	drawDiagrams();
+
+	const themeWatch = window.matchMedia("(prefers-color-scheme: dark)");
+	const redraw = () => { render(); drawDiagrams(); if (focusedNode !== null) showNode(focusedNode); };
+	themeWatch.addEventListener("change", redraw);
+	new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
