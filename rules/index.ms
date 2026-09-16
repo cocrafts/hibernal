@@ -8,4 +8,5 @@ export * from "./winOdds";
 export * from "./layout";
 export * from "./level";
 export * from "./life";
+export * from "./actions";
 export * from "./brain";
