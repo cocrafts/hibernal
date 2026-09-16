@@ -43,6 +43,15 @@ export enum Outcome {
 export enum AttackError {
 	Pacifist,
 	OutOfAttacks,
+	Dead,
+	TargetDead,
+	NotANeighbor,
+	Unsettled,
+	Shielded,
+	TargetShielded,
+	AlreadyAttacked,
+	TargetBusy,
+	Broke,
 }
 
 export enum Side {

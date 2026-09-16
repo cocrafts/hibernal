@@ -1,6 +1,7 @@
 import { START_BONUS, NODE_BONUS, Stats, Region, Mod } from "./stats";
 
 export const TREE_NODES: int32 = 24;
+export const KEYSTONE_COST: int32 = 3;
 export const KEYSTONE_PACIFIST: int32 = 21;
 export const KEYSTONE_GLASS_CANNON: int32 = 22;
 export const KEYSTONE_CANNIBAL: int32 = 23;
@@ -18,6 +19,9 @@ export enum AllocationError {
 	WrongStart,
 	AlreadyStarted,
 	NotAdjacent,
+	Dead,
+	Unsettled,
+	NoPoints,
 }
 
 export struct Tree {
@@ -35,6 +39,10 @@ export function nodeKind(id: int32): NodeKind {
 		_ when (id - 3) % 6 == 5 => NodeKind.Notable,
 		_ => NodeKind.Small,
 	};
+}
+
+export function nodeCost(id: int32): int32 {
+	return nodeKind(id) == NodeKind.Keystone ? KEYSTONE_COST : 1;
 }
 
 export function regionOf(id: int32): Region {
@@ -276,6 +284,8 @@ test "derived stats for a fighter path" {
 }
 
 test "node kinds and regions" {
+	assert nodeCost(KEYSTONE_PACIFIST) == KEYSTONE_COST;
+	assert nodeCost(9) == 1;
 	assert nodeKind(0) == NodeKind.Start;
 	assert nodeKind(8) == NodeKind.Notable;
 	assert nodeKind(9) == NodeKind.Small;

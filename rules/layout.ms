@@ -1,4 +1,4 @@
-import { Stats, Combatant } from "./stats";
+import { Region, Stats, Combatant } from "./stats";
 import { Tree } from "./tree";
 import { Outcome } from "./fight";
 import { isShielded } from "./emission";
@@ -13,6 +13,19 @@ export enum Insurance {
 	Used,
 }
 
+export enum BlockSlot {
+	First,
+	Second,
+	Third,
+	Fourth,
+	Fifth,
+	Sixth,
+	Seventh,
+	Eighth,
+	Ninth,
+	Tenth,
+}
+
 export struct Pet {
 	blockId: uint32;
 	slot: uint8;
@@ -25,6 +38,7 @@ export struct Pet {
 	grit: uint16;
 	level: uint16;
 	pointsUnspent: uint8;
+	xp: uint32;
 	tree: Tree;
 	harvest: uint64;
 	burrow: uint64;
@@ -34,6 +48,7 @@ export struct Pet {
 	fightsOutToday: uint8;
 	fightsInToday: uint8;
 	bitesInToday: uint8;
+	slotsAttackedToday: BitSet<BlockSlot>;
 	fightDay: uint64;
 	growthMultiplierBps: uint16;
 	growthMultiplierExpiry: uint64;
@@ -80,12 +95,36 @@ export function combatant(this pet: Pet): Combatant {
 	return pet.stats().asCombatant(pet.hearts as int32);
 }
 
+export function startRegion(this pet: Pet): Region {
+	return (pet.region as int32) as Region;
+}
+
+export function blockSlot(this pet: Pet): BlockSlot {
+	return (pet.slot as int32) as BlockSlot;
+}
+
 export function fightsOutOn(this pet: Pet, epoch: uint64): int32 {
 	return pet.fightDay == epoch ? pet.fightsOutToday as int32 : 0;
 }
 
 export function fightsInOn(this pet: Pet, epoch: uint64): int32 {
 	return pet.fightDay == epoch ? pet.fightsInToday as int32 : 0;
+}
+
+export function attackedOn(this pet: Pet, target: BlockSlot, epoch: uint64): boolean {
+	return pet.fightDay == epoch && pet.slotsAttackedToday.has(target);
+}
+
+export function onFightDay(this pet: Pet, epoch: uint64): Pet {
+	if (pet.fightDay == epoch) { return pet; }
+	return {
+		...pet,
+		fightDay: epoch,
+		fightsOutToday: 0,
+		fightsInToday: 0,
+		bitesInToday: 0,
+		slotsAttackedToday: 0 as BitSet<BlockSlot>,
+	};
 }
 
 export function shieldedAt(this pet: Pet, epoch: uint64): boolean {
