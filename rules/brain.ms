@@ -1,8 +1,8 @@
 import { Combatant } from "./stats";
 import { BPS } from "./units";
 import { Tree } from "./tree";
-import { Pet } from "./layout";
-import { Food, levelCost, foodCost, stakeSplit } from "./emission";
+import { BlockSlot, Pet } from "./layout";
+import { Food, foodCost, stakeSplit } from "./emission";
 import { maxStake } from "./fight";
 import { winChanceAgainst } from "./winOdds";
 
@@ -68,11 +68,6 @@ export function pickFood(
 	return Result.err(Skip.Broke);
 }
 
-export function shouldLevelUp(this persona: Persona, level: int32, burrow: uint64): boolean {
-	const spendable = burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
-	return levelCost(level) <= spendable;
-}
-
 export function chooseStake(
 	this persona: Persona,
 	defenderHarvest: uint64,
@@ -135,6 +130,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		grit: fighter.grit as uint16,
 		level: 0,
 		pointsUnspent: 0,
+		xp: 0,
 		tree: Tree.empty(),
 		harvest: harvest,
 		burrow: burrow,
@@ -144,6 +140,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		fightsOutToday: 0,
 		fightsInToday: 0,
 		bitesInToday: 0,
+		slotsAttackedToday: 0 as BitSet<BlockSlot>,
 		fightDay: 0,
 		growthMultiplierBps: 0,
 		growthMultiplierExpiry: 0,
@@ -168,17 +165,6 @@ test "eat picks the best affordable food only when low" {
 	const broke = greedy.pickFood(1, 0, 0);
 	assert !broke.ok;
 	if (!broke.ok) { assert broke.error == Skip.Broke; }
-}
-
-test "level up respects reserve" {
-	const half: Persona = {
-		minWinChanceBps: 5000,
-		reserveBps: 5000,
-		stakeBps: 5000,
-		minHearts: 2,
-	};
-	assert half.shouldLevelUp(0, 200000000);
-	assert !half.shouldLevelUp(0, 199000000);
 }
 
 test "attack expected value follows odds" {

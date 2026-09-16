@@ -9,10 +9,6 @@ export const EMISSION_DECAY_EPOCHS: uint64 = 90;
 export const EMISSION_DECAY_NUMERATOR: uint64 = 3;
 export const EMISSION_DECAY_DENOMINATOR: uint64 = 4;
 
-export const LEVEL_COST_BASE: uint64 = 100 * HBRN_UNIT;
-export const LEVEL_COST_GROWTH_PERCENT: uint64 = 112;
-export const LEVEL_CAP: int32 = 60;
-
 export const SPEND_PROTOCOL_PERCENT: uint64 = 10;
 export const SPEND_BURN_PERCENT: uint64 = 30;
 export const STAKE_PROTOCOL_PERCENT: uint64 = 5;
@@ -86,15 +82,6 @@ export function growthBonus(pending: uint64, multiplierBps: int32): uint64 {
 	return pending * ((multiplier - BPS) as uint64) / (BPS as uint64);
 }
 
-export function levelCost(level: int32): uint64 {
-	const cappedLevel = Math.min(level, LEVEL_CAP);
-	let cost = LEVEL_COST_BASE;
-	for (let step = 0; step < cappedLevel; step++) {
-		cost = cost * LEVEL_COST_GROWTH_PERCENT / 100;
-	}
-	return cost;
-}
-
 export function foodCost(food: Food, level: int32): uint64 {
 	const base: uint64 = match (food) {
 		Food.Small => 8,
@@ -112,6 +99,10 @@ export function isShielded(epoch: uint64, bornEpoch: uint64): boolean {
 	return epoch < bornEpoch + NEWBORN_EPOCHS;
 }
 
+export function hungerOn(epoch: uint64, bornEpoch: uint64): boolean {
+	return !isShielded(epoch, bornEpoch) || (epoch - bornEpoch) % 2 == 1;
+}
+
 export function hungerStepsBetween(
 	lastTickEpoch: uint64,
 	currentEpoch: uint64,
@@ -119,7 +110,7 @@ export function hungerStepsBetween(
 ): int32 {
 	let steps = 0;
 	for (let epoch = lastTickEpoch + 1; epoch <= currentEpoch; epoch++) {
-		if (!isShielded(epoch, bornEpoch) || (epoch - bornEpoch) % 2 == 1) { steps += 1; }
+		if (hungerOn(epoch, bornEpoch)) { steps += 1; }
 	}
 	return steps;
 }
@@ -173,11 +164,7 @@ test "growth bonus is capped at 20 percent" {
 	assert growthBonus(1000, 9000) == 0;
 }
 
-test "level and food cost curves" {
-	assert levelCost(0) == 100 * HBRN_UNIT;
-	assert levelCost(1) == 112 * HBRN_UNIT;
-	assert levelCost(10) > levelCost(9);
-	assert levelCost(LEVEL_CAP + 5) == levelCost(LEVEL_CAP);
+test "food cost curve" {
 	assert foodCost(Food.Small, 0) == 8 * HBRN_UNIT;
 	assert foodCost(Food.Large, 20) == 42 * HBRN_UNIT;
 	assert foodHearts(Food.Small) == 1;

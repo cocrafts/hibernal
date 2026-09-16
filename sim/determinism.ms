@@ -8,7 +8,7 @@ import {
 	fight,
 	settleGlobal,
 	pendingReward,
-	levelCost,
+	xpToReach,
 	foodCost,
 	oddsAgainst,
 	modsFromMask,
@@ -78,7 +78,7 @@ function digestEconomy(): uint64 {
 		const rewardPerWorkPower = settleGlobal(0, 0, epoch, 1234, epoch * 7);
 		digest = digest.absorb(rewardPerWorkPower ^
 			pendingReward(34, rewardPerWorkPower, rewardPerWorkPower / 3) ^
-			levelCost((epoch % 70) as int32) ^
+			(xpToReach((epoch % 25) as int32) as uint64) ^
 			foodCost(((epoch % 3) as int32) as Food, (epoch % 50) as int32));
 	}
 	return digest.value;
