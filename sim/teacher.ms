@@ -44,7 +44,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	return EconomyAction.Rest;
 }
 
-function regionOfNode(id: int32): Region {
+export function regionOfNode(id: int32): Region {
 	return nodeKind(id) == NodeKind.Keystone ? (id - KEYSTONE_PACIFIST) as Region : regionOf(id);
 }
 
