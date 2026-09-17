@@ -6,11 +6,12 @@ Tamagotchi that permanently dies, one per Seeker Genesis Token, on Solana L1 wit
 
 ```
 rules/     game rules, integer only, compiled 3 ways (native, js, --os=solana)
-sim/       harnesses on rules/ (msc run)
+sim/       harnesses on rules/ (msc run); sim/env/ is the batched training env with a C ABI
 tools/     probes and chain harnesses
 program/   on-chain program (--os=solana), brain included (act)
 native/    renderer, hud, rpc → libhibernal.so
 android/   Kotlin shell
+train/     PyTorch training on the env library (uv): bc.py, ppo.py, evaluate.py
 docs/      briefs and roadmap
 ```
 
@@ -19,11 +20,14 @@ docs/      briefs and roadmap
 ```bash
 msc test rules/index.ms                              # rules suite
 msc test sim/teacher.ms                              # rules + world + teacher suite
+msc test sim/env/ffi.ms                              # everything above + observation, batch, actor
 msc run sim/episode.ms                               # 200 pets × 120 epochs with the teacher
 msc run sim/curve.ms                                 # combat curve vs BRIEF §6.7
 msc run sim/determinism.ms                           # digests; must match the js build:
 msc build sim/determinism.ms --target=js --output=out/det.js && node out/det.js
 msc build tools/rulesProbe.ms --os=solana --output=out/rulesProbe.so
+msc build sim/env/ffi.ms --app=lib --release --output=out/env/libhibernal.dylib   # train/ rebuilds it when stale
+cd train && uv run python bc.py && uv run python ppo.py && uv run python evaluate.py --policy ppo
 ```
 
 ## Naming
@@ -45,7 +49,7 @@ msc build tools/rulesProbe.ms --os=solana --output=out/rulesProbe.so
 Repo-specific on top of it:
 
 - `rules/` must satisfy the on-chain column of CODE-STYLE §11: no allocation, no module-scope `let`, no `String(uint64)` or `process.exit()` in code that reaches the chain (R13). Module `const`s stay and wait on R12.
-- `sim/determinism.ms` must print the same four digests on native and `--target=js`; a rule change that moves a digest needs a reason in the commit.
+- `sim/determinism.ms` must print the same digests and engine version on native and `--target=js`; a rule change that moves a digest needs a reason in the commit.
 - Host entry files end with `process.exit(main());`, chain builds with bare `main();`.
 
 ## Git
