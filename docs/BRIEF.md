@@ -2,7 +2,7 @@
 
 > Purpose of this document: give every contributor full context, every decision already made, and the specs needed to scaffold and build the hackathon MVP. Treat the **Decisions** section as settled unless explicitly reopened. Treat numbers marked `[strawman]` as tunable defaults, not requirements.
 >
-> **Rev 4 (2026-09-14).** Brain on chain and game state in the MagicBlock Ephemeral Rollup (D18, D19, D21 rewritten), VRF inside the ER for every draw with no slot-hash fallback (D25), XP leveling without a `$HBRN` fee (D6), 48-node ring tree (D13), and the systems D32–D37: lifespan and lineage, hidden talent, reward weight `work_power²` with a 500-slot floor, items, pet-owned money and bonding, wild pets. Details, measurements and open numbers live in `GAME-DESIGN.md`; the on-chain surface in `SOLANA.md`.
+> **Rev 4 (2026-09-14).** Brain on chain and game state in the MagicBlock Ephemeral Rollup (D18, D19, D21 rewritten), VRF inside the ER for every draw with no slot-hash fallback (D25), XP leveling without a `$HBRN` fee (D6), 64-node ring tree (D13), and the systems D32–D37: lifespan and lineage, hidden talent, reward weight `work_power²` with a 500-slot floor, items, pet-owned money and bonding, wild pets. Details, measurements and open numbers live in `GAME-DESIGN.md`; the on-chain surface in `SOLANA.md`.
 >
 > **Rev 3 (2026-09-12).** All-in MetaScript (D31) supersedes D20/D30's Anchor + Kotlin split; §5 and §8 rewritten. Art direction (D14 rev) and renderer brief alignment (D30) from the same day. Adds D18–D29 from the design sessions of Sept 10–11: autonomous pet, session-key signing, Anchor program, accumulator emission, multi-round combat with onchain replay records, L1-only. Rev 1 is archived alongside this file's history.
 
@@ -75,7 +75,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | D10 | **Fights don't kill; hunger kills.** Defender loses hearts only when harvest is empty ("bite"). Attacker loses a heart on any loss. | Death is slow, visible, avoidable. Attacking is risky. |
 | D11 | **No biting a pet with power < 50% of yours.** Newborn shield 3 epochs. **Max 1 bite per target per epoch** `[strawman]`. | Anti-griefing. Fighters kill peers, not kids. A coordinated block cannot kill a healthy pet in 2 days. |
 | D12 | **Blocks of 10, fixed, assigned by claim order via free-list.** Not chosen, not rotated. Death frees the slot (7-day grace for same SGT). Winter merges blocks with <5 living. | Persistent neighbors enable reading, revenge, inheritance, lineage. Costs nothing onchain. |
-| D13 | Skill tree is a **PoE-style ring**: every pet starts at the center, three directions radiate out, rings connect across directions, **48 nodes, every node costs 1 point**, small/notable/keystone nodes, **no respec** except 3-point refund each Winter. | Build = route to keystones. Wandering buys breadth, not depth; 19 points cover ~40% of the tree. |
+| D13 | Skill tree is a **PoE-style ring**: every pet starts at the center, three directions radiate out, classes cross only through a gate at the center, **64 nodes, every node costs 1 point except keystones (3)**, small/notable/keystone nodes, **no respec** except 3-point refund each Winter. | Build = route to keystones. Wandering buys breadth, not depth; 20 points at level 20 cover ~31% of the tree; skill books and lineage add up to 10, hard cap 30. |
 | D14 | **Pixel-art look produced from low-poly 3D** (t3ssel8r technique: tiny orthographic render target, quantized lighting, screen-space outlines, nearest upscale). Reads as pixel art, but lights move. **Home scene = the pet sitting by a campfire in the snow**; the fire is the hearts meter. Narration via templates first; on-device LLM optional, timeboxed. *(rev 1 said flat 2D.)* | Visibly not NOMI's glossy 3D, and the campfire gives dynamic light that static sprites cannot. Never let the model block the demo. |
 | D15 | Program upgrade authority under **7-day timelock** (not burned). | Fair-launch credibility + keeps D2's door and emission tuning open, transparently. |
 | D17 | Run the hackathon build with **$HBRN as non-transferable points** on the same program logic; enable real emission only after retention data exists. | Design the economy while nothing is at stake. (Deck says this explicitly — it's a credibility point.) |
@@ -113,8 +113,8 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `alive` | bool | |
 | `hearts`, `max_hearts` | u8 | Base max 5. 0 = dead. |
 | `forage`, `might`, `grit` | u16 | Derived from tree bitmap; cached. Base 50 each; start region +30 to its stat; each small node +10. Talent multiplies one of them (§3.11), decline applies after day 50 (§3.7), equipped items add on top (§3.12). `speed` (base 50), `armor`, `accuracy`, `lifesteal`, `bleed` (base 0) are derived from the tree and items when needed, not stored. |
-| `level`, `points_unspent`, `xp` | u16, u8, u32 | Cap 20; 1 point per level from level 2; XP from work and fights only (D6). |
-| `tree_bitmap` | u64 | Allocated nodes (48, ring layout §3.9). Adjacency is computed in `rules/tree.ms`, no table. |
+| `level`, `points_unspent`, `bonus_points`, `xp` | u16, u8, u8, u32 | Cap 20; 1 point per level, level 1 included (20); `bonus_points ≤ 10` from skill books and the heir package, 30 total; XP from work and fights only (D6). |
+| `tree_bitmap` | u64 | Allocated nodes (64, the full bitmap, ring layout §3.9). Adjacency is computed in `rules/tree.ms`, no table. |
 | `harvest` | u64 | Unclaimed earnings. **Lootable.** |
 | `burrow` | u64 | Banked $HBRN (D24). **Not lootable.** Pays food and items. Owned by the pet: the owner cannot withdraw (D36). |
 | `reward_snapshot` | u64 | Value of `reward_per_work_power` at last settlement (D23). Replaces `reward_debt`: `pending = work_power × (reward_per_work_power − reward_snapshot) / REWARD_SCALE` never exceeds the emission of the interval, so no u128 is needed. |
@@ -123,7 +123,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `growth_multiplier_bps`, `growth_multiplier_expiry` | u16, u64 | SKR buffs. Clamped ≤ 12000. |
 | `min_hearts` | u8 | Auto-eat floor set by the brain (D22). |
 | `insurance` | enum {None, Armed, Used} | Once per pet. |
-| `scars`, `lineage_generation` | u8, u16 | Prestige; generation also grants +1 starting point per generation, capped at +5 (§3.7). |
+| `scars`, `lineage_generation` | u8, u16 | Prestige; generation also grants +1 starting point per generation, capped at +5, inside `bonus_points` (§3.7). |
 | `talent_kind`, `talent_grade` | u8, u8 | Unset until the level-10 VRF reveal (D33). |
 | `bonding` | i8 | Owner bond, −127..+127, decays every epoch (D36). |
 | `gift_owed` | u64 | Gifts to the owner; hackathon points, paid out when a real mint exists (D17, D24). |
@@ -235,14 +235,14 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 - **The campfire scene is the home screen** (§5.6); neighbor cards open from the distant fires. Each neighbor card: stats, hearts, level, age (+ "Fading" badge past day 50), harvest, burrow size, **Monte-Carlo p_win if my pet attacks**, max loot, 24h fight log with replay buttons.
 
 ### 3.9 Skill tree (PoE-style ring, D13)
-- No node table in the program: `rules/tree.ms` computes kind, stat delta, mods and neighbours arithmetically from the node id (`u64` bitmap, 48 nodes; ids laid out so an expansion past 64 with `2 × u64` never renumbers).
-- Shape: 3 starts at the center (region chosen at birth, +30 to its main stat); ring 1 one node per direction, connected as a triangle; outer rings two or more nodes per direction, each ring connected all the way round, across direction borders; notables in the middle of each direction, keystones on the borders between two directions. The 48-node map is still to draw (`GAME-DESIGN.md` §5); the atlas has a 24-node prototype.
-- `allocate(node_id)`: require `points_unspent > 0`, node not set, and at least one adjacent node set (or node is the chosen start). **Every node costs 1 point**; adjacency is the only gate. Set bit; recompute cached stats; settle pet first (D23), then update `total_work_power`.
+- No node table in the program: `rules/tree.ms` computes kind, stat delta, mods and neighbours arithmetically from the node id (`u64` bitmap, 64 nodes; ids laid out so an expansion with `2 × u64` never renumbers).
+- Shape: 3 starts at the center (region chosen at birth, +30 to its main stat); ring 1 one node per direction, joined only through a shared gate node at the center; outer rings two or more nodes per direction, linked sideways only inside their own direction; notables in the middle of each direction, keystones on the borders between two directions, reachable from both sides but dead ends (a keystone never counts as the adjacent node). A 64-node draft layout (ids, rings, notables, keystones) is in `GAME-DESIGN.md` §5 and the atlas; notable effects and attribute sizes are open.
+- `allocate(node_id)`: require `points_unspent ≥ cost(node_id)`, node not set, and at least one adjacent non-keystone node set (or node is the chosen start). **Small and notable nodes cost 1 point, keystones 3**; besides that, adjacency is the only gate. Set bit; recompute cached stats; settle pet first (D23), then update `total_work_power`.
 - Node kinds:
   - **Small:** +10 Forage / +10 Might / +10 Grit / +1 max_hearts, and the combat attributes speed, armor, accuracy, lifesteal, bleed
   - **Notable** (examples): *Scavenger* +crit vs targets with fewer hearts; *Thick Hide* +dodge, first 3 incoming fights/day yield 50% loot; *Overtime* Forage ×1.5 on days with no fights in/out; *Nightwatch* one chosen neighbor gets +50% of your Grit
   - **Keystone** (rule-changing, always with a cost): *Glass Cannon* damage ×2, half Fight HP · *Hibernate* no upkeep after ≥3 idle epochs, Forage 0 while idle, −2 hearts on wake · *Cannibal* killing blow → 50% of victim's wallet to you instead of block · *Pacifist* cannot attack, incoming loot −70%, Forage +30% · *Tithe* 10% Forage → block pot, +1 max_hearts per living neighbor · *Bloodline* heir gets a larger lineage package, max level −20%
-- 19 points at level 20 cover ~40% of the tree: about one direction plus its keystone, or two directions shallow. With lineage a family needs 2–3 generations to try every direction.
+- 20 points at level 20 cover ~31% of the tree: one keystone plus most of a direction. Skill books and the heir package add up to 10 more (`bonus_points ≤ 10`), hard cap 30; about 25 is an excellent pet. With lineage a family needs 3–4 generations to try every direction.
 - **Respec:** none, except **one refund of up to 3 points per Winter**.
 
 ### 3.10 The brain (D18)
@@ -429,7 +429,7 @@ Write the offchain simulator early (`sim/`, MetaScript on `rules/`) — seed 200
 - Brain v1 heuristic on chain (`act`): eat, bank, allocate, trade items, attack by policy or odds table
 - Hearts, hunger, `eat` with $HBRN, auto-eat floor, newborn slow hunger, starvation death, 50/50 inheritance to block
 - 3 core stats + 5 combat attributes; XP leveling to 20 without a $HBRN fee (D6)
-- **48-node** PoE-style ring tree with adjacency rule and keystones (D13)
+- **64-node** PoE-style ring tree with adjacency rule and keystones (D13)
 - Accumulator emission, lazy tick, harvest/burrow as u64
 - Fights: multi-round `fight()`, VRF seed in the ER, stat-driven loot, FightRecord ring buffer, in-scene replay, Monte-Carlo odds, bite rule, newborn shield, no-bite-under-50%, 1 bite/target/epoch
 - Lifespan 90 days, decline, natural death, heir with inheritance tax and lineage package (D32)

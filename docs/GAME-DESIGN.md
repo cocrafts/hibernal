@@ -14,7 +14,7 @@
 | 2 | Combat rev 5 (`nextRound` step, speed/armor/accuracy/lifesteal/bleed) | **Implemented** | 3 |
 | 3 | Replay: step-by-step fights the player can follow | **Decided**, prototype in the rules atlas | renderer |
 | 4 | Randomness: MagicBlock VRF inside the Ephemeral Rollup, for fights and talent | **Decided** | 12 |
-| 5 | Skill tree: PoE ring, 1 point per node, 48 nodes | **Decided** (24-node prototype, 48-node layout to draw) | 1, 6 |
+| 5 | Skill tree: PoE ring, 1 point per node (keystone 3), 64 nodes | **Decided** (64-node layout drafted, effects open) | 1, 6 |
 | 6 | Leveling: XP, cap 20, level 10 in a week, 20 in a month | **Decided** | 5, 7 |
 | 7 | Lifespan 90 days, decline, heir and lineage | **Decided** | 6, 8 |
 | 8 | Hidden talent revealed at level 10: a grade multiplier on one core stat (`forage`, `might` or `grit`) | **Decided** | 4, 7 |
@@ -98,33 +98,45 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 
 ## 5. Skill tree — Decided
 
-**Shape (agreed, 24-node prototype in the atlas).** Path of Exile style: every pet starts at the center, three directions radiate out, rings connect around so a pet can walk sideways into another direction. Wandering buys breadth, not depth.
+**Shape (agreed).** Path of Exile style: every pet starts at the center, three directions radiate out, and a pet can only cross into another class near the center, never at the high-tier nodes. Wandering buys breadth, not depth.
 
-- 3 starts at the center (region still chosen at birth, +30 to its main stat).
-- Ring 1: one node per direction, the three connected as a triangle.
-- Rings 2 and 3: two nodes per direction, each ring connected all the way round, across direction borders.
-- Outer: a notable in the middle of each direction, keystones on the borders between two directions (Pacifist Survivor|Worker, Glass Cannon Worker|Fighter, Cannibal Fighter|Survivor).
-- **Every node costs exactly 1 skill point.** The only gate is adjacency, so reaching ring *n* takes *n* points along the path: own notable or border keystone 4, another direction's notable 5+.
-- Per direction the totals match the old tree: three +10 main stat, one +1 heart, one +10 secondary, one notable. Adjacency is symmetric and every node is reachable from every start (checked).
+**64-node layout `[draft, atlas 2026-09-15]`.** `64 = 3 starts + 1 core + 3 × 18 per direction + 6 keystones`. Ids grow outward, so a `2 × u64` expansion appends outer rings without renumbering. Kind, effect and neighbours are formulas of the id.
 
-**Size.** With cap 20 and one point per level from level 2 a pet gets 19 points:
+| Ids | Ring | Per direction | Grants |
+|---|---|---|---|
+| 0–2 | start | 1 | +30 main stat |
+| 3 | gate | shared | +1 max heart; adjacent to the three ring-1 nodes, the only crossing between classes |
+| 4–6 | 1 | 1 | +10 main |
+| 7–12 | 2 | 2 | +10 main |
+| 13–24 | 3 | 4 | +1 heart · +10 main · +10 main · +10 secondary |
+| 25–48 | 4 | 8 | +10 per node, by direction (below) |
+| 49–57 | notable | 3 | Worker: Thrifty, Overtime, Apprentice · Fighter: Bloodthirst, Scavenger, Relentless · Survivor: Nightwatch, Thick Hide, Spite |
+| 58–63 | keystone | 2 per border | Worker\|Fighter: Glass Cannon, Tithe · Fighter\|Survivor: Cannibal, Bloodline · Survivor\|Worker: Pacifist, Hibernate |
 
-| Tree | 19 points cover |
+- Ring 4 lanes: Worker speed, forage, armor, forage, accuracy, forage, grit, speed · Fighter speed, might, accuracy, bleed, might, lifesteal, accuracy, speed · Survivor armor, grit, lifesteal, grit, armor, +1 heart, might, speed. Both border lanes grant speed or armor so the flanks lean toward the neighbour direction.
+- Adjacency: a ring node links to its parent one ring in, its side neighbours on the same ring **inside its own direction** and its two children one ring out. Rings never link across a direction border. A ring-4 node links to the notable over its lane pair; the two border lanes link to both keystones of that border.
+- **Crossing classes (decided 2026-09-15):** only through the gate at the center (own ring 1 → gate → the other ring 1). Border keystones can be taken from either side but are dead ends: `allocate` does not count a keystone as the adjacent node, so a keystone never opens the other direction. On chain that is one mask, `neighbors(id) & tree.bits & ~KEYSTONE_MASK`.
+- **Small and notable nodes cost 1 skill point, keystones cost 3** (decided 2026-09-15). Ring *n* is *n* points after the start; own notable 5, own border keystone 7; another class's notable 7, the keystone between the two other classes 9. The two keystones of a border share the same two ring-4 nodes, so without the 3-point price a pet at the rim would pick up both for 2 points. A direction holds 18 nodes after its start; 20 points buy one keystone plus most of the direction, or two keystones and a thin path; 30 buy about two keystones plus the whole direction.
+- Checked in the atlas: adjacency symmetric, every node reachable from every start through the gate.
+- New notable effects `[strawman]`: Thrifty auto-eat −25% cost, Apprentice +25% work XP, Bloodthirst lifesteal ×2 below half HP, Relentless +1 attack per day, Spite reflects 20% of damage taken.
+
+**Size.** A pet gets one point per level, level 1 included, so 20 at the level cap:
+
+| Tree | 20 points cover |
 |---|---|
-| 24 nodes | 79% (no real choice left) |
-| **48 nodes** | **40%** (about one direction plus its keystone, or two directions shallow) |
-| 64 nodes (full `u64`) | 30% |
+| 24 nodes | 83% (no real choice left) |
+| 48 nodes | 42% (about one direction plus its keystone, or two directions shallow) |
+| **64 nodes (full `u64`)** | **31%** (one keystone plus most of a direction) · 47% at the 30-point cap |
 | Path of Exile | 123 points / 1,325 nodes ≈ 9% |
 
-- **48 nodes.** With lineage (§7) a family needs 2–3 generations to try every direction.
-- Cost of growing: `Pet.tree` is already `u64`, so up to 64 nodes costs 0 bytes and rent is unchanged. Beyond 64, `2 × u64` adds 8 bytes per pet; `allocate` stays O(1); `Stats.fromTree` loops over the node count (negligible next to a fight). There is no node table on or off chain, only formulas in `rules/tree.ms`.
+- **Bonus points** (decided 2026-09-15): up to **+10** from outside leveling, e.g. skill books (§11) and the heir package (§7, its +1 per generation counts inside the 10). Hard cap **30** total; about 25 is an excellent pet, 30 is very rare. `Pet.bonus_points: u8` enforces the cap.
+- **64 nodes** (decided 2026-09-14, replaces 48). With lineage (§7) a family needs 3–4 generations to try every direction.
+- Cost: `Pet.tree` is already `u64`, so 64 nodes costs 0 bytes and rent is unchanged, but it fills the bitmap. Beyond 64, `2 × u64` adds 8 bytes per pet; `allocate` stays O(1); `Stats.fromTree` loops over the node count (negligible next to a fight). There is no node table on or off chain, only formulas in `rules/tree.ms`.
 - Node ids must be laid out so a later expansion never renumbers existing nodes.
-- The 48-node layout must grant the new attributes (speed, armor, accuracy, lifesteal, bleed) and keep each direction's identity.
-- `BRIEF.md` §3.9 still describes the old three-lane tree.
 
 ## 6. Leveling — Decided
 
-- Cap **20**. One skill point per level from level 2 (19 points).
+- Cap **20**. One skill point per level, level 1 included (20 points); up to 10 bonus points from books and lineage (§5), 30 total.
 - **XP comes only from working and fighting. No `$HBRN` level fee** (Decided); the `$HBRN` sink moves to items (§11). Each class levels through its own play `[strawman]`:
   - Worker: XP per epoch worked, scaled by work output;
   - Fighter: XP proportional to the harvest it robs, so a good raider levels faster;
@@ -158,7 +170,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
   `d ≤ 50: 100` · `50 < d ≤ 60: 70 + 30 × (60 − d)² / 100` · `60 < d ≤ 90: 70 − 20 × (d − 60) / 30`. Emission income follows `workPower²`, and `forage` declines on the same curve, so a worker keeps 49% of its income on day 60 and 25% on day 90 (Decided).
 - The heir carries `[strawman]`:
   - money **(Decided)**: inheritance tax 30% into the shared pot, 70% to the heir (replaces BRIEF's 30% heir · 20% block · 50% burn);
-  - +1 starting skill point per generation, capped at +5;
+  - +1 starting skill point per generation, capped at +5, inside the 10 bonus points (§5);
   - a free choice of region, so the family tries another class;
   - 1–2 heirloom slots (§11);
   - a slightly better talent rarity roll (§8).
@@ -408,10 +420,10 @@ Applied on 2026-09-14 as `BRIEF.md` rev 4 (D6, D13, D18, D19, D21, D25, D26 rewr
 
 Directions are settled (§0). What is left are numbers and a few mechanics inside those directions:
 
-1. **Tree layout**: the 48-node map, which nodes grant speed, armor, accuracy, lifesteal, bleed, and where Hibernate, Tithe and Bloodline sit; ids laid out so a later expansion never renumbers.
+1. **Tree layout**: sign off the 64-node draft (§5): effects of the five new notables, the size of each attribute node, one gate or also a narrow ring-2 bridge per border.
 2. **Talent numbers**: Mythic share and draft D multipliers are the curve to lock; kinds and the stat-driven take are decided.
 3. **Wild pets**: formula pets or a real-account army driven by `act` (after the ER probe); bot weight for the 500-slot floor; where the bot share goes; loot tracking; raids on players.
-4. **Items** (§11): item skill list and sizes, rarity table, mint price, buyback formula, market fee, wear, item robbery and death, storage in the ER.
+4. **Items** (§11): skill books (+1 skill point each, inside the 10 bonus points): source, price, rarity; item skill list and sizes, rarity table, mint price, buyback formula, market fee, wear, item robbery and death, storage in the ER.
 5. **Brain**: crank interval for `act(pet)` and the reward weights per persona for training.
 6. **Social** (§13): the action list and effect sizes; same-block only or cross-block relationships; how strongly friends and pairs interact with lineage.
 7. **Bonding** (§14): scale, decay, gift share and cap, refusal threshold, whether a hated pet can run away; how gifts reach L1 while the pet is delegated.
