@@ -121,7 +121,7 @@ Built in this order; balance and exact numbers come later (`BRIEF.md` §6, ROADM
 |---|---|---|
 | 1 | C-ABI export from `msc build --app=lib` (§7) | done: `@exportName` landed (`86c6afaf`, `734b5b14`) and installed from recompiler `cc7ea0b7` on 2026-09-16 (suite 3708/3708; Hibernal tests and digests unchanged by the new compiler) |
 | 2 | `rules/`: fixed action list, legal mask, apply functions for tick, bank, eat, allocate and attack settlement, minimal XP leveling | done 2026-09-16, below |
-| 3 | `sim/world.ms`: 20 blocks × 10 pets, 4 `act` rounds per epoch, heir takes a dead pet's slot, 120-epoch episodes | ready |
+| 3 | `sim/world.ms`: 20 blocks × 10 pets, 4 `act` rounds per epoch, heir takes a dead pet's slot, 120-epoch episodes | done 2026-09-17, below |
 | 4 | `sim/env/ffi.ms`: `reset(seed, envCount)`, `observe` into a flat `int32` buffer with the legal mask, `step(actions)` returning reward and done, teacher actions for behavior cloning | after 1–3 |
 | 5 | `train/`: behavior cloning, PPO, self-play pool, int8 export | after 4 |
 | 6 | `rules/policy.ms`: int8 inference, evaluated in the sim, then ROADMAP S4 on chain | after 5 |
@@ -147,6 +147,17 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 - Checks: `msc test rules/index.ms` 341/341; `sim/determinism.ms` native equals JS, `fights`, `tree` and `odds` unchanged, `economy` moved because `levelCost` left the digest. A 10-pet, 30-epoch loop with a naive policy (64 fights, 36 raids) prints the same digest on native and JS; its pets reach levels 16–20 by epoch 30.
 - Not in package 2 (ROADMAP P0b): the 64-node tree, the D26 loot formula, talent, decline and natural death, items, bonding, social.
 - Compiler bug found on the way, JS backend: a `uint64` `for` counter is emitted as a `Number`; arithmetic, free calls and struct literals wrap it in `BigInt()`, extension dot-call arguments do not, so `pet.tickTo(global, epoch)` throws `Cannot mix BigInt`. Repro `out/jsUint64/dotCall.ms`. `rules/` does not hit it; `sim/world.ms` will.
+
+### Package 3: the world and the teacher — Measured
+
+`sim/world.ms` holds the state (`Pet[]`, `GlobalConfig`, death and level-milestone epochs per slot) and the steps: `beginEpoch` (tick every living pet, hatch an heir into a slot whose pet died at least `GRACE_EPOCHS` ago, lineage +1), one `act` as three head steps `applyEconomy` → `applyNode` → `applyAttack`, and `endEpoch` (bury, split the wallet to block-mates). `sim/teacher.ms` is the heuristic teacher on top of `brain.ms` personas (slot ÷ 3 picks Cautious, Greedy, Vengeful) and `playEpisode(blocks, epochs, seed)`.
+
+- Each head gets its own mask on the state the previous head left, exactly as the four policies run inside `act`. A single joint mask per `act` was measured wrong: eating lowers the burrow and turns an attack the joint mask allowed into `Broke`. The env in package 4 therefore exposes three observe/step pairs per `act`, not one.
+- A rejected action counts in `stats.illegal` and applies nothing. The teacher runs 200 pets × 120 epochs with `illegal == 0`.
+- Teacher stake: `chooseStake` (continuous) → the highest `StakeLevel` whose price fits the budget; odds from `winChanceAgainst` with 64 runs (`TEACHER_ODDS_RUNS`), attack only above the persona threshold and with positive expected value.
+- Measured (`msc run sim/episode.ms`, seed 7, 26 s native): 1,892 fights, 82% attacker wins, 0 deaths, median level 10 on day 6 and 20 on day 29 (`GAME-DESIGN.md` §6 targets 6–7 and 30), wealth p90 ×1.17 and top ×1.22 of the median (flat: no talent, no items yet).
+- Checks: `msc test sim/teacher.ms` 348/348; `sim/determinism.ms` gained a fifth digest `world` (2 blocks × 30 epochs), identical on native and `--target=js`; the `uint64` dot-call bug is avoided by an `int32` day counter cast at the call.
+- Not yet: owner scripts (feed, talk, SKR), talent, items, bonding; each lands as a rule group plus a teacher rule plus a digest change.
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 

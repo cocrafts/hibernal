@@ -18,6 +18,8 @@ docs/      briefs and roadmap
 
 ```bash
 msc test rules/index.ms                              # rules suite
+msc test sim/teacher.ms                              # rules + world + teacher suite
+msc run sim/episode.ms                               # 200 pets × 120 epochs with the teacher
 msc run sim/curve.ms                                 # combat curve vs BRIEF §6.7
 msc run sim/determinism.ms                           # digests; must match the js build:
 msc build sim/determinism.ms --target=js --output=out/det.js && node out/det.js
