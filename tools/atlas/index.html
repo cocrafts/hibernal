@@ -341,7 +341,7 @@ td b.crit { color: var(--ember); }
 </style>
 
 <header class="masthead">
-	<div class="eyebrow">hibernal · rules/ · msc 0.2.54 · commit c80563f + gói 2 và audit 2026-09-17 chưa commit</div>
+	<div class="eyebrow">hibernal · rules/ · msc 0.2.54 · commit 3633004 · vòng tương tác + gói 3 sim/world.ms 2026-09-17 chưa commit</div>
 	<h1>Luật game đang có trong <code style="background:none;padding:0">rules/</code></h1>
 	<p class="lede">Mười ba file MetaScript, chỉ dùng số nguyên, không cấp phát. Cùng một mã nguồn build ra native, JS và <code>--os=solana</code>. Tất cả là hàm thuần: nhận input, trả output. Gói 2 thêm <code>level.ms</code>, <code>life.ms</code>, <code>actions.ms</code>: pet sinh ra, tick, ăn, cất tiền, allocate và đánh nhau đã chạy bằng code. Các mục đánh dấu <b>đã chốt</b> là thiết kế đã thống nhất hướng nhưng chưa code, số liệu còn chỉnh bằng sim, ghi đầy đủ trong <code>docs/GAME-DESIGN.md</code>, chưa có trong <code>rules/</code>.</p>
 	<p class="comment-hint"><strong>Bản local:</strong> trang gọi thẳng bản build JS của <code>rules/</code>. Sửa rules xong chạy <code>./tools/atlas/build.sh</code> rồi tải lại trang.</p>
@@ -366,6 +366,7 @@ td b.crit { color: var(--ember); }
 		<a href="#bonding">Gắn bó <span>đã chốt hướng</span></a>
 		<a href="#brain">Brain <span>on-chain · chốt</span></a>
 		<a href="#social">Xã hội <span>đề xuất</span></a>
+		<a href="#loop">Vòng tương tác <span>29 · số · tuner</span></a>
 		<a href="#decisions">Cần chốt <span>8 mục</span></a>
 		<a href="#gaps">Còn thiếu <span>todo</span></a>
 	</nav>
@@ -1238,6 +1239,169 @@ chooseStake:   min(maxStake(harvest_D), burrow × stake%)</div>
 			<p class="note">Quan hệ lưu 1 byte mỗi cặp trong <code>Block</code>: 10 slot là 45 cặp, 45 byte, không cần account mới. Sự kiện xã hội hiện trong replay và cho bản tin kể chuyện có drama thật để chia sẻ.</p>
 		</section>
 
+		<section id="loop">
+			<div class="section-head">
+				<div class="file-tag">sim/world.ms (gói 3, chưa có) · sim/tune.ms (chưa có) · so với BRIEF §3 · GAME-DESIGN §5–§14</div>
+				<h2>Vòng tương tác giả lập</h2>
+				<p>Mọi việc sim sẽ tái hiện và brain sẽ học, mỗi dòng theo dõi ba thứ: <b>có xảy ra</b> không, <b>luật</b> nào trong <code>rules/</code> làm việc đó, và <b>con số</b> đã chốt hay còn để trống. Bốn tác nhân: epoch (protocol), brain của pet, pet cùng block, và chủ. Chủ không phải pet nên self-play không tự sinh ra hành vi của chủ: <code>sim/world.ms</code> chạy chủ theo kịch bản.</p>
+			</div>
+
+			<pre class="mermaid">
+flowchart LR
+  subgraph epoch[Mỗi epoch · protocol]
+    settle[settle: phát hành, chia thưởng] --> hunger[đói −1 heart, sàn ăn tự động]
+    hunger --> age[tuổi: suy yếu ngày 50, chết già ngày 90]
+    age --> decay[bonding trôi về 0 · item mòn]
+  end
+  subgraph owner[Chủ · kịch bản]
+    feed[feed] --> bond[bonding +]
+    talk[talk, cap/ngày] --> bond
+    skr[mua SKR: skin, growth, insurance] --> bond
+    heir[claim heir trong grace]
+  end
+  subgraph act[act × 4 mỗi epoch · brain]
+    tick[tickTo] --> eco[kinh tế: nghỉ · bank · ăn · mua · bán · tặng]
+    eco --> tree[cây: 1 node hoặc giữ điểm]
+    tree --> fight[đánh: slot × mức stake, hoặc không]
+  end
+  subgraph block[Pet cùng block]
+    def[bị đánh: cap 3 trận, 1 cắn]
+    gift[nhận quà]
+    split[chia xác: 50% cho block]
+  end
+  epoch --> act
+  owner --> act
+  fight --> def
+  eco --> gift
+  age --> split
+  hunger --> split
+  split --> heir
+			</pre>
+
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>#</th><th>Tác nhân</th><th>Tương tác</th><th>Khi nào hợp lệ</th><th>Hiệu ứng</th><th>Luật</th><th>Trạng thái</th></tr></thead>
+					<tbody>
+						<tr class="group-row"><td colspan="7">Epoch (protocol, không cần ai ký)</td></tr>
+						<tr><td class="mono">E1</td><td>epoch</td><td>Phát hành và chia thưởng theo workPower</td><td>mỗi epoch, lazy khi pet tick</td><td>harvest += pending × growth</td><td class="mono">emission.ms settleGlobal · life.ms settle, tickTo</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">E2</td><td>epoch</td><td>Đói: −1 heart mỗi ngày, sơ sinh cách ngày</td><td>pet sống</td><td>dưới minHearts và đủ tiền thì tự mua bữa nhỏ nhất; 0 heart thì chết</td><td class="mono">emission.ms hungerOn · life.ms tickTo</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">E3</td><td>epoch</td><td>XP làm việc</td><td>mỗi epoch đã tick</td><td>xp += 7 × workPower, lên cấp theo curve</td><td class="mono">level.ms workXp, gainXp</td><td><span class="chip partial">số strawman</span></td></tr>
+						<tr><td class="mono">E4</td><td>epoch</td><td>Suy yếu theo tuổi và chết già</td><td>ngày &gt; 50 · ngày 90</td><td>stat từ cây × 100/70/50% · chết già chia 30/70</td><td class="mono">chưa có: life.ms ageFactor, tickTo</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">E5</td><td>epoch</td><td>Bonding trôi về 0</td><td>mỗi epoch</td><td>bonding −DECAY mỗi epoch, kẹp −127..127</td><td class="mono">chưa có: life.ms tickTo, Pet.bonding</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">E6</td><td>epoch</td><td>Item mòn</td><td>đang mặc</td><td>wear += 1 mỗi epoch, hỏng ở 100</td><td class="mono">chưa có: items.ms</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">E7</td><td>epoch</td><td>Winter: hoàn 3 điểm, gộp block &lt; 5 pet</td><td>epoch % 90 == 0</td><td>pointsUnspent += 3, tree bỏ 3 node</td><td class="mono">chưa có</td><td><span class="chip todo">hoãn</span></td></tr>
+						<tr><td class="mono">E8</td><td>epoch</td><td>Sàn 500 slot, pet hoang lấp slot trống</td><td>số pet thật &lt; 500</td><td>totalWorkPower += (500 − pet thật) × weight bot</td><td class="mono">chưa có: GlobalConfig.floorSlots</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">E9</td><td>epoch</td><td>Thiên phú lộ ở cấp 10</td><td>lên cấp 10, VRF</td><td>forage, might hoặc grit × hệ số bậc</td><td class="mono">chưa có: Pet.talentKind, talentGrade</td><td><span class="chip todo">chưa</span></td></tr>
+
+						<tr class="group-row"><td colspan="7">Brain của pet, 4 lần act mỗi epoch, ba đầu ra một lượt</td></tr>
+						<tr><td class="mono">P1</td><td>pet</td><td>Nghỉ</td><td>luôn</td><td>không đổi</td><td class="mono">actions.ms EconomyAction.Rest</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">P2</td><td>pet</td><td>Bank: harvest → burrow</td><td>harvest &gt; 0</td><td>tiền hết bị cướp được</td><td class="mono">actions.ms bank</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">P3</td><td>pet</td><td>Ăn small · medium · large</td><td>burrow ≥ giá, hearts &lt; max</td><td>+1/+2/+3 heart, chia 60 recycled · 30 burn · 10 protocol</td><td class="mono">actions.ms eat · emission.ms foodCost</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">P4</td><td>pet</td><td>Lấy 1 node cây hoặc giữ điểm</td><td>điểm ≥ giá node, node kề, cùng class trừ qua cổng</td><td>stat +10, notable bật Mod, keystone 3 điểm</td><td class="mono">actions.ms allocateNode, legalNodes · tree.ms</td><td><span class="chip partial">24 node, chốt 64</span></td></tr>
+						<tr><td class="mono">P5</td><td>pet</td><td>Đánh: chọn slot × mức stake ¼ ½ ¾ 1</td><td>còn lượt (1 + might÷100), target không shield, chưa đánh hôm nay, target &lt; 3 trận</td><td>thắng: loot ×95% + XP; thua: mất stake, −1 heart</td><td class="mono">actions.ms attackable, stakeAt, settleAttack · fight.ms</td><td><span class="chip partial">loot còn công thức rev 5</span></td></tr>
+						<tr><td class="mono">P6</td><td>pet</td><td>Mua item ở shop theo giá bậc</td><td>burrow ≥ giá, túi còn chỗ</td><td>gieo rarity và affix bằng VRF, tiền chia như food</td><td class="mono">chưa có: items.ms buy</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">P7</td><td>pet</td><td>Mặc · cởi item (4 ô)</td><td>có item trong túi</td><td>stat × (1 + affix)</td><td class="mono">chưa có: items.ms equip</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">P8</td><td>pet</td><td>Bán item cho protocol</td><td>có item không mặc</td><td>burrow += 50% giá mint × (1 − mòn); không có chợ P2P</td><td class="mono">chưa có: items.ms sell</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">P9</td><td>pet</td><td>Tặng HBRN cho pet cùng block</td><td>burrow ≥ quà, target sống</td><td>chuyển burrow → harvest target, ≤ GIFT_CAP mỗi epoch</td><td class="mono">chưa có: actions.ms gift</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">P10</td><td>pet</td><td>Tặng HBRN cho chủ</td><td>bonding ≥ ngưỡng, còn tiền ăn</td><td>gift_owed += burrow × share(bonding), cap mỗi epoch</td><td class="mono">chưa có: actions.ms giftOwner</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">P11</td><td>pet</td><td>Xã hội: kết bạn, tán tỉnh, chửi, làm hoà</td><td>1 action mỗi act</td><td>1 byte quan hệ mỗi cặp trong Block</td><td class="mono">GAME-DESIGN §13</td><td><span class="chip todo">hoãn</span></td></tr>
+
+						<tr class="group-row"><td colspan="7">Pet cùng block, phía bị động</td></tr>
+						<tr><td class="mono">N1</td><td>block</td><td>Bị đánh</td><td>≤ 3 trận vào mỗi ngày, ≤ 1 cắn</td><td>mất loot, có thể −1 heart, +20/+60 XP</td><td class="mono">actions.ms settleAttack · layout.ms fightsInOn</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">N2</td><td>block</td><td>Lượng cướp D26</td><td>attacker thắng</td><td>min(1.5 × stake, harvest, harvest × 2 might_a ÷ (might_a + grit_d)), rồi Pacifist −70%, ThickHide −50%</td><td class="mono">fight.ms lootFor (còn (1000 − grit) ÷ 1000)</td><td><span class="chip partial">đổi công thức</span></td></tr>
+						<tr><td class="mono">N3</td><td>block</td><td>Chia xác pet chết đói hoặc chết trận</td><td>hearts = 0</td><td>50% chia đều harvest bạn cùng block, 50% burn</td><td class="mono">life.ms bury</td><td><span class="chip done">có</span></td></tr>
+						<tr><td class="mono">N4</td><td>block</td><td>Thừa kế khi chết già</td><td>ngày 90, heir claim trong 7 epoch grace</td><td>30% vào pot, 70% cho heir; +1 điểm khởi đầu mỗi đời, tối đa +5; 1–2 ô gia bảo</td><td class="mono">chưa có: life.ms inherit</td><td><span class="chip todo">chưa</span></td></tr>
+
+						<tr class="group-row"><td colspan="7">Chủ, chạy theo kịch bản trong sim: chăm đều · theo đợt · bỏ bê · chỉ SKR</td></tr>
+						<tr><td class="mono">O1</td><td>chủ</td><td>Feed: chủ trả tiền bữa ăn</td><td>bonding ≥ ngưỡng từ chối</td><td>+heart như P3, bonding +FEED</td><td class="mono">chưa có: actions.ms feed</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">O2</td><td>chủ</td><td>Talk</td><td>≤ 1 lần mỗi epoch có tác dụng</td><td>bonding +TALK</td><td class="mono">chưa có</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">O3</td><td>chủ</td><td>Mua SKR: growth, insurance, skin</td><td>L1, chủ ký</td><td>growthMultiplierBps ≤ 12000 có hạn; insurance; bonding +SKR</td><td class="mono">layout.ms growthMultiplier*, insurance (có trường) · emission.ms growthBonus</td><td><span class="chip partial">trường có, action chưa</span></td></tr>
+						<tr><td class="mono">O4</td><td>chủ</td><td>Claim heir</td><td>trong grace 7 epoch</td><td>pet mới vào slot cũ với gói thừa kế</td><td class="mono">chưa có: life.ms born với heir</td><td><span class="chip todo">chưa</span></td></tr>
+						<tr><td class="mono">O5</td><td>chủ</td><td>Bỏ bê</td><td>không ký gì</td><td>bonding trôi xuống âm, pet ngừng tặng, rồi từ chối đồ ăn</td><td class="mono">E5 + P10 + O1</td><td><span class="chip todo">chưa</span></td></tr>
+					</tbody>
+				</table>
+			</div>
+			<p class="note">Đếm: 29 tương tác, 9 đã có luật, 5 có một phần, 13 chưa, 2 hoãn (Winter, xã hội). Cắt hẳn khỏi phạm vi train: chợ P2P (giá phải khám phá, brain 4k tham số không học được), pet bỏ nhà đi, đội quân pet hoang là account thật.</p>
+
+			<div class="section-head" style="margin-top:22px">
+				<h3>Con số: chốt · strawman · đề xuất · mở</h3>
+				<p class="note">"Chốt" = có trong code và test, hoặc GAME-DESIGN đã ký. "Strawman" = trong code nhưng chưa đo. "Đề xuất" = mình điền để không còn ô trống, chờ ký. Cột range là miền cho tuner bên dưới; ô không có range là số không tune (cấu trúc, không phải cân bằng).</p>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Nhóm</th><th>Knob</th><th class="num">Hiện tại</th><th>Range tune</th><th>Nguồn</th><th>Trạng thái</th></tr></thead>
+					<tbody>
+						<tr><td>phát hành</td><td>EMISSION_START · decay · sàn</td><td class="num">100.000 · ×¾ mỗi 90 · 5.000</td><td>—</td><td class="mono">emission.ms</td><td><span class="chip done">chốt</span></td></tr>
+						<tr><td>phát hành</td><td>sàn slot khi chia thưởng</td><td class="num">500</td><td>300–1.000</td><td>GAME-DESIGN §9, §10</td><td><span class="chip done">chốt, chưa code</span></td></tr>
+						<tr><td>phát hành</td><td>weight pet hoang</td><td class="num">= pet common cấp 20</td><td>cấp 10–20</td><td>GAME-DESIGN §10</td><td><span class="chip done">chốt</span></td></tr>
+						<tr><td>ăn</td><td>giá food gốc small · medium · large</td><td class="num">8 · 14 · 18 HBRN × (20 + cấp) ÷ 20</td><td>×0.5–×2</td><td class="mono">emission.ms foodCost</td><td><span class="chip partial">strawman</span></td></tr>
+						<tr><td>ăn</td><td>chia tiền tiêu: recycled · burn · protocol</td><td class="num">60 · 30 · 10 %</td><td>—</td><td class="mono">emission.ms</td><td><span class="chip done">chốt</span></td></tr>
+						<tr><td>ăn</td><td>minHearts tự ăn</td><td class="num">2</td><td>1–3</td><td class="mono">life.ms</td><td><span class="chip partial">strawman</span></td></tr>
+						<tr><td>lên cấp</td><td>trần cấp · điểm mỗi cấp · điểm thưởng</td><td class="num">20 · 1 (cấp 1 tính) · ≤ 10, tổng 30</td><td>—</td><td>BRIEF §3.1</td><td><span class="chip done">chốt</span></td></tr>
+						<tr><td>lên cấp</td><td>curve XP tới cấp L</td><td class="num">190 × (L − 1) + (L − 1)³</td><td>hệ số 120–300 · mũ 2–3</td><td class="mono">level.ms xpToReach</td><td><span class="chip partial">strawman</span></td></tr>
+						<tr><td>lên cấp</td><td>XP làm việc · cướp · thủ thắng · thủ thua · sơ sinh</td><td class="num">7 × workPower · 3/HBRN trần 500 · 60 · 20 · 190</td><td>4–12 · 1–6, trần 200–1.000 · 30–120 · 10–40 · 0–400</td><td class="mono">level.ms</td><td><span class="chip partial">strawman</span></td></tr>
+						<tr><td>lên cấp</td><td>mục tiêu: cấp 10 · cấp 20</td><td class="num">ngày 6–7 · ngày 30</td><td>—</td><td>GAME-DESIGN §6</td><td><span class="chip done">chốt, dùng làm objective</span></td></tr>
+						<tr><td>cây</td><td>node · giá node · keystone · start · node thường</td><td class="num">64 (code 24) · 1 · 3 · +30 · +10</td><td>node +6–+14</td><td class="mono">tree.ms · stats.ms</td><td><span class="chip partial">layout chốt, code 24</span></td></tr>
+						<tr><td>cây</td><td>5 notable mới · 6 keystone biên · cỡ node attribute</td><td class="num">—</td><td>—</td><td>GAME-DESIGN §17.1</td><td><span class="chip todo">mở</span></td></tr>
+						<tr><td>đánh</td><td>lượt mỗi epoch · trận vào · cắn · stake tối thiểu</td><td class="num">1 + might÷100 · 3 · 1 · 5 HBRN</td><td>—</td><td class="mono">fight.ms · layout.ms</td><td><span class="chip done">chốt</span></td></tr>
+						<tr><td>đánh</td><td>loot mỗi stake · phí protocol · cắt Pacifist · ThickHide</td><td class="num">×1.5 · 5% · −70% · −50% (3 trận đầu)</td><td>×1.2–×2</td><td class="mono">fight.ms</td><td><span class="chip done">chốt rev 5</span></td></tr>
+						<tr><td>đánh</td><td>combat: HP, DAMAGE, roll, dodge, crit, armor, haste, bleed</td><td class="num">39 hằng số</td><td>—</td><td class="mono">fight.ms · sim/curve.ms</td><td><span class="chip done">chốt rev 5, đo 4.000 trận/ô</span></td></tr>
+						<tr><td>vòng đời</td><td>tuổi thọ · suy yếu · grace · thuế thừa kế</td><td class="num">90 ngày · 100/70/50% tại 50/60/90 · 7 epoch · 30% pot, 70% heir</td><td>—</td><td>GAME-DESIGN §7</td><td><span class="chip done">chốt, chưa code</span></td></tr>
+						<tr><td>vòng đời</td><td>gói thừa kế: điểm khởi đầu · gia bảo</td><td class="num">+1 mỗi đời, max +5 · 1–2 ô</td><td>—</td><td>GAME-DESIGN §7</td><td><span class="chip done">chốt</span></td></tr>
+						<tr><td>thiên phú</td><td>tỉ lệ bậc Common → Mythic</td><td class="num">60 · 28 · 10 · 1.8 · 0.2 %</td><td>Mythic 0.1–0.5%</td><td>GAME-DESIGN §8 bản D</td><td><span class="chip partial">chốt tỉ lệ, hệ số chờ ký</span></td></tr>
+						<tr><td>thiên phú</td><td>hệ số nhân theo bậc</td><td class="num">×1.0–1.1 · 1.1–1.2 · 1.3–1.4 · 1.6 · 2.0</td><td>Mythic ×1.8–×2.5</td><td>GAME-DESIGN §8 bản D</td><td><span class="chip partial">bản D, đo đuôi ×20</span></td></tr>
+						<tr><td>item</td><td>tỉ lệ bậc · affix mỗi stat</td><td class="num">55 · 30 · 12 · 2.5 · 0.5 % · +2 · 4 · 7 · 10 · 13 %</td><td>affix ×0.7–×1.5</td><td>GAME-DESIGN §11</td><td><span class="chip partial">strawman</span></td></tr>
+						<tr><td>item</td><td>giá mint theo bậc (shop protocol)</td><td class="num">30 · 90 · 300 · 1.200 · 4.000 HBRN</td><td>×0.5–×3</td><td>đề xuất: ¼ ngày → 1 tháng thu nhập trung vị (118 HBRN/ngày dưới sàn 500)</td><td><span class="chip todo">đề xuất</span></td></tr>
+						<tr><td>item</td><td>mòn · bán lại</td><td class="num">1%/epoch mặc, hỏng 100 · 50% giá mint × (1 − mòn)</td><td>0.5–2%/epoch</td><td>GAME-DESIGN §11 buyback; mòn đề xuất</td><td><span class="chip todo">đề xuất</span></td></tr>
+						<tr><td>item</td><td>túi · chết thì đồ đi đâu</td><td class="num">4 ô mặc + 4 ô túi · đồ mặc theo gia bảo, đồ túi bán lại cho pot</td><td>—</td><td>đề xuất</td><td><span class="chip todo">đề xuất</span></td></tr>
+						<tr><td>gắn bó</td><td>thang · trôi mỗi epoch · feed · talk · SKR</td><td class="num">−127..127 · −2 · +6 · +2 (1/ngày) · +15</td><td>trôi −1..−4 · feed +3..+10</td><td>đề xuất: bỏ bê 2 tuần thì từ 60 về 30</td><td><span class="chip todo">đề xuất</span></td></tr>
+						<tr><td>gắn bó</td><td>ngưỡng tặng chủ · share · cap · ngưỡng từ chối ăn</td><td class="num">≥ 40 · bonding ÷ 127 × 5% burrow mỗi epoch · 20 HBRN/epoch · &lt; −40</td><td>share 2–10% · cap 10–50</td><td>đề xuất, giữ tiền ăn 3 ngày trước khi tặng</td><td><span class="chip todo">đề xuất</span></td></tr>
+						<tr><td>tặng pet</td><td>cap quà cho bạn cùng block</td><td class="num">10% burrow mỗi epoch</td><td>5–20%</td><td>đề xuất</td><td><span class="chip todo">đề xuất</span></td></tr>
+						<tr><td>brain</td><td>act mỗi epoch · độ dài episode · reward</td><td class="num">4 · 120 epoch · Δ(harvest + burrow) − phạt heart, chết</td><td>reward weight theo persona</td><td>ON-CHAIN-AI §6, §8.3</td><td><span class="chip partial">strawman</span></td></tr>
+					</tbody>
+				</table>
+			</div>
+
+			<div class="two" style="margin-top:14px">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Tool tìm số: sim/tune.ms</h3>
+					<div class="formula">knobs   = vector các ô có "Range tune" ở trên (khoảng 20 số)
+world   = sim/world.ms: 20 block × 10 pet, 120 epoch, chủ theo 4 kịch bản,
+          pet chạy heuristic brain.ms (v0) rồi policy đã train (v1+)
+score   = Σ w_i × |metric_i − target_i| ÷ target_i   (nhỏ hơn là tốt)
+search  = hill-climb từng knob (như combat rev 5) → 30 khởi động lại ngẫu nhiên
+          mỗi lần đo: 8 seed × 120 epoch, ghi out/tune/&lt;run&gt;.tsv
+output  = bảng knob → giá trị → score, nạp vào atlas mục này</div>
+					<p class="note">Cùng cách đã dùng cho combat rev 5 (<code>sim/curve.ms</code> + hill-climb), nhưng chạy trên cả vòng chứ không chỉ một trận. Knob đi qua struct <code>Knobs</code> mà <code>world.ms</code> truyền xuống; hằng số <code>export const</code> trong <code>rules/</code> là giá trị mặc định của struct đó, không viết lại.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Metric mục tiêu (objective)</h3>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th>Metric</th><th class="num">Mục tiêu</th><th>Nguồn</th></tr></thead>
+							<tbody>
+								<tr><td>ngày đạt cấp 10 · cấp 20 (trung vị)</td><td class="num">6–7 · 30</td><td>GAME-DESIGN §6</td></tr>
+								<tr><td>thu nhập p50 · p90 · p99 · top (× trung vị)</td><td class="num">1 · 2.6 · 3.8 · 17–21</td><td>GAME-DESIGN §9 bản D</td></tr>
+								<tr><td>pet chết đói khi còn tiền</td><td class="num">0</td><td>ON-CHAIN-AI §5</td></tr>
+								<tr><td>trận thắng/ngày của fighter ×1 · ×2</td><td class="num">1 · 2.3</td><td>GAME-DESIGN §8 đo</td></tr>
+								<tr><td>tỉ lệ lượt đánh có winChance &lt; 30%</td><td class="num">&lt; 5%</td><td>ON-CHAIN-AI §5</td></tr>
+								<tr><td>hoàn vốn 4 ô Mythic (×2.3 thu nhập)</td><td class="num">≤ 30 ngày</td><td>GAME-DESIGN §11</td></tr>
+								<tr><td>tiền về chủ chăm đều · bỏ bê (% thu nhập pet)</td><td class="num">5–10% · 0</td><td>đề xuất</td></tr>
+								<tr><td>đời 2 đi xa hơn đời 1 (node lấy được)</td><td class="num">+1–+3</td><td>GAME-DESIGN §7</td></tr>
+								<tr><td>BRIEF §6 invariant: tổng tiền bảo toàn, không pet nào &gt; 2.5% pot</td><td class="num">đúng</td><td>BRIEF §6</td></tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+
+			<div class="panel gaps" style="margin-top:14px">
+				<div class="gap-row"><span class="chip partial">thứ tự</span><p><b>1.</b> <span class="chip done">có</span> Gói 3 <code>sim/world.ms</code> + <code>sim/teacher.ms</code> trên luật đã có (E1–E3, P1–P5, N1, N3), chủ kịch bản rỗng: 200 pet × 120 epoch trong 26 s, 0 illegal, cấp 10 ngày 6, cấp 20 ngày 29, digest <code>world</code> native = JS. Mỗi head một mask trên state head trước để lại (mask chung một lượt bị sai: ăn xong thì stake thành Broke). <b>2.</b> Land từng nhóm luật theo bảng trên, mỗi nhóm kèm test và một dòng trong <code>determinism.ms</code>: vòng đời (E4, N4, O4) → item (E6, P6–P8) → bonding (E5, P10, O1–O3, O5) → quà (P9) → sàn 500 và thiên phú (E8, E9). <b>3.</b> <code>sim/tune.ms</code> chạy với heuristic để chốt số v0. <b>4.</b> Gói 4–6 train; policy đã train thay heuristic trong tune, chạy lại tune → train một vòng nữa.</p></div>
+				<div class="gap-row"><span class="chip partial">đổi cây</span><p>Cây 64 node đổi kích thước đầu ra allocate (24 → 64) và mask; làm trước khi train nghiêm túc, sau world.ms cũng được vì checkpoint có stamp engine version và bị từ chối khi luật đổi.</p></div>
+				<div class="gap-row"><span class="chip partial">nhớ</span><p>Brain thấy thiên phú và bonding của chính nó trong observation (ẩn với người chơi khác, không ẩn với nó). Chủ trong sim là kịch bản, không phải agent: pet học phản ứng với chủ, không học điều khiển chủ.</p></div>
+			</div>
+		</section>
+
 		<section id="decisions">
 			<div class="section-head">
 				<div class="file-tag">docs/GAME-DESIGN.md §0 · §17</div>
@@ -1290,7 +1454,7 @@ chooseStake:   min(maxStake(harvest_D), burrow × stake%)</div>
 				<div class="gap-row"><span class="chip partial">một phần</span><p><b>Mod</b>: Scavenger, ThickHide, GlassCannon đã có tác dụng. Pacifist mới có phần cấm tấn công và giảm loot, chưa có Forage +30%. Overtime và Cannibal chưa được dùng ở đâu.</p></div>
 				<div class="gap-row"><span class="chip partial">chưa code</span><p><b>Cây vòng tròn 64 node</b>: đã chốt cả layout (mục Cây kỹ năng), chưa vào <code>rules/tree.ms</code>.</p></div>
 				<div class="gap-row"><span class="chip partial">chưa code</span><p><b>Keystone trong BRIEF</b>: Hibernate, Tithe, Bloodline đã có chỗ trong cây 64 node, chưa có trong code.</p></div>
-				<div class="gap-row"><span class="chip todo">chưa có</span><p><b>S1</b>: sim cả block (200 pet, 120 epoch, kiểm invariant BRIEF §6), mô phỏng thiên phú, dòng họ, item, gắn bó, pet hoang; kèm tool tự chỉnh số (ROADMAP S2). Hiện có <code>sim/curve.ms</code> và <code>sim/determinism.ms</code>; bước kế là <code>sim/world.ms</code> (gói 3: 20 block × 10 pet, 4 lần act mỗi epoch, 120 epoch).</p></div>
+				<div class="gap-row"><span class="chip partial">gói 3</span><p><b>S1</b>: <code>sim/world.ms</code> + <code>sim/teacher.ms</code> chạy 200 pet × 120 epoch với thầy heuristic, digest <code>world</code> trong <code>determinism.ms</code>. Chưa có: kiểm invariant BRIEF §6 tự động, thiên phú, dòng họ ngoài heir cùng region, item, bonding, chủ kịch bản.</p></div>
 				<div class="gap-row"><span class="chip todo">chặn</span><p><b>Lên chain</b>: probe MetaScript trên ER đang làm ở session khác theo <code>docs/SOLANA.md</code> (R2 + R12 → R3 → R6). R12, mọi <code>const</code> ngoài file entry làm link lỗi dưới <code>--os=solana</code>.</p></div>
 			</div>
 		</section>
