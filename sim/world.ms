@@ -12,7 +12,8 @@ import {
 	StakeLevel,
 	NodeMask,
 	AttackMask,
-	splitmix,
+	mixSeeds,
+	fightSeed,
 	attackHoldMask,
 } from "../rules/index";
 
@@ -53,7 +54,6 @@ export struct World {
 	epoch: uint64;
 	round: int32;
 	seed: uint64;
-	draws: uint64;
 	stats: WorldStats;
 }
 
@@ -87,7 +87,6 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		epoch: 0,
 		round: 0,
 		seed: seed,
-		draws: 0,
 		stats: { fights: 0, wins: 0, deaths: 0, heirs: 0, illegal: 0 },
 	};
 }
@@ -230,8 +229,8 @@ export function applyAttack(this world: World, index: int32, choice: int32): Wor
 	const level = (choice % STAKE_LEVELS) as StakeLevel;
 	const target = blockStart(index) + slot;
 	if (slot < 0 || slot >= BLOCK_SLOTS || target == index) { return world.counted(true); }
-	const draws = world.draws + 1;
-	const seed = splitmix(world.seed ^ (draws * 0x9e3779b97f4a7c15));
+	const entropy = mixSeeds(world.seed, pet.blockId as uint64);
+	const seed = fightSeed(entropy, pet.slot as int32, slot, world.epoch, world.round);
 	const settled = pet.settleAttack(pets[target], level, world.global, world.epoch, seed);
 	if (!settled.ok) { return world.counted(true); }
 	pets[index] = settled.value.attacker;
@@ -240,7 +239,6 @@ export function applyAttack(this world: World, index: int32, choice: int32): Wor
 	return {
 		...world,
 		global: settled.value.global,
-		draws: draws,
 		stats: { ...world.stats, fights: world.stats.fights + 1, wins: world.stats.wins + won },
 	};
 }
