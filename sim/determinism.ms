@@ -13,6 +13,7 @@ import {
 	oddsAgainst,
 	modsFromMask,
 } from "../rules/index";
+import { playEpisode } from "./teacher";
 
 struct Digest {
 	value: uint64;
@@ -103,11 +104,23 @@ function digestOdds(): uint64 {
 	return digest.absorb(packed).value;
 }
 
+function digestWorld(): uint64 {
+	const world = playEpisode(2, 30, 11);
+	let digest: Digest = { value: 3 };
+	for (let index = 0; index < world.pets.length; index++) {
+		const pet = world.pets[index];
+		digest = digest.absorb(pet.harvest ^ (pet.burrow << 1) ^ ((pet.xp as uint64) << 40));
+		digest = digest.absorb((pet.hearts as uint64) ^ ((pet.level as uint64) << 8) ^ pet.tree.bits);
+	}
+	return digest.absorb((world.stats.fights as uint64) ^ ((world.stats.wins as uint64) << 16) ^ world.global.burned).value;
+}
+
 function main(): int32 {
 	console.log("fights   " + String(digestFights(20000)));
 	console.log("tree     " + String(digestTree()));
 	console.log("economy  " + String(digestEconomy()));
 	console.log("odds     " + String(digestOdds()));
+	console.log("world    " + String(digestWorld()));
 	return 0;
 }
 process.exit(main());
