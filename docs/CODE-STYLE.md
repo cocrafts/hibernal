@@ -1,6 +1,6 @@
 # MetaScript code style
 
-How to write MetaScript that reads as MetaScript, not as TypeScript with integer types. Every rule here was run against `msc 0.2.54` (C backend, plus JS and `--os=solana` where noted) on 2026-09-12; the protocol and serialization section (§15) on 2026-09-13, re-run on recompiler HEAD `b07a547f`. Where the language docs and the compiler disagree, the compiler wins and the disagreement is listed in §13. Re-run the probe before trusting a claim that is older than the compiler you hold.
+How to write MetaScript that reads as MetaScript, not as TypeScript with integer types. Every rule here was run against `msc 0.2.54` (C backend, plus JS and `--os=solana` where noted) on 2026-09-12; the protocol and serialization section (§15) on 2026-09-13, re-run on recompiler HEAD `b07a547f`; `BitSet` (§4) re-run on 2026-09-15 against the installed `msc 0.2.54`, C and JS; the array kinds in §5 measured 2026-09-15 on C, `--release`; the pointer and view kinds in §5 (`Borrow<T>` and its neighbours) measured 2026-09-15 against recompiler `main` `b707175d` built from source, C and JS. Where the language docs and the compiler disagree, the compiler wins and the disagreement is listed in §13. Re-run the probe before trusting a claim that is older than the compiler you hold.
 
 This file is project-agnostic. Copy it into any MetaScript repo; project-specific constraints go in that repo's `CLAUDE.md`.
 
@@ -9,7 +9,7 @@ This file is project-agnostic. Copy it into any MetaScript repo; project-specifi
 1. **`match` when a value picks one of several cases; `if` for conditions.** Enum members, literal values and small tables read best as `match`. Guards, early returns, thresholds and clamps stay `if`. Never `switch`.
 2. **Fail with `Result<T, E>`, not sentinels, booleans, or `out` flags.** A function that can fail returns `Result`. Callers `try` it. Errors are `enum`s, not strings, unless the error is for a human.
 3. **Loop with `for..of`, then indexed `for`, then `while`.** `while` only when the loop has no natural sequence (converge, drain, scan until a condition).
-4. **Values by default: `struct`, `enum`, `BitSet<E>`, sized integers.** Reach for `interface`/`class` only when you need sharing or identity. Never bare `number`.
+4. **Values by default: `struct`, `enum`, `BitSet<E>`, `Vec<T>`, sized integers.** Reach for `interface`/`class`/`T[]` only when you need sharing or identity. Pass arrays as `Span<T>`. Never bare `number`.
 5. **Say the width.** `int32` for index, count, id, small stat; `int64`/`uint64` for money, time, hashes; `as` at every narrowing and at every signed/unsigned boundary.
 6. **One `await`, three tools.** `async` for I/O, `spawn` for CPU work in parallel, `actor` for a long-lived stateful service. Shared mutable state is `Locked<T>` or it does not exist (§12).
 
@@ -101,7 +101,7 @@ Anti-pattern: returning `-1`, returning `boolean` plus an `out` value, `if (!ok)
 ## 3. Loops
 
 ```ms
-for (const pet of pets) { … }                       // arrays, Vec, Span
+for (const pet of pets) { … }                       // arrays, Vec, Span, BitSet<E>
 for (let i = 0; i < n; i++) { … }                    // index needed, or integer range
 for (const k of m) { use(k, m.get(k)); }            // Map: keys (toItems protocol, §15)
 m.forEach((v: int32, k: string): void => { … });
@@ -109,7 +109,7 @@ while (hp > 0 && round < MAX) { … }                  // condition-driven only
 ```
 
 - No range literal and no std `range()`. A generator `function* range(n)` works on the host but allocates, so it is not for on-chain code. For integer ranges the indexed `for` is the idiom.
-- `for..of` over a **string** and over a **fixed array `T[N]`** fail in C codegen; index-loop those. Over `Map` iterate directly (keys), or `values()`/`forEach`; `for (const [k, v] of m)` compiles and yields garbage. Any type becomes iterable with a `toItems` extension (§15).
+- `for..of` over a **string** and over a **fixed array `T[N]`** fail in C codegen; index-loop those. That includes a `T[N]` struct field and one reached through `Ptr<T>`; `.length` on it fails the same way, so loop to the literal size. Over `Map` iterate directly (keys), or `values()`/`forEach`; `for (const [k, v] of m)` compiles and yields garbage. Any type becomes iterable with a `toItems` extension (§15).
 - No labeled loops. Restructure or use a flag.
 - `int32[]` has no `map`/`filter`/`reduce`/`forEach`/`sort(cmp)`; write the loop. `splice` on `int32[]` crashes at runtime.
 
@@ -136,17 +136,26 @@ enum Mod {
 const mods: BitSet<Mod> = Mod.ThickHide | Mod.Pacifist;
 if (mods.has(Mod.Pacifist)) { … }
 const next = mods.incl(Mod.Cannibal).excl(Mod.ThickHide);
-let s: BitSet<Mod> = Mod.Overtime | Mod.Overtime;    // single-member set
+const none = 0 as BitSet<Mod>;                        // empty set, there is no literal
+let s = none.incl(Mod.Overtime);                      // single-member set
 s = s | Mod.Scavenger;                                // `|=` does not parse
+const kept = mods.intersection(next);                 // or mods & next
+const lost = mods.difference(next);                   // no operator
+if (lost.isSubsetOf(mods) && lost.size() == 1) { … }
+for (const m of mods) { … }                           // ThickHide, Pacifist: ordinal order
+const text = mods.toString();                         // "{ThickHide, Pacifist}"
 ```
 
-- `BitSet<E>` replaces `int32` flag fields and `(flags & F) != 0`. Repr follows the member count (`uint8` for ≤ 8 members).
-- An integer mask converts in one cast: `(mask as uint8) as BitSet<Mod>` (C, JS, `--os=solana` build); back with `m as uint32`.
+- `BitSet<E>` replaces `int32` flag fields and `(flags & F) != 0`. Repr follows the member count: `uint8` ≤ 8, `uint16` ≤ 16, `uint32` ≤ 32, `uint64` ≤ 64, then a byte array up to 65536 members (`sizeof` 1, 2, 8, 13 for 6, 15, 40, 100 members).
+- The whole surface is methods that return a new set or a value; none mutates. `has`, `incl`, `excl`, `isEmpty`, `size`; `union`, `intersection`, `symmetricDifference` (shorthand `|` `&` `^`, a bare member joins from either side), `difference` (no operator); `isSubsetOf`, `isSupersetOf`, `isDisjointFrom`; `toItems`, `toString`; `hash` on C only (it is what makes a set a `HashMap` key). `==`/`!=` compare two sets of the same enum.
+- `for (const m of s)` visits the members in ordinal order on every band. It goes through `toItems`, which allocates, as does `toString`: keep both out of on-chain code.
+- An integer mask converts in one cast: `(mask as uint8) as BitSet<Mod>` at the band's width; back with `m as uint32`.
+- Text is `s.toString()` (`{ThickHide, Pacifist}`, `{}` when empty), right inside a template, `+` and `+=`. `` `${s}` ``, `"x " + s` and `String(s)` are a C compile error and print the raw word on JS; `console.log(s)` prints `<BitSet>` on C.
+- Never `Mod.X as BitSet<Mod>`: it compiles and reads the ordinal as the mask (`Mod.Scavenger` becomes `{Overtime}`). `const s: BitSet<Mod> = Mod.X` is a type error; write `(0 as BitSet<Mod>).incl(Mod.X)`. `& ~Mod.X` and `~s` are type errors: use `.excl` or `.difference`. `s <= t` and `s == Mod.X` are rejected: use `isSubsetOf` and `has`.
+- The chain lane was not re-run on 2026-09-15: every `--os=solana` build on the installed runtime, a known-good probe included, stops at `#include <time.h>` in `runtime/manual.h`.
 - An enum is an `int32_t` in emitted C and `enum E: uint8 { … }` does not parse. A fixed-width layout (an on-chain account) stores the `uint8` and exposes the enum through a view extension.
-- Never `Mod.X as BitSet<Mod>`: it compiles and is silently wrong. Never `& ~Mod.X`: use `.excl`.
 - Cast enum ↔ integer explicitly: `r as int32`, `1 as Region`. Arithmetic on a bare enum prints garbage.
 - `r.toString()` and `String(r)` give the member name on both backends; `"" + r` and `` `${r}` `` give the name on C but the ordinal on JS, so call `.toString()`. A `toString` extension on an enum is honored only by an explicit `r.toString()` (§15). Other extension functions on enums are called as `label(r)`, not `r.label()`.
-- BitSet cannot be iterated; loop the enum members by ordinal if you must.
 
 ## 5. Structs, interfaces, classes
 
@@ -176,6 +185,150 @@ const [protocol, winner] = split(999);
 - Prefer a tuple return `[a, b]` for two results over `out` parameters; use `out` when the callee fills a large struct in place. A struct literal can be assigned directly to an `out` param or an existing `let`.
 - `interface` = reference, refcounted, built from an object literal; `class` = `new`, methods, `implements`. Method **signatures** inside an `interface` do not parse; use a function-typed field.
 - `distinct` types (`type Slot = distinct int32`) block implicit conversion both ways; arithmetic on them is a compiler crash today, so `as int32` first.
+
+### Arrays: `Array<T>` (aka `T[]`), `Vec<T>`, `Span<T>` (measured 2026-09-15)
+
+Three kinds, and the choice is about **ownership**, not speed. Speed follows from it.
+
+| | What it is | Assignment | Owns the data |
+|---|---|---|---|
+| `T[]`, `Array<T>` | a **reference** to a heap array (`createRef(createArray(T))`) | aliases — two names, one array | yes, shared |
+| `Vec<T>` | the array **value**; the descriptor lives inline in whatever holds it | **copies** | yes, exactly one owner |
+| `Span<T>` | a **view**: pointer + length, no header | aliases the viewed memory | no |
+
+`T[]` and `Array<T>` are the same type; the spelling is cosmetic.
+
+```ms
+const col: Vec<Item> = new Array(8);     // owned storage, one owner
+const shared: Item[] = [];               // shared handle, aliases on assignment
+const all: Span<Item> = col;             // view over the whole thing
+const mid = col[2..5];                   // slice: elements 2, 3, 4 — end-exclusive
+```
+
+**Pick by ownership:**
+
+- **`Vec<T>` for owned storage** — a field whose data belongs to exactly one structure and is never aliased. Columns of a scene, rows of a table, a buffer a system owns. This is the default for system-programming data.
+- **`Array<T>` / `T[]` for shared handles** — two structures point at one array and both may write; you hand it out and keep using it; you need `T[] | null`; identity matters.
+- **`Span<T>` for passing and slicing** — never stored as the owner, always a window onto someone else's memory.
+
+**Why `Vec` is the default for owned data.** When the owner is itself a reference (an `interface`), `owner.col[i]` on an `Array<T>` costs two dependent loads — reference, then array header — while a `Vec<T>` descriptor sits inline in the owner, costing one. Measured on a 1M-element sweep through an `interface` field, 35 samples per variant, one process each with a warm-up pass: `Vec<T>` **0.64 ms** median against `Array<T>` **1.70 ms** and `T[]` **1.64 ms** — **2.6×**. A `Vec` field also carries no refcount, so a structure with thirteen `Vec` columns has thirteen fewer refcounted objects than the `Array` version.
+
+**Hoisting buys nothing.** `const c = someArray;` before a loop measures the same as indexing through the owner (1.64 → 1.59 ms, inside the noise). Hoist for readability, never for speed.
+
+**The copy trap.** Binding a `Vec` to a plain local copies it, and writes through the copy are silently discarded:
+
+```ms
+const hoisted = col;      // Vec: a COPY
+hoisted[0] = 99;
+console.log(col[0]);      // 10 — the write went nowhere
+
+const view: Span<int32> = col;
+view[0] = 77;
+console.log(col[0]);      // 77 — a view writes through
+```
+
+The same line on an `Array<T>` writes through, because it aliases. Carrying the JS habit of "assign the array to a shorter name" into `Vec` code loses data with no diagnostic.
+
+**Passing a `Vec` to a function.** A `Vec<T>` parameter is a copy, so the checker rejects writing to it (`cannot mutate value-type parameter`) — that error is a feature here, telling you the write would have gone nowhere. `Span<T>` is the parameter form that both compiles and writes through:
+
+```ms
+function propagate(local: Span<Transform>, world: Span<Transform>, n: int32): void { … }
+propagate(scene.local, scene.world, n);          // Vec → Span coerces implicitly
+```
+
+**What a `Span` can do.** `.length`, indexing for read and write, `for..of`, slicing a slice, being returned from a function, and being a struct field — all measured, all writing through to the original:
+
+```ms
+struct Window { view: Span<Item>; base: int32; }
+
+function windowOf(col: Span<Item>, from: int32, count: int32): Window {
+	return { view: col[from..from + count], base: from };
+}
+```
+
+`Vec<T>`, `Array<T>`, `T[N]` and `string` all coerce implicitly to `Span<T>` (`Span<char>` for a string). Use a `Span` window instead of passing `(array, offset, count)` and doing the index arithmetic by hand — the bounds travel with the view.
+
+A `Span<char>` over a string is a view of **bytes**: `"héllo"` gives 6, matching `.byteLength`, not the 5 you would count on screen. Native gained that only at recompiler `ba16897a`; JS still lowers the coercion to the string object itself, so it answers 5, reads every element as `0`, and refuses `s[a..b]` outright. Until that lands, a `Span<char>` over a string is native-only — keep it out of anything that has to agree across the two backends, `sim/determinism.ms` above all.
+
+All three allocate, so none of this belongs in on-chain code (§11).
+
+### Pointers and views: `Borrow<T>` and its neighbours (measured 2026-09-15)
+
+Seven kinds give access to memory that someone else owns. Pick by what the receiver may do with it and how long it may hold it.
+
+| Kind | What it is | Emitted C | Writes | May outlive the call |
+|---|---|---|---|---|
+| value parameter `v: T` | read-only view of the caller's value | `const T*` when `T` is over 24 bytes, a copy otherwise | compile error | no |
+| `ref v: T`, `out v: T` | the caller's location | `T*` | reach the caller | no |
+| `Span<T>` | pointer + length over an array | a struct; an `extern` parameter becomes `(T*, int64_t)` | reach the array | as a field, by contract only |
+| `Borrow<T>` | read-only pointer that owns nothing | `const T*` | compile error | no (design below) |
+| `Ptr<T>` | raw, untraced pointer | `T*` | yes | yes; you own the lifetime |
+| `Readonly<T>` | deep read-only view of a reference or array | not measured | compile error | yes (§12) |
+| `Cursor<T>` | non-owning link to a `class`/`interface` value; accepts `null` | not measured | not measured | yes; nothing tracks it |
+
+What to use, today:
+
+- **Read a struct:** a value parameter. Structs over 24 bytes already go by pointer (`readBig(const Big* big)`); a `Borrow<T>` parameter emits identical C and adds nothing.
+- **Change the caller's struct:** `ref`. A generic `ref box: Box<T>` does not bind `T` on `b707175d` (`cannot instantiate: 'T'`, even as `put<int32>(box, 5)`); a compiler fix is pending.
+- **Hand array data to C for one call:** an `extern` parameter `data: Borrow<T>` called with `arr[0]`. C receives `&arr[0]` as `const T*`, from a `let` or a `const` array alike. `import { f } from "x.h"` maps a `const` pointer to a scalar (`const float*`) to `Borrow<float32>` for you; a pointer to a struct maps to `Ptr<S>`. The C side may read or copy during the call and must not keep the pointer. When the C side takes `(const T*, int64_t count)`, an `extern` `Span<T>` parameter works too.
+- **Overlay a struct on raw memory** (account data, a mapped buffer): `address as Ptr<T>`; writes land in place. `Ptr<T>` does not accept `arr[0]`, and there is no address-of operator.
+- **Read big structs in a hot loop:** index and read the field. `bigs[i].a` emits `msArrayAccess(…).a` with no struct copy; `for (const big of bigs)` copies every element (next table).
+- **Share with a spawned task:** `Readonly<T>` (§12).
+
+Copies that `Borrow<T>` is meant to remove (emitted C, debug and `--danger`):
+
+| Code | Emitted C |
+|---|---|
+| `for (const big of bigs)` | `big = msArrayAccess(bigs, i)` into a `Big` local, every iteration |
+| `const first = bigs[0]` | a struct copy |
+| `map.get(k)` with a struct value | a copy into `Maybe_Big` |
+
+Do not write (measured on `b707175d`):
+
+- `const item: Borrow<Big> = arr[0]` (the `LANG.md` example): C compile error; JS makes a copy. Nothing checks its lifetime.
+- a `Borrow<Big>` return type: C compile error.
+- `extern function f(ref data: float32, …)` called with `arr[0]`: C compile error; the call passes the address of a temporary copy.
+- `let cur: Ptr<Tok> = arena[0]` (`LANG.md`): C compile error.
+- `items[0]` on a `ref items: Array<int32>` parameter: C compile error. `items.push(x)` through it works.
+
+#### `Borrow<T>` design (target, not implemented)
+
+`Borrow<T>` is a read-only pointer that owns nothing. The language proves its lifetime by where it may appear, never by annotations. It is legal in exactly three places.
+
+1. **Return type, borrowing from the first parameter.**
+
+   ```ms
+   function fighterAt(this account: Account, index: int32): Borrow<Fighter> {
+   	return account.fighters[index];
+   }
+   const power = account.fighterAt(2).power;      // const Fighter*, no copy
+   ```
+
+   The returned expression must be a path (field, index, dereference) rooted in the first parameter, which is then passed by pointer. Returning a local, a temporary or another parameter is a compile error.
+
+2. **`for..of` bindings over value elements, inferred.**
+
+   ```ms
+   for (const fighter of account.fighters) { total += fighter.power; }   // const Fighter* per iteration
+   ```
+
+   No new syntax. The binding is already read-only, so only the emitted C changes; JS is unchanged.
+
+3. **`extern` parameters, address taken at the call.**
+
+   ```ms
+   extern function uploadVertices(data: Borrow<float32>, byteCount: int32): uint32;
+   uploadVertices(vertices[0], (vertices.length as int32) * 4);
+   ```
+
+   The pointer is valid for the call only. This is the language's form of an address-of operator for C interop.
+
+Rejected with a diagnostic once the design lands:
+
+- a `Borrow<T>` parameter on a non-`extern` function: use a value parameter;
+- `Borrow<T>` locals, fields, array elements and globals: nothing checks that the source outlives them. Revisit with escape analysis.
+
+A borrowing `Map.get` and a mutable borrow are not part of this design.
 
 ## 6. Numbers
 
@@ -343,15 +496,21 @@ What you must know that the checker does not catch:
 | `uint64` JSON field | values ≥ 2^63 encode as negative numbers |
 | field decorators `@rename("_id")` (SERIALIZE.md §1) | parse error |
 | `this typeof Enum` static extension | `Property does not exist on type` |
+| `BitSet` `for..of` fails, `console.log(s)` prints `<BitSet>` (LANG-PRIMITIVE, 2026-09-12) | `for..of` works in ordinal order; `console.log(s)` is still `<BitSet>` on C (measured 2026-09-15) |
+| a `BitSet` in `${s}` / `"x" + s` prints the set | C compile error; JS prints the raw word. Only `s.toString()` works |
+| `const item: Borrow<T> = arr[0]` is a zero-copy pointer whose lifetime the analyzer checks (LANG.md) | C compile error, JS copy; no check exists (measured 2026-09-15) |
+| value `for..of` bindings are passed by pointer (LANG.md) | one struct copy per iteration, debug and `--danger` |
+| `let cur: Ptr<Tok> = arena[0]` (LANG.md) | C compile error |
 
 ## 14. Review checklist
 
 - [ ] An `if/else if` chain that compares one value against enum members or literals is a `match`; a `match` whose every arm is `_ when …` is an `if` chain or a named helper.
 - [ ] No `-1`/`false`/`out ok` failure signalling: `Result<T, E>` with an `enum` error.
 - [ ] No `while` that is really a counted loop: `for`.
-- [ ] No `int32` mask field: `BitSet<E>`.
+- [ ] No `int32` mask field: `BitSet<E>`. No `E.X as BitSet<E>`: `(0 as BitSet<E>).incl(E.X)`. No `${set}` or `String(set)`: `set.toString()`.
 - [ ] No `number`. No unannotated literal wider than `int32`. `as` at every signed/unsigned meeting.
 - [ ] No `class` for plain data: `struct`, extension functions, `this typeof T` constructors.
+- [ ] Owned array data is `Vec<T>`, shared handles are `T[]`, parameters and slices are `Span<T>`. No `const local = someVec` (it copies and drops the writes); no `(array, offset, count)` triples where a `Span` window says it once.
 - [ ] No constructor that only forwards its arguments: struct literal, or spread from an existing value.
 - [ ] No abbreviated names that make the reader ask (`pwinBps`, `harvestD`, `attackEv`): spell them out unless the full name is unreasonably long.
 - [ ] No line over 100 columns: one field, parameter or import per line with a trailing comma (§16).
@@ -367,6 +526,8 @@ What you must know that the checker does not catch:
 - [ ] JSON: `JSON.parse<T>` result narrowed with `if (r.ok)`; no enum fields decoded on the JS lane; `JsonValue` read through explicit `asX()` accessors.
 - [ ] No `cborValueToStruct`; decode CBOR with accessors.
 - [ ] `as<Type>` only at declarations, assignments, arguments and returns; explicit `.asString()` for `string` targets and explicit `asT()` for struct targets in declarations; never `v as T`.
+- [ ] Structs are read through value parameters, never `Borrow<T>` parameters. `Borrow<T>` appears only on `extern` parameters that take `arr[0]`; no `Borrow<T>` locals or return types until its design lands.
+- [ ] Hot loops over structs larger than 24 bytes (on-chain compute) read `xs[i].field` by index instead of `for (const x of xs)`, until `for..of` borrows.
 
 ## 15. Protocols and serialization
 
