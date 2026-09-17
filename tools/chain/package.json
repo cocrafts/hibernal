@@ -1,0 +1,9 @@
+{
+  "name": "hibernal-chain-harness",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@solana/kit": "8.2.0",
+    "litesvm": "1.4.1"
+  }
+}
