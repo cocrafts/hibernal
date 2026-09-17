@@ -150,6 +150,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 | Day | 0 | 1.8 | 6.4 | 14.9 | 25.9 | 29.4 |
 | Days for that level | 0 | 0.65 | 1.2 | 2.1 | 3.2 | 3.5 |
 
+- Measured 2026-09-17 (`sim/episode.ms`, teacher policy, strawman amounts in `rules/level.ms`): median level 10 on day 6 and level 20 on day 29, so the strawman is inside the target and stays until the tuner (S2) moves it.
 - Rejected: stretching to 50–100 levels or 100 days. The tail is just waiting, and the "fast early" feeling happens once. Repetition comes from §7 instead.
 - Conflicts to resolve in `BRIEF.md`: D6 ("`$HBRN` buys levels, unbounded", `levelCost` capped at 60; now removed) and §6 invariant 1 ("prime ~L30 in 30–40 epochs").
 
