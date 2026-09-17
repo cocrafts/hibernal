@@ -1,0 +1,96 @@
+import argparse
+import time
+
+import numpy as np
+import torch
+
+from hibernalTrain import checkpoint
+from hibernalTrain.env import HEADS, HibernalEnv
+from hibernalTrain.model import PetPolicy
+
+
+def collectTeacher(env):
+    samples = [{"observations": [], "legal": [], "actions": []} for _ in HEADS]
+    episode = env.episode
+    while env.episode == episode:
+        head, observations, legal = env.observe()
+        actions = env.teacherActions()
+        choice = legal.sum(axis=1) > 1
+        samples[head]["observations"].append(observations[choice].astype(np.int8))
+        samples[head]["legal"].append(legal[choice].astype(bool))
+        samples[head]["actions"].append(actions[choice].astype(np.int64))
+        env.step(actions)
+    return [{key: np.concatenate(parts) for key, parts in bucket.items()} for bucket in samples]
+
+
+def accuracy(policy, head, data, batch=65536):
+    hits = 0
+    recalls = {}
+    with torch.no_grad():
+        for start in range(0, len(data["actions"]), batch):
+            part = slice(start, start + batch)
+            logits = policy.maskedLogits(
+                head, torch.from_numpy(data["observations"][part]), torch.from_numpy(data["legal"][part])
+            )
+            chosen = logits.argmax(dim=1).numpy()
+            wanted = data["actions"][part]
+            hits += int((chosen == wanted).sum())
+            for action in np.unique(wanted):
+                seen, right = recalls.get(int(action), (0, 0))
+                mine = wanted == action
+                recalls[int(action)] = (seen + int(mine.sum()), right + int((chosen[mine] == action).sum()))
+    macro = float(np.mean([right / seen for seen, right in recalls.values()]))
+    return hits / max(len(data["actions"]), 1), macro
+
+
+def clone(policy, head, data, steps, batch, learningRate):
+    parameters = list([policy.economy, policy.node, policy.attack][head].parameters())
+    optimizer = torch.optim.Adam(parameters, lr=learningRate)
+    schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
+    observations = torch.from_numpy(data["observations"])
+    legal = torch.from_numpy(data["legal"])
+    actions = torch.from_numpy(data["actions"])
+    recent = []
+    for _ in range(steps):
+        part = torch.randint(0, len(actions), (batch,))
+        logits = policy.maskedLogits(head, observations[part], legal[part])
+        loss = torch.nn.functional.cross_entropy(logits, actions[part])
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        schedule.step()
+        recent = (recent + [float(loss.detach())])[-50:]
+    return sum(recent) / len(recent)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--envs", type=int, default=16)
+    parser.add_argument("--steps", type=int, default=4000)
+    parser.add_argument("--batch", type=int, default=2048)
+    parser.add_argument("--learningRate", type=float, default=3e-3)
+    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--name", default="bc")
+    arguments = parser.parse_args()
+    torch.manual_seed(arguments.seed)
+    started = time.perf_counter()
+    env = HibernalEnv(seed=arguments.seed, envCount=arguments.envs)
+    train = collectTeacher(env)
+    heldOut = collectTeacher(HibernalEnv(seed=arguments.seed + 1000, envCount=max(arguments.envs // 4, 1)))
+    print(f"collected in {time.perf_counter() - started:.0f}s · engine {env.engineVersion}")
+    policy = PetPolicy(env.selfInputIndexes)
+    for head, name in enumerate(HEADS):
+        clock = time.perf_counter()
+        loss = clone(policy, head, train[head], arguments.steps, arguments.batch, arguments.learningRate)
+        trainAccuracy, _ = accuracy(policy, head, train[head])
+        heldAccuracy, heldRecall = accuracy(policy, head, heldOut[head])
+        print(
+            f"{name:8s} samples {len(train[head]['actions']):8d} loss {loss:.3f} "
+            f"accuracy train {trainAccuracy:.3f} held-out {heldAccuracy:.3f} macro recall {heldRecall:.3f} "
+            f"({time.perf_counter() - clock:.0f}s)"
+        )
+    checkpoint.save(arguments.name, policy, env)
+    print(f"saved checkpoints/{arguments.name}.pt and .policy")
+
+
+main()
