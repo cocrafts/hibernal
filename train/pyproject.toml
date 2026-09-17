@@ -1,0 +1,12 @@
+[project]
+name = "hibernal-train"
+version = "0.1.0"
+description = "Behavior cloning, PPO and self-play for the Hibernal pet brain"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy>=2.0",
+    "torch>=2.4",
+]
+
+[tool.uv]
+package = false
