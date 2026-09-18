@@ -2,16 +2,28 @@ import {
 	BLOCK_SLOTS,
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
+	BPS,
 	Pet,
 	PersonaKind,
 	EconomyAction,
 	splitmix,
 	policyBytes,
 } from "../../rules/index";
-import { ACTS_PER_EPOCH, Masks, World } from "../world";
+import { ACTS_PER_EPOCH, Masks, World, WorldStats } from "../world";
 import { personaKindOf, playEpisode } from "../teacher";
 import { Head, observationSize, actionCount, observeInto, legalInto, zeros } from "./observe";
 import { Scratch, logitsInto, bestLegal } from "./actor";
+import {
+	Feel,
+	FeelCounter,
+	Moment,
+	momentOf,
+	note,
+	tallied,
+	closeEpoch,
+	openEpoch,
+	closeEpisode,
+} from "./feel";
 
 export const MILLI_PER_UNIT: uint64 = 1000;
 export const CONTROL_LEARNER: int32 = -2;
@@ -24,9 +36,18 @@ export enum Done {
 	Truncated,
 }
 
+export enum RewardTerm {
+	Heart,
+	Death,
+	Comfort,
+	LossAversion,
+}
+
 export struct RewardWeights {
 	heartMilli: int64;
 	deathMilli: int64;
+	comfortMilli: int64;
+	lossAversionBps: int64;
 }
 
 export struct Cursor {
@@ -43,6 +64,8 @@ export struct PolicyBytes {
 export struct Batch {
 	worlds: World[];
 	scores: int64[];
+	weights: RewardWeights[];
+	feel: Feel;
 	controllers: int32[];
 	policies: PolicyBytes[];
 	scratch: Scratch;
@@ -60,12 +83,49 @@ export enum StepError {
 	WrongHead,
 }
 
+export function flat(this typeof RewardWeights): RewardWeights {
+	return { heartMilli: 20000, deathMilli: 500000, comfortMilli: 0, lossAversionBps: 0 };
+}
+
 export function of(this typeof RewardWeights, kind: PersonaKind): RewardWeights {
+	const flat = RewardWeights.flat();
 	return match (kind) {
-		PersonaKind.Cautious => ({ heartMilli: 20000, deathMilli: 500000 }),
-		PersonaKind.Greedy => ({ heartMilli: 20000, deathMilli: 500000 }),
-		PersonaKind.Vengeful => ({ heartMilli: 20000, deathMilli: 500000 }),
+		PersonaKind.Cautious => ({
+			...flat,
+			deathMilli: 1500000,
+			comfortMilli: 5000,
+			lossAversionBps: 10000,
+		}),
+		PersonaKind.Greedy => ({ ...flat, comfortMilli: 1000 }),
+		PersonaKind.Vengeful => ({ ...flat, comfortMilli: 1000 }),
 	};
+}
+
+export function withTerm(
+	this weights: RewardWeights,
+	term: RewardTerm,
+	value: int64,
+): RewardWeights {
+	return match (term) {
+		RewardTerm.Heart => ({ ...weights, heartMilli: value }),
+		RewardTerm.Death => ({ ...weights, deathMilli: value }),
+		RewardTerm.Comfort => ({ ...weights, comfortMilli: value }),
+		RewardTerm.LossAversion => ({ ...weights, lossAversionBps: value }),
+	};
+}
+
+export function shaping(this weights: RewardWeights, moment: Moment, world: World): int64 {
+	const actor = moment.actor;
+	if (!actor.alive) { return 0; }
+	if (moment.head == Head.Economy && world.round == 0) {
+		const spare = (actor.hearts as int64) - (actor.minHearts as int64);
+		return weights.comfortMilli * Math.max(spare, 0 as int64);
+	}
+	const fought = world.stats.fights > moment.stats.fights;
+	const lost = fought && world.stats.wins == moment.stats.wins;
+	if (moment.head != Head.Attack || !lost) { return 0; }
+	const stake = ((actor.burrow - world.pets[moment.index].burrow) / MILLI_PER_UNIT) as int64;
+	return -stake * weights.lossAversionBps / (BPS as int64);
 }
 
 export function score(this pet: Pet, weights: RewardWeights): int64 {
@@ -78,19 +138,34 @@ export function worldSeed(seed: uint64, env: int32, episode: int32): uint64 {
 	return splitmix(seed + ((env as uint64) << 32) + (episode as uint64));
 }
 
-function opened(this batch: Batch): Batch {
-	const worlds = batch.worlds;
+export function weightsOf(this batch: Batch, index: int32): RewardWeights {
+	return batch.weights[personaKindOf(index) as int32];
+}
+
+function rescore(this batch: Batch): void {
 	const scores = batch.scores;
 	const pets = batch.blocks * BLOCK_SLOTS;
-	for (let env = 0; env < worlds.length; env++) {
-		const seed = worldSeed(batch.seed, env, batch.episode);
-		const world = World.create(batch.blocks, seed).beginEpoch(1);
-		worlds[env] = world;
+	for (let env = 0; env < batch.worlds.length; env++) {
+		const world = batch.worlds[env];
 		for (let index = 0; index < pets; index++) {
-			const weights = RewardWeights.of(personaKindOf(index));
-			scores[env * pets + index] = world.pets[index].score(weights);
+			scores[env * pets + index] = world.pets[index].score(batch.weightsOf(index));
 		}
 	}
+}
+
+export function setWeights(this batch: Batch, kind: PersonaKind, weights: RewardWeights): void {
+	const all = batch.weights;
+	all[kind as int32] = weights;
+	batch.rescore();
+}
+
+function opened(this batch: Batch): Batch {
+	const worlds = batch.worlds;
+	for (let env = 0; env < worlds.length; env++) {
+		const seed = worldSeed(batch.seed, env, batch.episode);
+		worlds[env] = World.create(batch.blocks, seed).beginEpoch(1);
+	}
+	batch.rescore();
 	return { ...batch, cursor: { epoch: 1, round: 0, slot: 0, head: Head.Economy } };
 }
 
@@ -114,6 +189,12 @@ export function create(
 	const batch: Batch = {
 		worlds: worlds,
 		scores: scores,
+		weights: [
+			RewardWeights.of(PersonaKind.Cautious),
+			RewardWeights.of(PersonaKind.Greedy),
+			RewardWeights.of(PersonaKind.Vengeful),
+		],
+		feel: Feel.create(envCount, blocks * BLOCK_SLOTS),
 		controllers: controllers,
 		policies: policies,
 		scratch: Scratch.create(),
@@ -283,18 +364,21 @@ function advanced(this batch: Batch): Batch {
 		};
 	}
 	if (cursor.epoch >= (batch.epochs as uint64)) {
+		for (let env = 0; env < worlds.length; env++) { batch.feel.closeEpisode(env, worlds[env]); }
 		const next: Batch = { ...batch, episode: batch.episode + 1 };
 		return next.opened();
 	}
 	const scores = batch.scores;
 	const pets = batch.blocks * BLOCK_SLOTS;
 	for (let env = 0; env < worlds.length; env++) {
+		batch.feel.closeEpoch(env, worlds[env]);
 		const world = worlds[env].endEpoch().beginEpoch(cursor.epoch + 1);
 		worlds[env] = world;
+		batch.feel.openEpoch(env, world);
 		for (let index = 0; index < pets; index++) {
 			const pet = world.pets[index];
 			if (pet.alive && pet.bornEpoch == world.epoch) {
-				scores[env * pets + index] = pet.score(RewardWeights.of(personaKindOf(index)));
+				scores[env * pets + index] = pet.score(batch.weightsOf(index));
 			}
 		}
 	}
@@ -328,11 +412,15 @@ export function step(
 			CONTROL_TEACHER => worlds[env].teacherAction(index, head),
 			_ => batch.policyAction(worlds[env], index, controller),
 		};
+		const moment = worlds[env].momentOf(env, index, head, action);
 		const world = worlds[env].applied(index, head, action);
 		worlds[env] = world;
+		batch.feel.note(moment, world);
 		const pet = world.pets[index];
-		const now = pet.score(RewardWeights.of(personaKindOf(index)));
-		rewards[row] = (now - scores[env * pets + index]) as int32;
+		const weights = batch.weightsOf(index);
+		const now = pet.score(weights);
+		const earned = now - scores[env * pets + index] + weights.shaping(moment, world);
+		rewards[row] = earned as int32;
 		scores[env * pets + index] = now;
 		const running = closing ? Done.Truncated : Done.Running;
 		dones[row] = (pet.alive ? running : Done.Died) as int32;
@@ -379,12 +467,14 @@ test "heads step in order and a wrong head is refused" {
 	const dones = zeros(1);
 	assert !batch.step(Head.Attack, actions, rewards, dones).ok;
 	actions[0] = holdAction(Head.Economy);
+	const pet = batch.worlds[0].pets[0];
+	const spare = (pet.hearts as int64) - (pet.minHearts as int64);
 	const afterEconomy = batch.step(Head.Economy, actions, rewards, dones);
 	assert afterEconomy.ok;
 	if (afterEconomy.ok) {
 		assert afterEconomy.value.cursor.head == Head.Node;
 		assert afterEconomy.value.cursor.slot == 0;
-		assert rewards[0] == 0;
+		assert (rewards[0] as int64) == spare * RewardWeights.of(PersonaKind.Cautious).comfortMilli;
 		assert dones[0] == (Done.Running as int32);
 	}
 }
@@ -411,7 +501,8 @@ test "rewards add up to the change in score and an episode truncates then reopen
 	const actions = zeros(batch.rows());
 	const rewards = zeros(batch.rows());
 	const dones = zeros(batch.rows());
-	const weights = RewardWeights.of(PersonaKind.Cautious);
+	const weights = RewardWeights.flat();
+	batch.setWeights(PersonaKind.Cautious, weights);
 	const before = batch.worlds[0].pets[0].score(weights);
 	let earned: int64 = 0;
 	let truncated = 0;
@@ -434,6 +525,95 @@ test "rewards add up to the change in score and an episode truncates then reopen
 	assert batch.episode == 1;
 	assert batch.cursor.epoch == 1;
 	assert batch.worlds[0].seed == worldSeed(33, 0, 1);
+}
+
+function feelTotal(this batch: Batch, env: int32, counter: FeelCounter): int32 {
+	const pets = batch.blocks * BLOCK_SLOTS;
+	let sum = 0;
+	for (let index = 0; index < pets; index++) {
+		sum += batch.feel.tallied(env * pets + index, counter);
+	}
+	return sum;
+}
+
+test "feel counters agree with the world's own fight counts and survive the reopen" {
+	const start = Batch.create(21, 2, 2, 12);
+	let batch = start.playTeacher(12);
+	for (let env = 0; env < 2; env++) {
+		const stats = batch.worlds[env].stats;
+		assert stats.fights > 0;
+		assert batch.feelTotal(env, FeelCounter.Attacks) == stats.fights;
+		assert batch.feelTotal(env, FeelCounter.AttacksWon) == stats.wins;
+		assert batch.feelTotal(env, FeelCounter.Robbed) == stats.wins;
+		assert batch.feelTotal(env, FeelCounter.Avenged) <= stats.wins;
+		assert batch.feelTotal(env, FeelCounter.Meals) > 0;
+		assert batch.feelTotal(env, FeelCounter.StarvedStocked) == 0;
+		assert batch.feelTotal(env, FeelCounter.Living) == 0;
+	}
+	const actions = zeros(batch.rows());
+	const rewards = zeros(batch.rows());
+	const dones = zeros(batch.rows());
+	while (batch.episode == 0) {
+		batch.teacherActions(actions);
+		const stepped = batch.step(batch.cursor.head, actions, rewards, dones);
+		if (!stepped.ok) { unreachable; }
+		batch = stepped.value;
+	}
+	for (let env = 0; env < 2; env++) {
+		assert batch.worlds[env].stats.fights == 0;
+		assert batch.feelTotal(env, FeelCounter.Attacks) > 0;
+		assert batch.feelTotal(env, FeelCounter.Living) == 2 * BLOCK_SLOTS;
+		assert batch.feelTotal(env, FeelCounter.LivingEpochs) == 12 * 2 * BLOCK_SLOTS;
+		assert batch.feelTotal(env, FeelCounter.Wealth) > 0;
+	}
+}
+
+test "comfort pays spare hearts once a day and loss aversion charges a lost stake again" {
+	const world = World.create(1, 4).beginEpoch(1);
+	const pets = world.pets;
+	pets[0] = { ...pets[0], hearts: 5, burrow: 900 * MILLI_PER_UNIT * 1000 };
+	const cautious = RewardWeights.flat()
+		.withTerm(RewardTerm.Comfort, 5000)
+		.withTerm(RewardTerm.LossAversion, 10000);
+	const morning = world.momentOf(0, 0, Head.Economy, holdAction(Head.Economy));
+	assert cautious.shaping(morning, world) == 3 * 5000;
+	assert RewardWeights.flat().shaping(morning, world) == 0;
+	const noon: World = { ...world, round: 1 };
+	assert cautious.shaping(morning, noon) == 0;
+	const raid = world.momentOf(0, 0, Head.Attack, 4);
+	const stats: WorldStats = { ...world.stats, fights: world.stats.fights + 1 };
+	const lost: World = { ...world, stats: stats };
+	pets[0] = { ...pets[0], burrow: 600 * MILLI_PER_UNIT * 1000 };
+	assert cautious.shaping(raid, lost) == -300000;
+	const won: World = { ...lost, stats: { ...stats, wins: stats.wins + 1 } };
+	assert cautious.shaping(raid, won) == 0;
+}
+
+test "only the cautious persona is loss averse and it prizes spare hearts most" {
+	const cautious = RewardWeights.of(PersonaKind.Cautious);
+	const greedy = RewardWeights.of(PersonaKind.Greedy);
+	const vengeful = RewardWeights.of(PersonaKind.Vengeful);
+	assert cautious.lossAversionBps > 0;
+	assert greedy.lossAversionBps == 0 && vengeful.lossAversionBps == 0;
+	assert cautious.comfortMilli > greedy.comfortMilli;
+	assert cautious.deathMilli > greedy.deathMilli;
+	assert greedy == vengeful;
+}
+
+test "new weights rescore every pet so the next reward is not a jump" {
+	const batch = Batch.create(5, 1, 1, 12);
+	const before = batch.scores[0];
+	const heavier = RewardWeights.flat().withTerm(RewardTerm.Heart, 50000);
+	batch.setWeights(PersonaKind.Cautious, heavier);
+	const hearts = batch.worlds[0].pets[0].hearts as int64;
+	assert batch.scores[0] == before + 30000 * hearts;
+	assert batch.scores[4] == batch.worlds[0].pets[4].score(RewardWeights.of(PersonaKind.Greedy));
+	const actions = zeros(1);
+	const rewards = zeros(1);
+	const dones = zeros(1);
+	actions[0] = holdAction(Head.Economy);
+	assert batch.step(Head.Economy, actions, rewards, dones).ok;
+	assert rewards[0] == 0;
 }
 
 test "a dead pet scores the death weight once" {

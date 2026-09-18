@@ -3,10 +3,10 @@
 
 import { WORLD_BLOCKS, EPISODE_EPOCHS } from "../world";
 import { engineVersion } from "../digests";
-import { checkPolicy } from "../../rules/index";
+import { PersonaKind, checkPolicy } from "../../rules/index";
 import { Head, observationSize, actionCount, zeros } from "./observe";
 import { selfInputs, selfInput } from "./actor";
-import { POLICY_SLOTS, Batch } from "./batch";
+import { POLICY_SLOTS, Batch, RewardTerm, withTerm } from "./batch";
 
 extern function hibernalCopyOut(target: unknown, source: Borrow<int32>, count: int32): void;
 extern function hibernalPeek(source: unknown, index: int32): int32;
@@ -156,6 +156,24 @@ function ffiStats(env: int32, statBuffer: unknown): int32 {
 	stats[7] = Math.min(wealth, 2000000000 as uint64) as int32;
 	hibernalCopyOut(statBuffer, stats[0], STAT_FIELDS);
 	return STAT_FIELDS;
+}
+
+@exportName("hibernal_feel")
+function ffiFeel(feelBuffer: unknown, capacity: int32): int32 {
+	const counters = batch.feel.counters;
+	if (counters.length == 0 || capacity != counters.length) { return FFI_REFUSED; }
+	hibernalCopyOut(feelBuffer, counters[0], counters.length);
+	return counters.length;
+}
+
+@exportName("hibernal_reward")
+function ffiReward(persona: int32, term: int32, value: int32): int32 {
+	const knownPersona = persona >= 0 && persona <= (PersonaKind.Vengeful as int32);
+	const knownTerm = term >= 0 && term <= (RewardTerm.LossAversion as int32);
+	if (batch.rows() == 0 || !knownPersona || !knownTerm) { return FFI_REFUSED; }
+	const weights = batch.weights[persona].withTerm(term as RewardTerm, value as int64);
+	batch.setWeights(persona as PersonaKind, weights);
+	return 0;
 }
 
 @exportName("hibernal_self_inputs")
