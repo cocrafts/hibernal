@@ -425,7 +425,7 @@ Directions are settled (§0). What is left are numbers and a few mechanics insid
 2. **Talent numbers**: Mythic share and draft D multipliers are the curve to lock; kinds and the stat-driven take are decided.
 3. **Wild pets**: formula pets or a real-account army driven by `act` (after the ER probe); bot weight for the 500-slot floor; where the bot share goes; loot tracking; raids on players.
 4. **Items** (§11): skill books (+1 skill point each, inside the 10 bonus points): source, price, rarity; item skill list and sizes, rarity table, mint price, buyback formula, market fee, wear, item robbery and death, storage in the ER.
-5. **Brain**: crank interval for `act(pet)` and the reward weights per persona for training.
+5. **Brain**: crank interval for `act(pet)` and the reward weights per persona for training (first measured set: `ON-CHAIN-AI.md` §6 package 5; loss aversion makes Cautious, Greedy and Vengeful are still one behaviour).
 6. **Social** (§13): the action list and effect sizes; same-block only or cross-block relationships; how strongly friends and pairs interact with lineage.
 7. **Bonding** (§14): scale, decay, gift share and cap, refusal threshold, whether a hated pet can run away; how gifts reach L1 while the pet is delegated.
 8. **Tuning tool**: an automated tuner on sim S1 that runs variants of constants and curves, scores them against `BRIEF.md` §6 invariants and searches toward the targets, as the combat rev 5 constants were hill-climbed (ROADMAP S2). Which knobs it may move and the score weights are to decide.

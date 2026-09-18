@@ -123,7 +123,7 @@ Built in this order; balance and exact numbers come later (`BRIEF.md` §6, ROADM
 | 2 | `rules/`: fixed action list, legal mask, apply functions for tick, bank, eat, allocate and attack settlement, minimal XP leveling | done 2026-09-16, below |
 | 3 | `sim/world.ms`: 20 blocks × 10 pets, 4 `act` rounds per epoch, heir takes a dead pet's slot, 120-epoch episodes | done 2026-09-17, below |
 | 4 | `sim/env/`: observation, batched env with a C ABI, teacher actions; `train/`: behavior cloning, PPO, snapshot pool; `rules/policy.ms`: int8 inference used for every evaluation | done 2026-09-17, below: the pipeline runs end to end, the policy is not tuned |
-| 5 | `train/`: reward weights per persona, feel metrics, longer self-play, PFSP pool weighting | after 4 |
+| 5 | `sim/env/feel.ms`: feel metrics counted in MetaScript; reward terms per persona; PFSP pool weighting; three seeds | done 2026-09-17, below: loss aversion makes the Cautious persona, PFSP and a revenge bonus measured no gain |
 | 6 | `rules/policy.ms` and the observation on chain (ROADMAP S4), CU measured in LiteSVM | after 5, waits on `std/solana` |
 
 Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from the change in harvest plus burrow with penalties for lost hearts and death, persona as an input.
@@ -227,6 +227,52 @@ Compiler findings on msc 0.2.54, worked around in place; the first two are writt
 
 Not in package 4: reward weights per persona, the feel metrics of §5 (starving with money, revenge rate, attacks at low win chance), sampling on chain (§8.4; evaluation is argmax), PFSP weighting of the pool, the social head, CU of `observe` + `policy` in LiteSVM.
 
+### Package 5: feel metrics, reward per persona, pool weighting — Measured
+
+`sim/env/feel.ms`, hooks in `sim/env/batch.ms`, two more C symbols in `ffi.ms` (`hibernal_feel`, `hibernal_reward`, 19 in all); `train/hibernalTrain/feel.py`, `train/evaluate.py` rewritten, `train/ppo.py` (`--reward`, `--pool`, `--alternate`, `--threads`). `msc test sim/env/ffi.ms` 380/380; the six digests and the engine version are unchanged on native and `--target=js`: the reward lives in `batch.ms`, which `sim/digests.ms` does not import, so every package 4 checkpoint still loads.
+
+**Feel counters** (§5). 20 counters per (world, pet), counted where the rules are: `momentOf` keeps the acting pet and its target as they were before the action, `note` reads the world after it. Attacks, wins, table win chance, stake level and share of the burrow, attacks under 40% and under the persona's own threshold (`Persona.of`), robbed and avenged (an attack on the last robber within 3 epochs; the grudge is sim state, `Pet` is untouched), meals and hearts when eating, hearts held per day, banks, and deaths sorted by what the pet could still have eaten (`Larder`: nothing, harvest it never banked, a full small meal in the burrow). Python only divides and prints; "persona told from one pet's log" is a nearest-centroid guess over eight per-pet ratios, balanced recall, chance 0.33.
+
+**The even/odd split was biased.** Even slots hold one Fighter start, odd slots two, so "cloned −4.9%" in package 4 was the seat, not the policy. `evaluate.py` now plays four groups (policy world, teacher world, policy on even slots, policy on odd slots) and reads strength from the wealth counter, not from the reward: cloned −0.1%, package 4 PPO +7.0% (57,155 vs 53,400 `$HBRN` per pet). `ppo.py --alternate` trains on both seats.
+
+Baseline, own worlds, 16 worlds per run, 0 deaths and 0 illegal actions everywhere:
+
+| | Teacher | Cloned | PPO package 4 |
+|---|---|---|---|
+| Starved with a meal in the burrow / with unbanked harvest | 0 / 0 | 0 / 0 | 0 / 0 |
+| Attacks under 40% table win chance | ≤ 0.6% | 0 | 0 |
+| Cautious attacks under its own 70% | 8.5% | 6.5% | 23.5% |
+| Avenged within 3 epochs, Cautious / Greedy / Vengeful | 0.2 / 4.9 / 4.7% | 0.1 / 3.9 / 5.6% | 0.5 / 30.0 / 14.5% |
+| Fights per pet, Cautious / Greedy / Vengeful | 6.9 / 10.6 / 11.7 | 7.0 / 10.1 / 11.6 | 3.4 / 7.1 / 7.5 |
+| Hearts held per day | 3.4 / 3.2 / 3.2 | 3.4 / 3.2 / 3.2 | 2.4 / 2.2 / 2.2 |
+| Persona told from one pet's log | 0.75 | 0.71 | 0.66 (0.59 mixed) |
+
+- The teacher has no grudge logic, so its 0.2–5% is what chance looks like. Greedy and Vengeful are one behaviour in the teacher too (recall about 0.4 for Greedy): their thresholds are 50% and 45% and nothing else differs in play.
+- The package 4 PPO pet stopped eating (6 meals per pet against 17) and lives on the floor's auto-meal: the potential-based reward is indifferent between 2 and 4 hearts held.
+
+**Reward terms** (`RewardWeights`, `shaping` in `batch.ms`). On top of the change in score: `comfort` pays every spare heart above the pet's floor once a day; `lossAversion` charges a lost stake a second time. Weights are set per persona at run time (`hibernal_reward`, `ppo.py --reward cautious.comfort=5000,…`), so variants train in parallel on one library; the measured set is the default in `RewardWeights.of`: Cautious death 1,500,000, comfort 5,000, loss aversion 10,000 bps; Greedy and Vengeful comfort 1,000, no loss aversion. `RewardWeights.flat()` is the package 4 reward.
+
+Three seeds (5, 6, 7) from the same clone, 30 rollouts, lr 1e-3, 4 passes, `--alternate`, mean ± standard deviation:
+
+| Reward | Mixed world vs teacher | Cautious under its own 70% | Persona told, own / mixed | Hearts held C / G / V |
+|---|---|---|---|---|
+| flat (package 4) | +4.7 ± 3.7% | 19.8 ± 16.7% | 0.79 ± 0.05 / 0.69 ± 0.08 | 2.4 / 2.3 / 2.3 |
+| **comfort 5,000 / 1,000 / 1,000 + Cautious loss aversion** | **+7.07 ± 0.12%** | 1.7 ± 2.9% | 0.83 ± 0.04 / 0.79 ± 0.03 | 2.6 / 2.4 / 2.3 |
+| comfort × 2, same loss aversion | +6.93 ± 0.15% | 0.1 ± 0.1% | 0.83 ± 0.07 / 0.81 ± 0.04 | 2.6 / 2.4 / 2.3 |
+| comfort × 4, same loss aversion | +4.80 ± 0.96% | 15.8 ± 5.5% | 0.77 ± 0.08 / 0.74 ± 0.05 | 5.6 / 3.4 / 3.2 |
+| as the bold row, prioritized pool | +6.83 ± 0.25% | 0.0 ± 0.0% | 0.84 ± 0.06 / 0.77 ± 0.01 | 2.5 / 2.3 / 2.2 |
+
+- Loss aversion is what makes the Cautious pet: it attacks 2.8 times per pet at 88% mean table odds (flat: 3.7 at 81%), and the run-to-run spread of the whole policy collapses with it. A single seed is not evidence here: the flat reward gave +0.4%, +2.7% and +7.0% on three single runs, and 5% to 37% Cautious attacks under threshold.
+- Comfort does not move hearts held until × 4, and there it costs two points of strength and the Cautious discipline. Pets still live one heart above the floor; nothing in §5 calls that a failure, but it reads as a hungry pet. Open.
+- A risk-seeking Vengeful (loss aversion −2,500 bps, one seed) fought 8.1 times per pet against 7.2 and was no easier to tell from Greedy (0.76 / 0.70). Not kept.
+- 0 deaths, 0 illegal actions, 0 attacks under 40% in every evaluated world of every run; a few pets die while sampling in training.
+
+**Pool weighting** (`ppo.py --pool prioritized`). Opponent drawn with weight `(1 − p)² + 0.05`, `p` a running share of worlds where the learner's seats end richer than the snapshot's; the most beaten snapshot is the one replaced. No gain at 30 rollouts (table): seven snapshots in a run leave nothing to prioritize. Re-measure on runs of a few hundred rollouts.
+
+**Revenge, measured negative.** A policy cannot avenge what it cannot see, so a branch moved the grudge into `World` and added a thirteenth target feature (attack input 25, blob 3,871 bytes, only the `observe` digest and the engine version move; clone retrained to the same accuracy). One seed each: no bonus 17.1% avenged by Vengeful pets in their own world (5.7% mixed), 100 `$HBRN` for a won revenge 16.7% (10.0%), 300 `$HBRN` 20.8% (11.1%), 100 `$HBRN` for any strike back 15.9% (10.9%). Inside the seed noise. The robber is usually the stronger pet and every policy stakes the whole cap, so a revenge is a bad bet that a bonus of one loot does not fix. Not merged (it would cost a `Pet` field on chain for nothing); the patch is `out/feel/grudge.worktree.patch`. What it needs first is a denominator that counts only revenges that were legal and affordable, and a stake head that uses the lower levels.
+
+Not in package 5: a persona signal that separates Greedy from Vengeful, hearts held above the floor, long self-play, sampling on chain (§8.4), the social head, CU in LiteSVM.
+
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
 Repro: `out/ffiprobe/plainExport.ms`, installed `msc` 0.2.54 (binary dated 2026-09-15), `--app=lib`.
@@ -288,5 +334,5 @@ Landed as `86c6afaf` (compiler) and `734b5b14` (tests). Re-run at the landed tip
 
 1. CU per weight for the MetaScript-generated inference loop, and the overhead of `act` without the brain.
 2. Whether `act` inside the ER can read a non-delegated `["policy"]` account; the JIT cloning docs cover delegated accounts and programs. Fallback: delegate the policy PDA too.
-3. Reward weights per persona (`GAME-DESIGN.md` §17.5).
+3. Reward weights per persona (`GAME-DESIGN.md` §17.5): first measured set in package 5; nothing yet separates Greedy from Vengeful, and nothing makes a pet hold more hearts than the floor without costing strength.
 4. Argmax or sampling on chain; sampling would draw from VRF like every other roll.
