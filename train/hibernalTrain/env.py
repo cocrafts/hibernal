@@ -12,6 +12,8 @@ SELF_FEATURES = 32
 FEATURE_ONE = 127
 DONE_RUNNING, DONE_DIED, DONE_TRUNCATED = 0, 1, 2
 CONTROL_LEARNER, CONTROL_TEACHER = -2, -1
+PERSONAS = ("cautious", "greedy", "vengeful")
+REWARD_TERMS = ("heart", "death", "comfort", "lossAversion")
 STAT_FIELDS = ("fights", "wins", "deaths", "heirs", "illegal", "living", "levels", "wealth")
 
 
@@ -42,6 +44,7 @@ class HibernalEnv:
         lib.hibernal_stats.argtypes = [ctypes.c_int32, pointer]
         lib.hibernal_load_policy.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32]
         lib.hibernal_policy_logits.argtypes = [ctypes.c_int32, pointer]
+        lib.hibernal_feel.argtypes = [pointer, ctypes.c_int32]
         self.lib = lib
         self.engineVersion = int(lib.hibernal_engine_version())
         self.blocks = blocks
@@ -104,6 +107,22 @@ class HibernalEnv:
         if self.lib.hibernal_stats(world, self.statBuffer.ctypes.data) < 0:
             raise ValueError("hibernal_stats refused the world index")
         return dict(zip(STAT_FIELDS, (int(value) for value in self.statBuffer)))
+
+    def feel(self, fields):
+        counters = np.zeros((self.rows * 10, fields), dtype=np.int32)
+        if self.lib.hibernal_feel(counters.ctypes.data, counters.size) != counters.size:
+            raise RuntimeError("hibernal_feel refused: the counter list differs from sim/env/feel.ms")
+        return counters
+
+    def setReward(self, persona, term, value):
+        if self.lib.hibernal_reward(PERSONAS.index(persona), REWARD_TERMS.index(term), int(value)) != 0:
+            raise ValueError("hibernal_reward refused")
+
+    def setRewards(self, text):
+        for part in filter(None, text.split(",")):
+            name, value = part.split("=")
+            persona, term = name.split(".")
+            self.setReward(persona, term, value)
 
     def loadPolicy(self, slot, policyBytes):
         loaded = self.lib.hibernal_load_policy(slot, policyBytes, len(policyBytes))
