@@ -7,31 +7,76 @@ import torch
 
 from hibernalTrain import checkpoint
 from hibernalTrain.env import CONTROL_LEARNER, CONTROL_TEACHER, DONE_DIED, HEADS, SELF_FEATURES, HibernalEnv
+from hibernalTrain.feel import FEEL_FIELDS
 from hibernalTrain.model import PetPolicy
 from hibernalTrain.rollout import SLOTS, Rollout
 
 POOL_SLOTS = 6
+WEALTH = FEEL_FIELDS.index("wealth")
+LIVING = FEEL_FIELDS.index("living")
 
 
-def assignOpponents(env, pool, generator):
+class Pool:
+    def __init__(self, prioritized, generator):
+        self.prioritized = prioritized
+        self.generator = generator
+        self.slots = []
+        self.beaten = {}
+
+    def weights(self):
+        if not self.prioritized:
+            return [1.0] * len(self.slots)
+        return [(1.0 - self.beaten[slot]) ** 2 + 0.05 for slot in self.slots]
+
+    def pick(self):
+        return self.generator.choices(self.slots, weights=self.weights())[0]
+
+    def record(self, slot, won):
+        self.beaten[slot] = 0.7 * self.beaten[slot] + 0.3 * won
+
+    def nextSlot(self):
+        if len(self.slots) < POOL_SLOTS:
+            return len(self.slots)
+        if not self.prioritized:
+            return self.generator.randrange(POOL_SLOTS)
+        return max(self.slots, key=lambda slot: self.beaten[slot])
+
+    def store(self, slot):
+        if slot not in self.slots:
+            self.slots.append(slot)
+        self.beaten[slot] = 0.5
+
+    def describe(self):
+        return " ".join(f"{slot}:{self.beaten[slot]:.2f}" for slot in self.slots)
+
+
+def assignOpponents(env, pool, alternate):
     controllers = np.full((env.rows // env.blocks, SLOTS), CONTROL_LEARNER, dtype=np.int32)
     for index in range(len(controllers)):
         kind = index % 4
         if kind == 0:
             continue
-        opponent = CONTROL_TEACHER if kind == 1 or not pool else generator.choice(pool)
-        controllers[index, 1::2] = opponent
+        opponent = CONTROL_TEACHER if kind == 1 or not pool.slots else pool.pick()
+        parity = (index // 4 + 1) % 2 if alternate else 1
+        controllers[index, parity::2] = opponent
     env.assignAll(lambda index, slot: int(controllers[index, slot]))
     return controllers
 
 
-def learnerReward(rollout, controllers):
-    rounds = rollout.rewards.shape[0] // (SLOTS * len(HEADS))
-    bySlot = rollout.rewards.reshape(rounds, SLOTS, len(HEADS), -1, rollout.env.blocks).sum(axis=(0, 2, 4))
-    learner = (controllers == CONTROL_LEARNER).T
-    mixed = ~learner.all(axis=0, keepdims=True)
-    perPet = bySlot / rollout.env.blocks * 1000.0
-    return float(perPet[learner & mixed].mean()), float(perPet[~learner].mean())
+def wealthBySlot(env, before):
+    counters = env.feel(len(FEEL_FIELDS)).astype(np.int64)
+    gained = (counters - before).reshape(-1, env.blocks, SLOTS, len(FEEL_FIELDS)).sum(axis=1)
+    return counters, gained[..., WEALTH] / np.maximum(gained[..., LIVING], 1)
+
+
+def learnerWealth(wealth, controllers, pool):
+    learner = controllers == CONTROL_LEARNER
+    mixed = ~learner.all(axis=1)
+    for index in np.flatnonzero(mixed):
+        opponent = int(controllers[index][~learner[index]][0])
+        if opponent in pool.beaten:
+            pool.record(opponent, float(wealth[index][learner[index]].mean() > wealth[index][~learner[index]].mean()))
+    return float(wealth[mixed][learner[mixed]].mean()), float(wealth[mixed][~learner[mixed]].mean())
 
 
 def updateHead(policy, optimizer, head, batch, advantages, arguments):
@@ -106,20 +151,28 @@ def main():
     parser.add_argument("--batch", type=int, default=8192)
     parser.add_argument("--criticSamples", type=int, default=400000)
     parser.add_argument("--seed", type=int, default=5)
+    parser.add_argument("--reward", default="")
+    parser.add_argument("--pool", choices=("uniform", "prioritized"), default="uniform")
+    parser.add_argument("--alternate", action="store_true")
+    parser.add_argument("--threads", type=int, default=0)
     arguments = parser.parse_args()
+    if arguments.threads > 0:
+        torch.set_num_threads(arguments.threads)
     torch.manual_seed(arguments.seed)
     np.random.seed(arguments.seed)
     generator = random.Random(arguments.seed)
     env = HibernalEnv(seed=arguments.seed, envCount=arguments.envs, epochs=arguments.epochs)
+    env.setRewards(arguments.reward)
     policy, _ = checkpoint.load(arguments.start, env)
     heads = [policy.economy, policy.node, policy.attack]
     optimizers = [torch.optim.Adam(head.parameters(), lr=arguments.learningRate) for head in heads]
     criticOptimizer = torch.optim.Adam(policy.critic.parameters(), lr=arguments.criticLearningRate)
-    pool = []
-    print(f"engine {env.engineVersion} rows {env.rows} start {arguments.start}")
+    pool = Pool(arguments.pool == "prioritized", generator)
+    counters = env.feel(len(FEEL_FIELDS)).astype(np.int64)
+    print(f"engine {env.engineVersion} rows {env.rows} start {arguments.start} reward {arguments.reward or 'default'}")
     for iteration in range(arguments.iterations):
         clock = time.perf_counter()
-        controllers = assignOpponents(env, pool, generator)
+        controllers = assignOpponents(env, pool, arguments.alternate)
         rollout = Rollout(env).collect(policy)
         collected = time.perf_counter() - clock
         advantages, returns = rollout.advantages(arguments.discount, arguments.smoothing)
@@ -131,21 +184,21 @@ def main():
                 continue
             divergence, entropy = updateHead(policy, optimizers[head], head, batch, advantages, arguments)
             notes.append(f"{name} n {len(batch['actions'])} kl {divergence:.4f} ent {entropy:.2f}")
-        mine, others = learnerReward(rollout, controllers)
+        counters, wealth = wealthBySlot(env, counters)
+        mine, others = learnerWealth(wealth, controllers, pool)
         died = int((rollout.perPet(rollout.dones) == DONE_DIED).any(axis=0).sum())
         print(
             f"iteration {iteration:3d} mixed worlds: learner {mine:8.0f} others {others:8.0f} HBRN/pet · died {died} · "
-            f"critic {criticLoss:.3f} ev {explained:.2f} · {' · '.join(notes)} · "
+            f"critic {criticLoss:.3f} ev {explained:.2f} · {' · '.join(notes)} · pool {pool.describe()} · "
             f"collect {collected:.0f}s total {time.perf_counter() - clock:.0f}s",
             flush=True,
         )
         if (iteration + 1) % arguments.snapshotEvery == 0:
-            slot = (len(pool)) % POOL_SLOTS if len(pool) < POOL_SLOTS else generator.randrange(POOL_SLOTS)
+            slot = pool.nextSlot()
             env.loadPolicy(slot, policy.toBytes(env.engineVersion))
-            if slot not in pool:
-                pool.append(slot)
+            pool.store(slot)
             checkpoint.save(f"{arguments.name}{iteration + 1:03d}", policy, env, {"iteration": iteration + 1})
-    checkpoint.save(arguments.name, policy, env, {"iteration": arguments.iterations})
+    checkpoint.save(arguments.name, policy, env, {"iteration": arguments.iterations, "reward": arguments.reward})
     print(f"saved checkpoints/{arguments.name}.pt and .policy")
 
 
