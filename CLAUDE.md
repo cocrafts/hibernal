@@ -44,13 +44,17 @@ cd train && uv run python bc.py && uv run python ppo.py && uv run python evaluat
 
 ## Code style
 
-`docs/CODE-STYLE.md` is the style guide: `match` over if/else ladders, `Result<T, E>` over sentinels, `for..of` then indexed `for` then `while`, `struct`/`enum`/`BitSet` over classes and masks, sized integers with explicit `as`. It also lists every doc-vs-compiler discrepancy measured on msc 0.2.54. Read it before writing or reviewing `.ms`.
+`~/metascript/docs/CODE-STYLE.md` is the style guide: `match` over if/else ladders, `Result<T, E>` over sentinels, `for..of` then indexed `for` then `while`, `struct`/`enum`/`BitSet` over classes and masks, sized integers with explicit `as`. It also lists every doc-vs-compiler discrepancy measured on msc 0.2.54. Read it before writing or reviewing `.ms`.
 
 Repo-specific on top of it:
 
 - `rules/` must satisfy the on-chain column of CODE-STYLE §11: no allocation, no module-scope `let`, no `String(uint64)` or `process.exit()` in code that reaches the chain (R13). Module `const`s stay and wait on R12.
 - `sim/determinism.ms` must print the same digests and engine version on native and `--target=js`; a rule change that moves a digest needs a reason in the commit.
 - Host entry files end with `process.exit(main());`, chain builds with bare `main();`.
+
+## Compiler boundary
+
+A MetaScript or runtime limitation follows the workspace compiler boundary in `~/metascript/CLAUDE.md`, read it first: smallest repro on the installed `msc`, a card in `~/metascript/.inbox/compiler/`, the blocked work parked at a named site that points at the card. Nothing is edited, built or committed under `~/metascript/recompiler` or a worktree of it from here.
 
 ## Git
 
