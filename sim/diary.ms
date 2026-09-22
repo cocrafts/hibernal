@@ -41,10 +41,14 @@ function note(this diary: Diary, index: int32, text: string): void {
 }
 
 function morning(this pet: Pet, yesterday: Pet, day: int32): string {
+	if (!pet.alive && pet.bornEpoch > (day as uint64)) { return `day ${day} unclaimed`; }
 	if (!pet.alive) { return `day ${day} dead`; }
 	let line = `day ${day} hearts ${pet.hearts}/${pet.maxHearts} level ${pet.level}`;
 	line = line + ` harvest ${money(pet.harvest)} burrow ${money(pet.burrow)}`;
-	if (pet.bornEpoch == (day as uint64) && day > 1) {
+	if (pet.bornEpoch == (day as uint64) && pet.lineageGeneration == 0) {
+		return line + " | claimed";
+	}
+	if (pet.bornEpoch == (day as uint64)) {
 		return line + ` | heir born, generation ${pet.lineageGeneration}`;
 	}
 	if (!yesterday.alive) { return line; }
@@ -114,7 +118,7 @@ function step(this world: World, index: int32, diary: Diary): World {
 }
 
 function main(): int32 {
-	let world = World.create(WORLD_BLOCKS, DIARY_SEED);
+	let world = World.staggered(WORLD_BLOCKS, DIARY_SEED);
 	const diary: Diary = { pets: [1, 4, 7], lines: ["", "", ""] };
 	const pages: string[] = [];
 	for (let day = 1; day <= EPISODE_EPOCHS; day++) {
