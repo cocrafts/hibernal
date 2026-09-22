@@ -16,6 +16,8 @@ Entries are in execution order, grouped by the compiler change they share. A gro
 - **fixed, not landed** — fix written and every gate green in a private worktree; waiting on approval to land.
 - **open** — reproduced, not fixed.
 
+Re-measured 2026-09-22 on installed `d757c7e1`: nothing below has landed except #1. Blockers are parked on inbox cards `~/metascript/.inbox/compiler/2026-09-22-*.md`, claimed by recompiler worktrees `wt/solana-const-fold` (#6 and a dead-`if` crash) and `wt/std-solana` (the rest, card `~/metascript/.wt/std-solana.md`).
+
 | # | Group | Bug | Kind | Depends on | Status |
 |---|---|---|---|---|---|
 | 1 | A | Generic parameter under `ref`, `out`, `Borrow` or `Cursor` does not bind `T` | unification and substitution gap | — | **landed** `9565b257` + `48d9f015` |
@@ -209,6 +211,8 @@ if (owner == signer) { … }
 - Reference: object `==` is the generic `proc ==*[T: tuple|object](x, y: T): bool` (`lib/system.nim:2056`). Twin: a 16-byte object, a 32-byte object from another module and a 32-byte local object print `1111` on C and JS.
 
 ### 6. Module `const` does not link on Solana
+
+Parked on `~/metascript/.inbox/compiler/2026-09-22-solana-module-const-discarded-data.md` and `~/metascript/.inbox/compiler/2026-09-22-dead-if-without-else-crashes-c-build.md`. Re-measured 2026-09-22 on installed `d757c7e1`: still fails the link; the fix below never landed and its worktree is gone.
 
 ```ms
 import { DAMAGE } from "./knobs";

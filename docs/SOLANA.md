@@ -77,7 +77,7 @@ Work items live in the recompiler repo; ids match `ROADMAP.md`.
 | Id | What | Why Hibernal needs it | ER probe | Est. |
 |---|---|---|---|---|
 | **R2** | Parse the entrypoint buffer into typed, zero-copy `AccountInfo` views (`std/solana/entrypoint.ms`); reference: C SDK `sol_deserialize` | every instruction reads and writes `Pet`, `Block`, `GlobalConfig` | **yes, first** | 2 d |
-| **R12** | Module constants must not become discarded `.data` globals: fold scalar constants, emit `static const` into `.rodata` | `rules/` shares constants across files; `fight`, `emission`, `tree` cannot link without it | **yes, first** | 0.5–1 d |
+| **R12** | Module constants must not become discarded `.data` globals: fold scalar constants, emit `static const` into `.rodata` | `rules/` shares constants across files; `fight`, `emission`, `tree` cannot link without it; parked on `~/metascript/.inbox/compiler/2026-09-22-solana-module-const-discarded-data.md` | **yes, first** | 0.5–1 d |
 | **R3** | Syscalls: `sol_create_program_address`, `sol_try_find_program_address`, `sol_sha256`, `sol_get_clock_sysvar`, `sol_log_64_` | verify PDAs, sign as PDA in CPI, epoch from clock, log numbers without strings | yes | 1 d |
 | **R6** | CPI through `sol_invoke_signed_c`: build `SolInstruction` / `SolAccountMeta` / `SolAccountInfo` / `SolSignerSeeds` in C ABI without heap, behind a flattened shim | delegation, commit, undelegate, VRF, crank, System, Token-2022: **no ER without it** | **yes, decisive** | 2–3 d |
 | R5 | Error ABI: `u64` return codes, `panic` → log + abort, `ProgramError` | clean failure codes the client and tests can match | after | 0.5 d |
