@@ -1,4 +1,4 @@
-import { START_BONUS, NODE_BONUS, Stats, Region, Mod } from "./stats";
+import { START_BONUS, NODE_BONUS, BASE_MAX_HEARTS, Stats, Region, Mod } from "./stats";
 
 export const TREE_NODES: int32 = 24;
 export const KEYSTONE_COST: int32 = 3;
@@ -188,7 +188,7 @@ function withKeystone(this stats: Stats, id: int32): Stats {
 	return match (id) {
 		KEYSTONE_PACIFIST => stats.withMod(Mod.Pacifist),
 		KEYSTONE_CANNIBAL => stats.withMod(Mod.Cannibal),
-		_ => ({ ...stats, maxHearts: 2, mods: stats.mods.incl(Mod.GlassCannon) }),
+		_ => stats.withMod(Mod.GlassCannon),
 	};
 }
 
@@ -277,7 +277,7 @@ test "derived stats for a fighter path" {
 	assert stats.might == 90;
 	assert stats.grit == 60;
 	assert stats.forage == 50;
-	assert stats.maxHearts == 2;
+	assert stats.maxHearts == BASE_MAX_HEARTS + 1;
 	assert stats.mods.has(Mod.Scavenger);
 	assert stats.mods.has(Mod.GlassCannon);
 	assert !stats.mods.has(Mod.ThickHide);
