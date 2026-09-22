@@ -1,3 +1,5 @@
+import { BPS } from "./units";
+
 export const BASE_STAT: int32 = 50;
 export const BASE_SPEED: int32 = 50;
 export const START_BONUS: int32 = 30;
@@ -72,6 +74,19 @@ export function workPower(this stats: Stats): uint64 {
 	return (10 + stats.forage * 3 / 10) as uint64;
 }
 
+function faded(value: int32, vigorBps: int32): int32 {
+	return BASE_STAT + (value - BASE_STAT) * vigorBps / BPS;
+}
+
+export function aged(this stats: Stats, vigorBps: int32): Stats {
+	return {
+		...stats,
+		forage: faded(stats.forage, vigorBps),
+		might: faded(stats.might, vigorBps),
+		grit: faded(stats.grit, vigorBps),
+	};
+}
+
 export function power(this stats: Stats): int32 {
 	return stats.forage + stats.might + stats.grit;
 }
@@ -101,6 +116,15 @@ test "workPower base is 25 at forage 50" {
 	assert worker.workPower() == 34;
 	assert Stats.base().asCombatant(3).hearts == 3;
 	assert Combatant.plain(80, 60, 5).speed == BASE_SPEED;
+}
+
+test "age fades what the tree gave and keeps the base" {
+	const grown: Stats = { ...Stats.base(), forage: 150, might: 90, grit: 51 };
+	const old = grown.aged(5000);
+	assert old.forage == 100;
+	assert old.might == 70;
+	assert old.grit == 50;
+	assert grown.aged(BPS).forage == 150 && grown.aged(BPS).might == 90;
 }
 
 test "mods round-trip through a mask" {

@@ -1,4 +1,5 @@
-import { Region, Stats } from "./stats";
+import { BPS } from "./units";
+import { Region, Stats, aged } from "./stats";
 import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
 import {
@@ -15,6 +16,13 @@ import {
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 
 export const DEFAULT_MIN_HEARTS: int32 = 2;
+export const LIFESPAN_EPOCHS: uint64 = 90;
+export const DECLINE_START_EPOCHS: uint64 = 50;
+export const DECLINE_KNEE_EPOCHS: uint64 = 60;
+export const KNEE_VIGOR_BPS: int32 = 7000;
+export const END_VIGOR_BPS: int32 = 5000;
+export const INHERITANCE_TAX_PERCENT: uint64 = 30;
+export const HEIR_POINTS_CAP: int32 = 5;
 
 export enum TickError {
 	Dead,
@@ -22,6 +30,10 @@ export enum TickError {
 }
 
 export enum BurialError {
+	Alive,
+}
+
+export enum HeirError {
 	Alive,
 }
 
@@ -131,6 +143,25 @@ export function born(
 	return { pet: pet, global: settled.withWorkPower(0, stats.workPower()) };
 }
 
+export function vigorBps(age: uint64): int32 {
+	if (age <= DECLINE_START_EPOCHS) { return BPS; }
+	if (age <= DECLINE_KNEE_EPOCHS) {
+		const left = (DECLINE_KNEE_EPOCHS - age) as int32;
+		return KNEE_VIGOR_BPS + (BPS - KNEE_VIGOR_BPS) * left * left / 100;
+	}
+	const span = (LIFESPAN_EPOCHS - DECLINE_KNEE_EPOCHS) as int32;
+	const past = Math.min(age - DECLINE_KNEE_EPOCHS, LIFESPAN_EPOCHS - DECLINE_KNEE_EPOCHS) as int32;
+	return KNEE_VIGOR_BPS - (KNEE_VIGOR_BPS - END_VIGOR_BPS) * past / span;
+}
+
+export function vigor(this pet: Pet): int32 {
+	return vigorBps(pet.lastTickEpoch - pet.bornEpoch);
+}
+
+export function agedOut(this pet: Pet): boolean {
+	return !pet.alive && pet.hearts > 0;
+}
+
 export function tickTo(
 	this pet: Pet,
 	global: GlobalConfig,
@@ -148,8 +179,11 @@ export function tickTo(
 	let burrow = pet.burrow;
 	let spent: uint64 = 0;
 	let workedEpochs = 0;
-	for (let day = pet.lastTickEpoch + 1; day <= epoch && hearts > 0; day++) {
+	let old = false;
+	for (let day = pet.lastTickEpoch + 1; day <= epoch && hearts > 0 && !old; day++) {
 		workedEpochs += 1;
+		old = day >= pet.bornEpoch + LIFESPAN_EPOCHS;
+		if (old) { continue; }
 		if (!hungerOn(day, pet.bornEpoch)) { continue; }
 		if (hearts - 1 < (pet.minHearts as int32) && burrow >= meal) {
 			burrow -= meal;
@@ -158,10 +192,14 @@ export function tickTo(
 			hearts -= 1;
 		}
 	}
-	const alive = hearts > 0;
+	const alive = hearts > 0 && !old;
+	const faded = Stats.fromTree(pet.tree).aged(vigorBps(epoch - pet.bornEpoch));
 	const fed: Pet = {
 		...pet,
 		alive: alive,
+		forage: faded.forage as uint16,
+		might: faded.might as uint16,
+		grit: faded.grit as uint16,
 		hearts: hearts as uint8,
 		burrow: burrow,
 		harvest: pet.harvest + pending + growthBonus(pending, multiplierBps),
@@ -171,7 +209,7 @@ export function tickTo(
 	const afterSpend = settled.withSpend(Split.ofSpend(spent));
 	return Result.ok({
 		pet: fed.gainXp(workXp(workPower, workedEpochs)).onFightDay(epoch),
-		global: alive ? afterSpend : afterSpend.withWorkPower(workPower, 0),
+		global: afterSpend.withWorkPower(workPower, alive ? faded.workPower() : 0),
 	});
 }
 
@@ -181,11 +219,40 @@ export function bury(
 	global: GlobalConfig,
 ): Result<Burial, BurialError> {
 	if (pet.alive) { return Result.err(BurialError.Alive); }
-	const [perMate, burned] = deathSplit(pet.harvest + pet.burrow, livingMates);
+	const wallet = pet.harvest + pet.burrow;
+	if (pet.agedOut()) {
+		const tax = wallet * INHERITANCE_TAX_PERCENT / 100;
+		return Result.ok({
+			pet: { ...pet, harvest: 0, burrow: wallet - tax },
+			global: { ...global, recycledPending: global.recycledPending + tax },
+			perMate: 0,
+		});
+	}
+	const [perMate, burned] = deathSplit(wallet, livingMates);
 	return Result.ok({
 		pet: { ...pet, harvest: 0, burrow: 0 },
 		global: { ...global, burned: global.burned + burned },
 		perMate: perMate,
+	});
+}
+
+export function heirOf(
+	this dead: Pet,
+	epoch: uint64,
+	global: GlobalConfig,
+): Result<PetAndGlobal, HeirError> {
+	if (dead.alive) { return Result.err(HeirError.Alive); }
+	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, global);
+	const generation = (dead.lineageGeneration as int32) + 1;
+	const points = (hatched.pet.pointsUnspent as int32) + Math.min(generation, HEIR_POINTS_CAP);
+	return Result.ok({
+		pet: {
+			...hatched.pet,
+			burrow: dead.burrow,
+			pointsUnspent: points as uint8,
+			lineageGeneration: generation as uint16,
+		},
+		global: hatched.global,
 	});
 }
 
@@ -266,4 +333,58 @@ test "ticks refuse the dead and the past, and a burial splits the wallet" {
 		assert burial.value.global.burned == 1001 - 166 * 3;
 	}
 	assert !newborn.pet.bury(3, newborn.global).ok;
+}
+
+test "vigor holds to day 50, bends to 70% on day 60 and ends at half" {
+	assert vigorBps(0) == BPS;
+	assert vigorBps(DECLINE_START_EPOCHS) == BPS;
+	assert vigorBps(55) == KNEE_VIGOR_BPS + 750;
+	assert vigorBps(DECLINE_KNEE_EPOCHS) == KNEE_VIGOR_BPS;
+	assert vigorBps(75) == 6000;
+	assert vigorBps(LIFESPAN_EPOCHS) == END_VIGOR_BPS;
+	assert vigorBps(500) == END_VIGOR_BPS;
+}
+
+test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
+	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
+	const fed: Pet = { ...newborn.pet, burrow: 1000 * EMISSION_START };
+	const prime = fed.tickedTo(newborn.global, DECLINE_START_EPOCHS);
+	assert prime.pet.forage == 80;
+	const fading = prime.pet.tickedTo(prime.global, DECLINE_KNEE_EPOCHS);
+	assert fading.pet.alive;
+	assert fading.pet.forage == 71;
+	assert fading.global.totalWorkPower == Stats.fromTree(fading.pet.tree).aged(KNEE_VIGOR_BPS).workPower();
+	const last = fading.pet.tickedTo(fading.global, LIFESPAN_EPOCHS - 1);
+	assert last.pet.alive;
+	const gone = last.pet.tickedTo(last.global, LIFESPAN_EPOCHS);
+	assert !gone.pet.alive;
+	assert gone.pet.agedOut();
+	assert gone.global.totalWorkPower == 0;
+	const wallet = gone.pet.harvest + gone.pet.burrow;
+	const burial = gone.pet.bury(4, gone.global);
+	assert burial.ok;
+	if (burial.ok) {
+		const tax = wallet * INHERITANCE_TAX_PERCENT / 100;
+		assert burial.value.perMate == 0;
+		assert burial.value.pet.burrow == wallet - tax;
+		assert burial.value.global.recycledPending == gone.global.recycledPending + tax;
+	}
+}
+
+test "an heir keeps the slot and the estate and gets a point per generation" {
+	const newborn = hatch(Region.Survivor, 0, GlobalConfig.genesis(0));
+	const estate: Pet = { ...newborn.pet, alive: false, hearts: 3, burrow: 700, lineageGeneration: 6 };
+	const heir = estate.heirOf(97, newborn.global);
+	assert heir.ok;
+	if (heir.ok) {
+		assert heir.value.pet.alive;
+		assert heir.value.pet.bornEpoch == 97;
+		assert heir.value.pet.burrow == 700;
+		assert heir.value.pet.lineageGeneration == 7;
+		assert heir.value.pet.pointsUnspent == newborn.pet.pointsUnspent + (HEIR_POINTS_CAP as uint8);
+		assert heir.value.pet.startRegion() == Region.Survivor;
+	}
+	const refused = newborn.pet.heirOf(97, newborn.global);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == HeirError.Alive; }
 }

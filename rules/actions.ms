@@ -1,5 +1,5 @@
 import { BPS, HBRN_UNIT } from "./units";
-import { Region, Stats } from "./stats";
+import { Region, Stats, aged } from "./stats";
 import { TREE_NODES, AllocationError, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord } from "./layout";
 import { Food, Split, foodCost, foodHearts, stakeSplit } from "./emission";
@@ -20,6 +20,7 @@ import {
 	withWorkPower,
 	born,
 	tickTo,
+	vigor,
 } from "./life";
 
 export enum EconomyAction {
@@ -173,7 +174,7 @@ export function allocateNode(
 	const cost = nodeCost(id);
 	if ((pet.pointsUnspent as int32) < cost) { return Result.err(AllocationError.NoPoints); }
 	const tree = try pet.tree.allocate(id, pet.startRegion());
-	const derived = Stats.fromTree(tree);
+	const derived = Stats.fromTree(tree).aged(pet.vigor());
 	const grown: Pet = {
 		...pet,
 		tree: tree,
