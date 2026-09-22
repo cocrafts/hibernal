@@ -11,7 +11,7 @@ export const ECONOMY_HIDDEN: int32 = 32;
 export const ECONOMY_OUTPUTS: int32 = 5;
 export const NODE_INPUTS: int32 = 24;
 export const NODE_HIDDEN: int32 = 32;
-export const ATTACK_INPUTS: int32 = 24;
+export const ATTACK_INPUTS: int32 = 25;
 export const ATTACK_HIDDEN: int32 = 32;
 export const ATTACK_NARROW: int32 = 16;
 export const ATTACK_OUTPUTS: int32 = STAKE_LEVELS;
@@ -137,8 +137,8 @@ test "the policy fits one account and the heads follow each other" {
 	assert economyOffset() == 16;
 	assert nodeOffset() == 16 + 1153 + 181;
 	assert attackOffset() == nodeOffset() + 897 + 37;
-	assert policyBytes() == attackOffset() + 897 + 577 + 81;
-	assert policyBytes() == 3839;
+	assert policyBytes() == attackOffset() + 929 + 577 + 81;
+	assert policyBytes() == 3871;
 	assert policyBytes() <= 10240;
 }
 

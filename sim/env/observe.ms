@@ -5,6 +5,7 @@ import {
 	ATTACK_HOLD,
 	STAKE_LEVELS,
 	BPS,
+	BlockSlot,
 	Mod,
 	Food,
 	Stats,
@@ -102,11 +103,12 @@ export enum TargetFeature {
 	FightsIn,
 	AttackedToday,
 	Hearts,
+	Grudge,
 }
 
 export const SELF_FEATURES: int32 = (SelfFeature.Threat as int32) + 1;
 export const NODE_FEATURES: int32 = (NodeFeature.GainsCannibal as int32) + 1;
-export const TARGET_FEATURES: int32 = (TargetFeature.Hearts as int32) + 1;
+export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
 export const TARGET_CANDIDATES: int32 = BLOCK_SLOTS + 1;
 
@@ -266,6 +268,7 @@ function writeTargets(this world: World, index: int32, features: int32[], offset
 	const pet = world.pets[index];
 	const fighter = pet.combatant();
 	const base = blockStart(index);
+	const robber = world.robberOf(index);
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		const target = world.pets[base + slot];
 		if (base + slot == index || !target.alive) { continue; }
@@ -281,6 +284,11 @@ function writeTargets(this world: World, index: int32, features: int32[], offset
 			flag(pet.attackedOn(target.blockSlot(), world.epoch)),
 		);
 		put(features, targetSlot(row, TargetFeature.Hearts), (target.hearts as int32) * 15);
+		put(
+			features,
+			targetSlot(row, TargetFeature.Grudge),
+			flag(robber.ok && robber.value == target.blockSlot()),
+		);
 		const stakeCap = pet.attackable(target, world.epoch);
 		if (!stakeCap.ok) { continue; }
 		const defender = target.combatant();
@@ -374,7 +382,7 @@ test "sizes follow the three heads" {
 	assert SELF_FEATURES == 32;
 	assert observationSize(Head.Economy) == 32;
 	assert observationSize(Head.Node) == 32 + 25 * 16;
-	assert observationSize(Head.Attack) == 32 + 11 * 12;
+	assert observationSize(Head.Attack) == 32 + 11 * 13;
 	assert actionCount(Head.Economy) == 5;
 	assert actionCount(Head.Node) == 25;
 	assert actionCount(Head.Attack) == 41;
@@ -412,6 +420,21 @@ test "a newborn sees itself, its legal nodes and no attackable target" {
 	assert features[SELF_FEATURES + 5 * TARGET_FEATURES + (TargetFeature.Shielded as int32)] ==
 		FEATURE_ONE;
 	assert features[SELF_FEATURES + 5 * TARGET_FEATURES + (TargetFeature.WinChance as int32)] == 0;
+}
+
+test "a fresh grudge marks the robber and nobody else" {
+	const world = World.create(1, 8).beginEpoch(2);
+	const grudges = world.grudges;
+	grudges[4] = { robber: BlockSlot.Eighth, epoch: 1 };
+	const features = zeros(observationSize(Head.Attack));
+	world.observeInto(4, Head.Attack, features, 0);
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		const row = SELF_FEATURES + slot * TARGET_FEATURES;
+		assert features[row + (TargetFeature.Grudge as int32)] == (slot == 7 ? FEATURE_ONE : 0);
+	}
+	const stale: World = { ...world, epoch: 5 };
+	stale.observeInto(4, Head.Attack, features, 0);
+	assert features[SELF_FEATURES + 7 * TARGET_FEATURES + (TargetFeature.Grudge as int32)] == 0;
 }
 
 test "grown pets see odds and values for every attack the mask allows" {

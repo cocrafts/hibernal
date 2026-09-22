@@ -14,7 +14,7 @@ WEIGHT_MAX = 127.0
 DEFAULT_SHIFT = 7
 ECONOMY, NODE, ATTACK = 0, 1, 2
 NODE_CANDIDATES, NODE_FEATURES = 25, 16
-TARGET_CANDIDATES, TARGET_FEATURES = 11, 12
+TARGET_CANDIDATES, TARGET_FEATURES = 11, 13
 STAKE_LEVELS = 4
 
 
@@ -66,7 +66,7 @@ class PetPolicy(nn.Module):
         self.register_buffer("attackSelf", torch.tensor(selfInputIndexes[ATTACK], dtype=torch.long))
         self.economy = stack(QuantDense(32, 32, True), QuantDense(32, 5, False))
         self.node = stack(QuantDense(24, 32, True), QuantDense(32, 1, False))
-        self.attack = stack(QuantDense(24, 32, True), QuantDense(32, 16, True), QuantDense(16, 4, False))
+        self.attack = stack(QuantDense(25, 32, True), QuantDense(32, 16, True), QuantDense(16, 4, False))
         self.critic = stack(nn.Linear(SELF_FEATURES, 64), nn.Tanh(), nn.Linear(64, 64), nn.Tanh(), nn.Linear(64, 1))
 
     def candidates(self, observations, selfIndexes, count, features):

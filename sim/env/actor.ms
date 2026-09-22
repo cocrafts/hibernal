@@ -191,7 +191,7 @@ test "each head gathers its own inputs" {
 	assert scratch.input[0] == 3 + (SelfFeature.Hearts as int32);
 	assert scratch.input[11] == 3 + (SelfFeature.Round as int32);
 	assert scratch.input[12] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES;
-	assert scratch.input[23] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES + 11;
+	assert scratch.input[24] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES + 12;
 }
 
 test "the best legal action ignores illegal logits and falls back when nothing is legal" {

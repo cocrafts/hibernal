@@ -15,11 +15,33 @@ import {
 	mixSeeds,
 	fightSeed,
 	attackHoldMask,
+	attackChoice,
+	HBRN_UNIT,
+	EMISSION_START,
+	LIFESPAN_EPOCHS,
+	INHERITANCE_TAX_PERCENT,
+	agedOut,
+	heirOf,
 } from "../rules/index";
 
 export const WORLD_BLOCKS: int32 = 20;
 export const ACTS_PER_EPOCH: int32 = 4;
 export const EPISODE_EPOCHS: int32 = 120;
+export const GRUDGE_EPOCHS: uint64 = 3;
+
+export struct Grudge {
+	robber: BlockSlot;
+	epoch: uint64;
+}
+
+export enum GrudgeError {
+	None,
+	Stale,
+}
+
+export function none(this typeof Grudge): Grudge {
+	return { robber: BlockSlot.First, epoch: 0 };
+}
 
 export struct ActionSet {
 	economy: EconomyAction;
@@ -50,6 +72,7 @@ export struct World {
 	deathEpochs: uint64[];
 	levelTenEpochs: uint64[];
 	levelTwentyEpochs: uint64[];
+	grudges: Grudge[];
 	global: GlobalConfig;
 	epoch: uint64;
 	round: int32;
@@ -63,8 +86,10 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const deathEpochs: uint64[] = [];
 	const levelTenEpochs: uint64[] = [];
 	const levelTwentyEpochs: uint64[] = [];
+	const grudges: Grudge[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
 		const slot = index % BLOCK_SLOTS;
+		grudges.push(Grudge.none());
 		const hatched = Pet.born(
 			(index / BLOCK_SLOTS) as uint32,
 			slot as BlockSlot,
@@ -83,6 +108,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		deathEpochs: deathEpochs,
 		levelTenEpochs: levelTenEpochs,
 		levelTwentyEpochs: levelTwentyEpochs,
+		grudges: grudges,
 		global: global,
 		epoch: 0,
 		round: 0,
@@ -104,8 +130,16 @@ export function livingMates(this world: World, index: int32): int32 {
 	return living;
 }
 
+export function robberOf(this world: World, index: int32): Result<BlockSlot, GrudgeError> {
+	const grudge = world.grudges[index];
+	if (grudge.epoch == 0) { return Result.err(GrudgeError.None); }
+	if (world.epoch > grudge.epoch + GRUDGE_EPOCHS) { return Result.err(GrudgeError.Stale); }
+	return Result.ok(grudge.robber);
+}
+
 export function beginEpoch(this world: World, epoch: uint64): World {
 	const pets = world.pets;
+	const grudges = world.grudges;
 	const deathEpochs = world.deathEpochs;
 	const levelTenEpochs = world.levelTenEpochs;
 	const levelTwentyEpochs = world.levelTwentyEpochs;
@@ -116,15 +150,14 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		if (!pet.alive) {
 			const diedAt = deathEpochs[index];
 			if (diedAt == 0 || epoch < diedAt + GRACE_EPOCHS) { continue; }
-			const hatched = Pet.born(pet.blockId, pet.blockSlot(), pet.startRegion(), epoch, global);
+			const heir = pet.heirOf(epoch, global);
+			if (!heir.ok) { unreachable; }
 			levelTenEpochs[index] = 0;
 			levelTwentyEpochs[index] = 0;
-			pets[index] = {
-				...hatched.pet,
-				lineageGeneration: ((pet.lineageGeneration as int32) + 1) as uint16,
-			};
+			grudges[index] = Grudge.none();
+			pets[index] = heir.value.pet;
 			deathEpochs[index] = 0;
-			global = hatched.global;
+			global = heir.value.global;
 			heirs += 1;
 			continue;
 		}
@@ -236,6 +269,10 @@ export function applyAttack(this world: World, index: int32, choice: int32): Wor
 	pets[index] = settled.value.attacker;
 	pets[target] = settled.value.defender;
 	const won = settled.value.record.loot > 0 ? 1 : 0;
+	const grudges = world.grudges;
+	const robber = world.robberOf(index);
+	if (robber.ok && robber.value == slot as BlockSlot) { grudges[index] = Grudge.none(); }
+	if (won == 1) { grudges[target] = { robber: pet.blockSlot(), epoch: world.epoch }; }
 	return {
 		...world,
 		global: settled.value.global,
@@ -381,4 +418,54 @@ test "an heir takes the slot after the grace period" {
 	assert world.pets[7].bornEpoch == 1 + GRACE_EPOCHS;
 	assert world.deathEpochs[7] == 0;
 	assert world.stats.heirs == 1;
+}
+
+test "a pet dies of age on day 90 and its heir returns with the estate after the grace" {
+	const start = World.create(1, 5);
+	const pets = start.pets;
+	pets[4] = { ...pets[4], burrow: 1000 * EMISSION_START };
+	let world = start.beginEpoch(LIFESPAN_EPOCHS - 1);
+	assert world.pets[4].alive;
+	world = world.endEpoch().beginEpoch(LIFESPAN_EPOCHS);
+	assert world.pets[4].agedOut();
+	const wallet = world.pets[4].harvest + world.pets[4].burrow;
+	const mateHarvest = world.pets[5].harvest;
+	world = world.endEpoch();
+	assert world.pets[5].harvest == mateHarvest;
+	assert world.pets[4].burrow == wallet - wallet * INHERITANCE_TAX_PERCENT / 100;
+	world = world.beginEpoch(LIFESPAN_EPOCHS + GRACE_EPOCHS);
+	assert world.pets[4].alive;
+	assert world.pets[4].lineageGeneration == 1;
+	assert world.pets[4].burrow == wallet - wallet * INHERITANCE_TAX_PERCENT / 100;
+}
+
+test "a robbery leaves a grudge for three epochs and striking back settles it" {
+	const start = World.create(1, 6);
+	const pets = start.pets;
+	for (let index = 0; index < pets.length; index++) {
+		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT };
+	}
+	const world = start.beginEpoch(10);
+	for (let index = 0; index < pets.length; index++) {
+		pets[index] = { ...pets[index], harvest: 400 * HBRN_UNIT, burrow: 400 * HBRN_UNIT };
+	}
+	pets[3] = { ...pets[3], hearts: 5, might: 900 };
+	const robbed = world.applyAttack(3, attackChoice(BlockSlot.Sixth, StakeLevel.Quarter));
+	assert robbed.stats.illegal == 0;
+	assert robbed.stats.wins == 1;
+	const grudge = robbed.robberOf(5);
+	assert grudge.ok;
+	if (grudge.ok) { assert grudge.value == BlockSlot.Fourth; }
+	const robber = robbed.robberOf(3);
+	assert !robber.ok;
+	if (!robber.ok) { assert robber.error == GrudgeError.None; }
+	const later: World = { ...robbed, epoch: 13 };
+	assert later.robberOf(5).ok;
+	const stale: World = { ...robbed, epoch: 14 };
+	const forgotten = stale.robberOf(5);
+	assert !forgotten.ok;
+	if (!forgotten.ok) { assert forgotten.error == GrudgeError.Stale; }
+	const struckBack = robbed.applyAttack(5, attackChoice(BlockSlot.Fourth, StakeLevel.Quarter));
+	assert struckBack.stats.fights == 2;
+	assert !struckBack.robberOf(5).ok;
 }
