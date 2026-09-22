@@ -8,6 +8,7 @@ import {
 	EconomyAction,
 	splitmix,
 	policyBytes,
+	agedOut,
 } from "../../rules/index";
 import { ACTS_PER_EPOCH, Masks, World, WorldStats } from "../world";
 import { personaKindOf, playEpisode } from "../teacher";
@@ -129,8 +130,9 @@ export function shaping(this weights: RewardWeights, moment: Moment, world: Worl
 }
 
 export function score(this pet: Pet, weights: RewardWeights): int64 {
-	if (!pet.alive) { return -weights.deathMilli; }
 	const wealth = ((pet.harvest + pet.burrow) / MILLI_PER_UNIT) as int64;
+	if (pet.agedOut()) { return wealth; }
+	if (!pet.alive) { return -weights.deathMilli; }
 	return wealth + weights.heartMilli * (pet.hearts as int64);
 }
 
@@ -626,6 +628,13 @@ test "a dead pet scores the death weight once" {
 	assert dead.score(weights) == -weights.deathMilli;
 	const buried: Pet = { ...dead, harvest: 0, burrow: 0 };
 	assert buried.score(weights) == dead.score(weights);
+}
+
+test "a pet that dies of age keeps its wealth as score and pays no death weight" {
+	const weights = RewardWeights.of(PersonaKind.Cautious);
+	const world = World.create(1, 4).beginEpoch(1);
+	const old: Pet = { ...world.pets[2], alive: false, hearts: 3 };
+	assert old.score(weights) == ((old.harvest + old.burrow) / MILLI_PER_UNIT) as int64;
 }
 
 function blankPolicy(): uint8[] {

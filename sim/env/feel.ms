@@ -12,6 +12,7 @@ import {
 	foodCost,
 	stakeShareBps,
 	winChanceFromTable,
+	agedOut,
 } from "../../rules/index";
 import { World, WorldStats, blockStart } from "../world";
 import { personaKindOf } from "../teacher";
@@ -41,9 +42,10 @@ export enum FeelCounter {
 	Bitten,
 	Wealth,
 	Living,
+	AgedOut,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.Living as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.AgedOut as int32) + 1;
 
 export enum Larder {
 	Dead,
@@ -201,6 +203,10 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 		}
 		const larder = feel.larders[key];
 		if (pet.alive || larder == Larder.Dead) { continue; }
+		if (pet.agedOut()) {
+			feel.tally(key, FeelCounter.AgedOut, 1);
+			continue;
+		}
 		feel.tally(key, FeelCounter.Starved, 1);
 		if (larder == Larder.Unbanked) { feel.tally(key, FeelCounter.StarvedUnbanked, 1); }
 		if (larder == Larder.Stocked) { feel.tally(key, FeelCounter.StarvedStocked, 1); }

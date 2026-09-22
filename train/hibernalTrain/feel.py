@@ -23,13 +23,14 @@ FEEL_FIELDS = (
     "bitten",
     "wealth",
     "living",
+    "agedOut",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])
 HEADER = (
     f"{'':24s} {'pets':>5s} {'fights':>6s} {'won':>5s} {'odds':>5s} {'<40%':>5s} {'<own':>5s} "
     f"{'stake':>5s} {'burrow':>6s} {'meals':>6s} {'at':>6s} {'hearts':>6s} {'robbed':>6s} {'avenged':>7s} "
-    f"{'starved':>9s} {'bitten':>6s} {'wealth':>7s}"
+    f"{'starved':>9s} {'bitten':>6s} {'aged':>5s} {'wealth':>7s}"
 )
 
 
@@ -49,36 +50,38 @@ def feelLine(name, counters):
         f"{ratio(total['mealHeartsSum'], total['meals']):6.2f} {ratio(total['heartsSum'], total['livingEpochs']):6.2f} "
         f"{ratio(total['robbed'], pets):6.2f} "
         f"{ratio(total['avenged'], total['robbed']) * 100:6.1f}% "
-        f"{total['starved']:3d}/{total['starvedUnbanked']}/{total['starvedStocked']:<3d} {total['bitten']:6d} "
+        f"{total['starved']:3d}/{total['starvedUnbanked']}/{total['starvedStocked']:<3d} {total['bitten']:6d} {total['agedOut']:5d} "
         f"{ratio(total['wealth'], total['living']):7.0f}"
     )
 
 
-def personaFeatures(counters):
+def personaFeatures(counters, revenge=False):
     field = {name: counters[:, index].astype(np.float64) for index, name in enumerate(FEEL_FIELDS)}
     attacks = np.maximum(field["attacks"], 1.0)
     meals = np.maximum(field["meals"], 1.0)
-    features = np.stack(
-        [
-            field["attacks"],
-            field["winChanceSum"] / attacks,
-            field["stakeShareSum"] / attacks,
-            field["burrowShareSum"] / attacks,
-            field["meals"],
-            field["mealHeartsSum"] / meals,
-            field["banks"],
-            field["heartsSum"] / np.maximum(field["livingEpochs"], 1.0),
-        ],
-        axis=1,
-    )
-    for column, count in ((1, field["attacks"]), (2, field["attacks"]), (3, field["attacks"]), (5, field["meals"])):
+    columns = [
+        field["attacks"],
+        field["winChanceSum"] / attacks,
+        field["stakeShareSum"] / attacks,
+        field["burrowShareSum"] / attacks,
+        field["meals"],
+        field["mealHeartsSum"] / meals,
+        field["banks"],
+        field["heartsSum"] / np.maximum(field["livingEpochs"], 1.0),
+    ]
+    averaged = [(1, field["attacks"]), (2, field["attacks"]), (3, field["attacks"]), (5, field["meals"])]
+    if revenge:
+        columns.append(field["avenged"] / np.maximum(field["robbed"], 1.0))
+        averaged.append((len(columns) - 1, field["robbed"]))
+    features = np.stack(columns, axis=1)
+    for column, count in averaged:
         seen = count > 0
         features[~seen, column] = features[seen, column].mean() if seen.any() else 0.0
     return (features - features.mean(axis=0)) / (features.std(axis=0) + 1e-9)
 
 
-def personaRecall(counters, personas):
-    features = personaFeatures(counters)
+def personaRecall(counters, personas, revenge=False):
+    features = personaFeatures(counters, revenge)
     present = [kind for kind in range(len(PERSONAS)) if (personas == kind).any()]
     centroids = np.stack([features[personas == kind].mean(axis=0) for kind in present])
     distances = ((features[:, None, :] - centroids[None, :, :]) ** 2).sum(axis=2)
@@ -98,10 +101,11 @@ def feelTable(counters, blocks, labelOf):
         rows = shaped[chosen]
         for kind, persona in enumerate(PERSONAS):
             lines.append(feelLine(f"{name} {persona}", rows[personas == kind]))
-        recall = personaRecall(rows, personas)
-        lines.append(
-            f"{name}: persona told from one pet's log, nearest centroid: "
-            + " ".join(f"{PERSONAS[kind]} {value:.2f}" for kind, value in enumerate(recall))
-            + f" · balanced {np.mean(recall):.2f} (chance 0.33)"
-        )
+        for label, revenge in (("", False), (" with revenge", True)):
+            recall = personaRecall(rows, personas, revenge)
+            lines.append(
+                f"{name}: persona told from one pet's log{label}, nearest centroid: "
+                + " ".join(f"{PERSONAS[kind]} {value:.2f}" for kind, value in enumerate(recall))
+                + f" · balanced {np.mean(recall):.2f} (chance 0.33)"
+            )
     return lines
