@@ -8,6 +8,7 @@ from hibernalTrain.feel import FEEL_FIELDS, feelTable
 from hibernalTrain.rollout import SLOTS, holdActions
 
 POLICY_SLOT = 0
+TEACHER = "teacher"
 GROUPS = ("policy world", "teacher world", "mixed, policy on even slots", "mixed, policy on odd slots")
 WEALTH = FEEL_FIELDS.index("wealth")
 LIVING = FEEL_FIELDS.index("living")
@@ -35,9 +36,12 @@ def main():
     arguments = parser.parse_args()
     started = time.perf_counter()
     env = HibernalEnv(seed=arguments.seed, envCount=arguments.worlds * len(GROUPS), epochs=arguments.epochs)
-    with open(f"checkpoints/{arguments.policy}.policy", "rb") as source:
-        env.loadPolicy(POLICY_SLOT, source.read())
-    env.assignAll(lambda index, slot: controllerFor(index % len(GROUPS), slot))
+    if arguments.policy == TEACHER:
+        env.assignAll(lambda index, slot: CONTROL_TEACHER)
+    else:
+        with open(f"checkpoints/{arguments.policy}.policy", "rb") as source:
+            env.loadPolicy(POLICY_SLOT, source.read())
+        env.assignAll(lambda index, slot: controllerFor(index % len(GROUPS), slot))
     worlds = env.rows // env.blocks
     step = 0
     lastStats = [None] * worlds
