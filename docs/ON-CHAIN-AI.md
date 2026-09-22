@@ -146,7 +146,7 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 - XP `[strawman]`: newborn 190, work 7 × `workPower` per epoch, raid 3 per `$HBRN` looted capped at 500, defense 60 won and 20 lost; curve `190 × (L − 1) + (L − 1)³`, cap 20.
 - Checks: `msc test rules/index.ms` 341/341; `sim/determinism.ms` native equals JS, `fights`, `tree` and `odds` unchanged, `economy` moved because `levelCost` left the digest. A 10-pet, 30-epoch loop with a naive policy (64 fights, 36 raids) prints the same digest on native and JS; its pets reach levels 16–20 by epoch 30.
 - Not in package 2 (ROADMAP P0b): the 64-node tree, the D26 loot formula, talent, decline and natural death, items, bonding, social.
-- Compiler bug found on the way, JS backend: a `uint64` `for` counter is emitted as a `Number`; arithmetic, free calls and struct literals wrap it in `BigInt()`, extension dot-call arguments do not, so `pet.tickTo(global, epoch)` throws `Cannot mix BigInt`. Repro `out/jsUint64/dotCall.ms`. `rules/` does not hit it; `sim/world.ms` will.
+- Compiler bug found on the way, JS backend: `pet.tickTo(global, epoch)` with a `uint64` `for` counter throws `Cannot mix BigInt`. Traced to two defects, `AI-BUGS.md` #3 and #4.
 
 ### Package 3: the world and the teacher — Measured
 

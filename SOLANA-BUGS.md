@@ -6,7 +6,9 @@ Every entry was reproduced on recompiler `main` at `b707175d` (compiler built fr
 
 Re-run on `main` at `ba16897a` (2026-09-16), in a private worktree: every entry gave the same result, except #16, which was not re-run. #5, #6, #7 and #15 were measured on `ba16897a`, and their file and line references are to that commit. #18 was found on 2026-09-16 while tracing #1, and was measured on `01c86b5f`.
 
-Re-run on `main` at `d101b611` (2026-09-17, 40 commits past `ba16897a`), compiler built from a clean private worktree (`/tmp/hib-bugs/wt-tip/msc`, repros in `/tmp/hib-bugs/r/`), C and JS, `--os=solana` for #6: every open entry reproduces with the same output, except #5, whose C case is fixed on this tip (a same-module 32-byte struct now prints `1`) while JS still fails on every struct. #1 stays green (`5` on C and JS); #18 stays red until its fix lands. The entry-file `const LIMIT` in #6 also fails the Solana link, so the "scalar `const` in the entry file folds" row of `docs/ROADMAP.md` R12 and `docs/CODE-STYLE.md` §11 is stale.
+Re-run on `main` at `d101b611` (2026-09-17, 40 commits past `ba16897a`), compiler built from a clean private worktree (`/tmp/hib-bugs/wt-tip/msc`, repros in `/tmp/hib-bugs/r/`), C and JS, `--os=solana` for #6: every open entry reproduces with the same output, except #5, whose C case is fixed on this tip (a same-module 32-byte struct now prints `1`) while JS still fails on every struct. #1 stays green (`5` on C and JS); #18 stays red until its fix lands. The entry-file `const LIMIT` in #6 also fails the Solana link, so the "scalar `const` in the entry file folds" row of `docs/ROADMAP.md` R12 and `~/metascript/docs/CODE-STYLE.md` §11 is stale.
+
+Re-run on `main` at `f8a913e5` (2026-09-17 evening, 13 commits past `d101b611`), compiler built from a clean private worktree (`/tmp/hib-bugs/wt-tip2/msc2`; the bootstrap binary has to sit inside the new worktree, because `msc` reads `std/` next to itself): the 24 host repros give the same output on C and JS as on `d101b611`, and #6 fails the same link. #19 was found on this tip while tracing #6.
 
 Entries are in execution order, grouped by the compiler change they share. A group lands only after the groups above it. `Status` means:
 
@@ -19,10 +21,10 @@ Entries are in execution order, grouped by the compiler change they share. A gro
 | 1 | A | Generic parameter under `ref`, `out`, `Borrow` or `Cursor` does not bind `T` | unification and substitution gap | — | **landed** `9565b257` + `48d9f015` |
 | 18 | A | A generic `distinct` instance as a plain parameter never matches its argument | argument checked before its type parameters are bound | — | **fixed, not landed** |
 | 2 | A | Indexing a `ref` array parameter fails in C | native lowering | — | open |
-| 3 | A | `try` does not check the error type | checker type rule | — | open |
-| 4 | A | `.length` and `for..of` on a fixed array `T[N]` fail in C | native lowering | — | open |
+| 3 | A | `try` does not check the error type | checker type rule | 12 (instance part, fixed with it) | **fixed, not landed** |
+| 4 | A | `.length` and `for..of` on a fixed array `T[N]` fail in C | native lowering | — | **fixed, not landed** |
 | 5 | A | `==` on structs fails for every struct in JS (the C case over 24 bytes is fixed on `d101b611`) | hook generation on the JS backend | — | open (JS only) |
-| 6 | A | Module `const` does not link on Solana | codegen of module bindings | — | open |
+| 6 | A | Module `const` does not link on Solana | codegen of module bindings | — | scalars **fixed, not landed**; aggregates open (after #8) |
 | 7 | A | Type mismatch message drops type arguments | diagnostic | — | open |
 | 8 | A | `const` bindings and value parameters are writable | missing assignability check (soundness) | — | open |
 | 9 | B | Macro called with method syntax | macro dispatch | B core | open |
@@ -34,6 +36,8 @@ Entries are in execution order, grouped by the compiler change they share. A gro
 | 15 | D | Struct fields private to their module | missing feature; field modifiers crash C codegen | — | open |
 | 16 | D | `@borrow` for `distinct` types | missing feature | B, C | open |
 | 17 | E | `Borrow<T>` locals and returns fail in C, `for..of` copies, no lifetime check | half-implemented feature, not blocking | — | open |
+| 19 | A | A 64-bit integer literal expression folds through a double | constant folding on doubles; literal typed `int32` regardless of context | — | open |
+| 20 | A | Two structs of the same shape are assignable in the checker and distinct in C | structural assignability against nominal C types | — | open |
 
 Where this stands on 2026-09-17: 1 landed, 1 fixed and waiting to land, 16 open. Group A is the only group in progress; nothing in B, C or D has been started. Next in execution order is #2.
 
@@ -98,7 +102,15 @@ peel(a);
   - Regression test `src/test/fixedbugs/bug175GenericDistinctParam.ms`: red on the unpatched build, green on the patched one (15/297). Numbered 175 because `main` took 174 on 2026-09-17.
   - `msc test src/index.ms` 180/180 files, 3708/3708 tests.
   - Emitted C for the 211 corpus programs is identical between the two builds (209 build, `704` and `762` fail the same way on both).
-  - Not landed as of 2026-09-17: waiting on approval. The patch region is untouched by the 40 commits `main` has taken since `01c86b5f` — `callResolve.ms` moved only in `createSymFromExport` — so it still applies, but the gates above were measured on `01c86b5f` and are re-run on the landing tip before the commit.
+  - Re-applied on `f8a913e5` (2026-09-17, `/tmp/hib-bugs/wt-land18`); the test is now `bug179GenericDistinctParam.ms`, because `main` took 175–177 and another session holds 178. Gates on that tip, all in the private worktree:
+    - the test is red on the unpatched build (six `Argument type mismatch … expected Wrap179<T>` errors) and green on the patched one;
+    - self-host fixpoint: gen2 and gen3 emit 313 C files, 0 differ;
+    - `msc test src/index.ms` 180/180 files, 3717/3717 tests;
+    - `src/test/guard/run.sh` ALL GREEN, 332 probes (the four reds of `b707175d` are gone on this tip);
+    - corpus 1189 pass, 30 fail, 6 xfail: the 17 known cells (`704` and `762` on every lane, `619`, `628`, `630`, `711`, `773`, `775` on `js`/`esm`) plus 13 cell timeouts (`255`, `256`, `259`, `260`, `624`, `410`) taken while the machine ran at load 120. Re-run alone, the first five pass 6/6 cells on the patched build; `410-awaitStructSpawnStored` hangs on one cell on the patched build and on one cell on the unpatched build, the intermittent hang already recorded under #1;
+    - sanitizer lane 206 pass, 8 fail, the same eight as under #1 (`253`, `254`, `258`, `259`, `260` ledger, `704`, `762` build, `410` hang);
+    - Hibernal `msc test rules/index.ms` 349/349, and the seven `sim/determinism.ms` digests are identical on native, JS and the unpatched compiler.
+  - Not landed: waiting on approval to commit.
 
 ### 2. Indexing a `ref` array parameter fails in C
 
@@ -139,6 +151,13 @@ function feed(): Result<uint64, PetError> {
 - Where: `checkTryExpr` (`src/checker/callResolve.ms`) returns the ok type and never compares the argument's `E` with the enclosing function's return type.
 - Reference: none in Nim core; `Result` and `try` are MetaScript constructs. The invariant is ordinary return checking: `try x` means `if (!x.ok) return Result.err(x.error)`, and that return must type-check like a written one.
 - Fix direction: at the `try` site, check `E` against the error type of the enclosing function's `Result`, including inside `Promise<Result<T, E>>`.
+- Fix, in a private worktree off `f8a913e5` (`/tmp/hib-bugs/wt-fix3`), repros in `/tmp/hib-bugs/t3/`:
+  - `checkTryErrorPropagation` (`src/checker/callResolve.ms`): `try x` without `catch` is checked like the `return Result.err(x.error)` it stands for. The same error type passes. A different one converts through the existing `as<Type>` coercion protocol (`trySynthesizeAsCoercion`, `src/checker/fit.ms`); the checked conversion is carried on the node in a new `TryExprData.errorConversion` field, over a `$tryError` placeholder that `makeErrorCheck` (`src/transform/desugar/resultDesugar.ms`) replaces with `$result.error`. Anything else is a type error at the `try`, naming the extension to declare.
+  - Also an error now, where clang used to fail: `try` without `catch` in a function that does not return `Result`, and at module level.
+  - Measured on C and JS: enum errors convert (`Generic`, where the unpatched build printed `Stake`), struct errors convert (`1007`), the same `E` still propagates (`Locked`), the entry's repro reports `'try' returns an error of type AccountError, but 'feed' returns errors of type PetError; declare an 'asPetError(this error: AccountError): PetError' extension, or handle the error with 'catch'`. The compiler's own 312 modules pass the new rule (gen2 builds).
+  - The conversion is a synthesized method call, so an enum error needed the instance half of #12: `checkMemberExpr` now lets a property that is not a member of the enum, on an enum value, fall through to the extension lookup, as `tryReadingTypeField`'s `tyEnum` arm does (`semexprs.nim:1533-1545`, nil when the identifier is not a member). `mood.label()` and `Mood.Angry.label()` print `1 1` on C and JS like the twin; `mood.bogus()` and `Mood.Bogus` keep their diagnostics. The static half of #12 (`Mood.fromByte(1)`) stays open in C core.
+  - Regression tests `bug182TryErrorType.ms` (5) and `bug183EnumInstanceExtension.ms` (2): green on the patched build; on the unpatched one `bug183` does not type-check and three of the five `bug182` tests fail.
+  - Gates on `f8a913e5` (2026-09-18): self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717 (the first run was red on `childTableGuard` until the new field was added to the macro bridge); guard ALL GREEN, 332 probes; corpus 1197 pass, 22 fail, 6 xfail — the 17 known cells plus five timeouts of the threading programs `410` and `419`, whose emitted C is byte-identical to the unpatched compiler's; sanitizer lane 207 pass, 7 fail, all among the known eight; Hibernal rules suite green, seven digests identical on native, JS and the unpatched compiler. Not landed: waiting on approval to commit.
 
 
 ### 4. `.length` and `for..of` on a fixed array `T[N]` fail in C
@@ -150,7 +169,7 @@ const account = address as Ptr<Account>;
 for (const fighter of account.fighters) { total = total + fighter.power; }
 ```
 
-- Blocks on-chain code: an account overlay with a fixed array field cannot use `for..of` or `.length`, the loop idiom from `docs/CODE-STYLE.md` §3.
+- Blocks on-chain code: an account overlay with a fixed array field cannot use `for..of` or `.length`, the loop idiom from `~/metascript/docs/CODE-STYLE.md` §3.
 - Measured on C:
   - `for..of` over `account.fighters` through `Ptr<Account>`: clang `no member named 'len' in 'struct msSizedArray_Fighter…'`.
   - The same on a value struct field and on a local `const fighters: Fighter[4]`.
@@ -163,6 +182,7 @@ for (const fighter of account.fighters) { total = total + fighter.power; }
   - `for..of` lowering reads `$iter.length` (`src/transform/lowering/forOfLower.ms:142`), so it inherits the error.
 - Reference: `len` of an `array[N, T]` folds to the constant `N` (`semfold.nim:139`, `of mLengthArray`). Twin: `for fighter in account.fighters` through `ptr Account`, then `account.fighters.len`, prints `9 4`.
 - Fix direction: `.length` on a `SizedArray` lowers to the integer literal of its `typeValue`, the way the reference folds `mLengthArray`; `for..of` then needs no change.
+- Fix, in a private worktree off `f8a913e5` (`/tmp/hib-bugs/wt-fix4`): exactly that, in `rewriteMemberExpr` (`src/transform/native/nativeLower.ms`); the reference folds it whatever the argument is (`semfold.nim:684-687`). Measured: both repros print `9 4` and `8 4` on C; regression test `bug181FixedArrayLength.ms` is green on the patched build and red on the unpatched one (five clang `no member named 'len'` errors); self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; guard ALL GREEN, 332 probes; corpus 1200 pass, 19 fail, 6 xfail (the 17 known cells and two timeouts of `419-leakSendMovedArgAsync`); sanitizer lane 206 pass, 8 fail (seven of the known eight and a timeout of `405-lockedSharedCounter`); Hibernal rules suite green, seven digests identical on native, JS and the unpatched compiler. The C this build emits for `419` and for `405` is byte-identical to the unpatched compiler's, so those hangs are not this change: `405`, `410` and `419` are the corpus's threading programs and hang intermittently on this tip with either compiler. Not landed: waiting on approval to commit.
 
 ### 5. `==` on structs fails over 24 bytes in C, and for every struct in JS
 
@@ -212,6 +232,21 @@ main();
 - Where: `genGlobalVar` (`src/codegen/c/declarations.ms:633`) emits every module binding as a C global. A literal initializer becomes an initialized global (`<type> NAME = <literal>;`, `:684-700`); any other initializer is assigned in the module's `Init000`. The link discards the section that holds them while `Init000` still refers to it.
 - Reference: a `const` symbol is replaced by its value at each use (`getConstExpr`, `of skConst` → `copyTree(s.astdef)`, `semfold.nim:604-625`), so no storage is emitted for it.
 - Fix direction: fold a module `const` whose initializer is a compile-time constant into its uses, as the reference does. Under `--os=solana`, a module binding that still needs storage or runtime initialization is a compile error at the binding instead of a link error.
+
+- Re-traced on `f8a913e5` (2026-09-17) with `/trace-nim`; repro matrix in `/tmp/hib-bugs/t6/`.
+  - Boundary: under `--os=solana` every module binding that optimised code still reads fails the link — `const` or `let`, scalar, struct or `T[N]`, literal or computed initializer, entry file or imported. The same value as a local links. An entry-file `const` whose only read is dead after clang's optimiser links by accident, which is where "entry-file scalar const folds" in `docs/ROADMAP.md` R12 came from.
+  - Mechanism: `genGlobalVar` emits a writable C global (`.data`, or `.bss` plus an assignment in `Init000` when the initializer is not a literal); the SBF link script discards `.data*` and `.bss*`.
+  - Reference: a scalar `skConst` is inlined where it is used (`semSym`, `semexprs.nim:1386-1394` → `inlineConst`; `getConstExpr`, `semfold.nim:604-625`), an `skEnumField` folds to its position (`semfold.nim:597-603`), an aggregate const is emitted once as `static NIM_CONST` data (`genConstDefinition`, `ccgexprs.nim:3489`), and only `let`/`var` get storage. Integer folding is exact: a signed result out of range is not folded (`foldAdd`/`foldSub`/`foldMul`, `semfold.nim:65-100`), an unsigned one wraps to its width (`maskBytes`, `:258-275`).
+  - Verdict: DIVERGE-INCOMPLETE. The comptime tier already inlines a module const through its defining AST (`src/codegen/raiser/expressions.ms:336-346`, `paper/NIM-REF.md` row "Readonly static fields at comptime", SAME); the runtime tier never did, and its fold table runs on doubles.
+- Fix, in a private worktree off `f8a913e5` (`/tmp/hib-bugs/wt-fix6`):
+  - Scalars (`src/transform/coercion/constantFolding.ms`): an identifier bound to a module `const` of integer, float or boolean type folds to the value of its initializer, through chains of consts, across modules, through `as intN` and through an enum member under `as intN`. Integer operands fold in their own width, by the reference rules above. Measured: entry literal, imported const, `LOG2_ONE / 8` chains and `(StakeLevel.Whole as int32) + 1` link; `tools/rulesProbe.ms` builds a 14 KB `.so`; `msc test rules/index.ms` 349/349; the seven `sim/determinism.ms` digests are identical on native, JS and the unpatched compiler.
+  - Diagnostic (`src/checker/freestanding.ms`, reported from `src/compiler/compile.ms` after DCE): under `--os=solana` a module `let`, or a module `const` whose initializer is still not a literal, that DCE keeps is a compile error at the binding (FREESTANDING E02) instead of a link error. Measured on module `let`, `const START = seed()`, a struct const and a `T[N]` const.
+  - Regression test `src/test/fixedbugs/bug180ModuleConstFold.ms`; its emitted-C assertion is red on the unpatched build.
+  - Found by the guard lane (`positionalNewJs`): folding a boolean module const exposed a crash that the unpatched compiler already has on the literal spelling, `const skipped = false && tally(new Pt(1, 2));` (exit 139). `eliminateDeadBranch` (`src/transform/analysis/dce.ms`) returned a null `alternate` for `if (false)`, assuming the parser always supplies an else block, while lowering passes build `makeIf(…, null, …)`. Fixed in the same worktree (an `if (false)` with no else becomes an empty block), regression test `bug184DeadBranchWithoutElse.ms`. Also found by the suite: the first version refused to fold `-9223372036854775808`; and a JS codegen unit test that expected `const x = 1; x;` to keep the identifier now uses `let`.
+  - Found after the first full gate, while diffing emitted C for corpus program `419`: the integer arm of the unary fold wrapped a literal that did not fit the type the checker gave it, so `value < -9007199254740992` became `value < 0` and `-1 < -9007199254740992` folded to `true`. No lane caught it (inside the compiler it only turned `-1` into `-1.0`). Fixed by folding in the integer domain only when the literal fits (`literalFitsWidth`), a case added to `bug180`; the gate is re-running. A corpus-wide emitted-C diff against the unpatched compiler (214 programs, 36 differing files, `/tmp/hib-bugs/emitdiff6/`) was then read in full: 123 line pairs are a const name replaced by exactly its declared value, and the other 23 are correct folds (`128 | 1` → `129`, `(uint64_t)(-1)` → `18446744073709551615ULL`, `7.5 % 2.0` → `1.5`, `300 as uint8` → `44`, `static const t = 1` → `1`, a dead `if (3 != 3)` removed, and the `Init000` and `extern` of modules whose consts all fold).
+  - Gates on `f8a913e5` with the final code (2026-09-18, third run): self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; `bug180` (5) and `bug184` (2) green standalone; guard ALL GREEN, 332 probes; corpus 1199 pass, 20 fail, 6 xfail — the 17 known cells plus timeouts of `405 [orc]`, `419 [orc]` and `419 [danger]`; sanitizer lane 206 pass, 8 fail — seven of the known eight plus a timeout of `405`; Hibernal rules suite green, seven digests identical on native, JS and the unpatched compiler. The #4 and #3 builds, whose C for `405` and `419` is byte-identical to the unpatched compiler's, hang on the same cells at the same rate, so these timeouts are the tip's intermittent threading hangs, not this change. Not landed: waiting on approval to commit.
+  - Gates BEFORE that last fix, kept for reference: self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; `bug180` (4) and `bug184` (2) green standalone; guard ALL GREEN, 332 probes; corpus 1200 pass, 19 fail, 6 xfail — the 17 known cells, the known `410` hang, and one timeout of `419-leakSendMovedArgAsync [danger]` that three re-runs of all its cells did not reproduce on the patched or the unpatched compiler; sanitizer lane 207 pass, 7 fail, all among the known eight; Hibernal rules suite green and the seven digests identical on native, JS and the unpatched compiler. These numbers predate the `literalFitsWidth` fix.
+  - Open part: a `const` of struct, `T[N]` or string type belongs in `.rodata` as the reference does. It waits on #8, because a `const` struct is still writable today and a program that writes one would fault once the storage is read-only. `Pubkey` constants in `std/solana` need it; `rules/` does not.
 
 ### 7. Type mismatch message drops type arguments
 
@@ -287,6 +322,32 @@ count = 2;
   - Name the root in diagnostics, for example `'pet.hunger' cannot be assigned to: 'pet' is const`. Say `ref` or `out` according to the formal.
   - Record the deep `const` rule for value structs in `docs/LANG.md` and `docs/LANG-STRUCT.md`, and add a `docs/NIM-REF.md` row (SAME as `let`).
 
+
+### 19. A 64-bit integer literal expression folds through a double
+
+```ms
+const folded: uint64 = 18446744073709551615 / 3;
+const small: uint64 = 9000000000000000000 / 7;
+```
+
+- Measured on `f8a913e5`: C prints `6148914691236517000` and `1285714285714285800`, JS prints `6148914691236516864n` and `1285714285714285824n`. The exact values are `6148914691236517205` and `1285714285714285714`; the same division on `uint64` variables, or on two `uint64` consts, is exact on both backends.
+- Where: `foldBinary` (`src/transform/coercion/constantFolding.ms`) folds two number literals on doubles, guarded only by `fitsDouble` on each operand, so an inexact quotient or product is baked in. The checker types both literals `int32` whatever the annotation says, so the expression is an `int32` division converted to `uint64` afterwards.
+- Reference: a literal takes its type from its value and its context, and `semfold.nim` folds integers in `Int128` by the type of the expression.
+- Not fixed by #6: its integer fold applies only when the operands fit the type the checker gave them, so this case still takes the double path. The fix is in literal typing.
+- Does not block the design: `rules/` reaches its 64-bit knobs through typed consts (`100000 * HBRN_UNIT`), which #6 folds exactly.
+
+### 20. Two structs of the same shape are assignable in the checker and distinct in C
+
+```ms
+struct StakeFailure { code: int32; }
+struct ProgramFailure { code: int32; }
+function widen(failure: StakeFailure): ProgramFailure { return failure; }
+```
+
+- Measured on `f8a913e5`: the checker accepts it; C fails in clang (`assigning to 'ProgramFailure…' from incompatible type 'StakeFailure…'`); JS prints `7`. Repro `/tmp/hib-bugs/r/b21_sameShapeStructs.ms`.
+- Found through #3: with two same-shaped error structs `try` sees no mismatch, so no conversion runs and clang fails.
+- Reference: object types are nominal; the twin is a type mismatch.
+- Not traced yet. Proof types in `std/solana` are `distinct`, so they do not depend on it.
 
 ## B. A method call is an ordinary call
 
@@ -552,7 +613,7 @@ signer.key();
 
 ## E. Not blocking
 
-Found while tracing `Borrow<T>`. On-chain code does not need these: read structs through value parameters, overlay account data with `Ptr<T>`, index hot loops. They can wait. The design they point at is in `docs/CODE-STYLE.md` §5, "`Borrow<T>` design".
+Found while tracing `Borrow<T>`. On-chain code does not need these: read structs through value parameters, overlay account data with `Ptr<T>`, index hot loops. They can wait. The design they point at is in `~/metascript/docs/CODE-STYLE.md` §5, "`Borrow<T>` design".
 
 ### 17. `Borrow<T>` is half implemented
 
@@ -567,7 +628,7 @@ Found while tracing `Borrow<T>`. On-chain code does not need these: read structs
   - `extern function f(ref data: float32, …)` called with `arr[0]` passes the address of a temporary copy (`sumRef(&_clit5_, 3)`), clang error.
   - `let cur: Ptr<Tok> = arena[0]` (`LANG.md`): clang error.
 - Reference: `lent T` is illegal as a parameter (`typeallowed.nim:74`), legal as a return type borrowing from the first parameter, and yielded by `items` (`system/iterators.nim:247`), which emits `big = &bigs.p->data[i]`. A `lent` local needs the experimental views checker. Twin: `addr verts[0]` into `ptr cfloat`, an `openArray` wrapper and a `lent Big` getter print `7.0 7.0 5`.
-- Fix direction: the three legal positions and two rejections in `docs/CODE-STYLE.md` §5.
+- Fix direction: the three legal positions and two rejections in `~/metascript/docs/CODE-STYLE.md` §5.
 
 ## Checked, not reproduced
 
