@@ -1,0 +1,150 @@
+import {
+	BLOCK_SLOTS,
+	STAKE_LEVELS,
+	ATTACK_HOLD,
+	ALLOCATE_HOLD,
+	HBRN_UNIT,
+	Pet,
+	StakeLevel,
+	EconomyAction,
+	nodeKind,
+	winChanceFromTable,
+} from "../rules/index";
+import { ACTS_PER_EPOCH, WORLD_BLOCKS, EPISODE_EPOCHS, World, blockStart } from "./world";
+import { personaKindOf, teachEconomy, teachNode, teachAttack } from "./teacher";
+
+export const DIARY_SEED: uint64 = 7;
+
+export struct Diary {
+	pets: int32[];
+	lines: string[];
+}
+
+function money(amount: uint64): string {
+	return `${amount / HBRN_UNIT}`;
+}
+
+function change(before: uint64, after: uint64): string {
+	const delta = ((after as int64) - (before as int64)) / (HBRN_UNIT as int64);
+	return delta >= 0 ? `+${delta}` : `${delta}`;
+}
+
+function nameOf(index: int32): string {
+	return `#${index % BLOCK_SLOTS} ${personaKindOf(index).toString()}`;
+}
+
+function note(this diary: Diary, index: int32, text: string): void {
+	const lines = diary.lines;
+	for (let row = 0; row < diary.pets.length; row++) {
+		if (diary.pets[row] == index) { lines[row] = lines[row] + " | " + text; }
+	}
+}
+
+function morning(this pet: Pet, yesterday: Pet, day: int32): string {
+	if (!pet.alive) { return `day ${day} dead`; }
+	let line = `day ${day} hearts ${pet.hearts}/${pet.maxHearts} level ${pet.level}`;
+	line = line + ` harvest ${money(pet.harvest)} burrow ${money(pet.burrow)}`;
+	if (pet.bornEpoch == (day as uint64) && day > 1) {
+		return line + ` | heir born, generation ${pet.lineageGeneration}`;
+	}
+	if (!yesterday.alive) { return line; }
+	line = line + ` | earned ${change(yesterday.harvest, pet.harvest)}`;
+	if (pet.burrow < yesterday.burrow) {
+		line = line + ` | auto-ate ${money(yesterday.burrow - pet.burrow)}`;
+	}
+	return line;
+}
+
+function economyStep(this world: World, index: int32, diary: Diary): World {
+	const before = world.pets[index];
+	const action = world.teachEconomy(index, world.masksFor(index));
+	const after = world.applyEconomy(index, action);
+	const pet = after.pets[index];
+	match (action) {
+		EconomyAction.Rest => {},
+		EconomyAction.Bank => { diary.note(index, `bank ${money(before.harvest)}`); },
+		_ => {
+			const cost = money(before.burrow - pet.burrow);
+			diary.note(index, `${action.toString()} hearts ${before.hearts}->${pet.hearts} cost ${cost}`);
+		},
+	}
+	return after;
+}
+
+function nodeStep(this world: World, index: int32, diary: Diary): World {
+	const node = world.teachNode(index, world.masksFor(index));
+	if (node != ALLOCATE_HOLD) { diary.note(index, `node ${node} ${nodeKind(node).toString()}`); }
+	return world.applyNode(index, node);
+}
+
+function attackStep(this world: World, index: int32, diary: Diary): World {
+	const choice = world.teachAttack(index, world.masksFor(index));
+	if (choice == ATTACK_HOLD) { return world; }
+	const slot = choice / STAKE_LEVELS;
+	const target = blockStart(index) + slot;
+	const level = (choice % STAKE_LEVELS) as StakeLevel;
+	const attacker = world.pets[index];
+	const defender = world.pets[target];
+	const robber = world.robberOf(index);
+	const revenge = robber.ok && (robber.value as int32) == slot ? " revenge" : "";
+	const odds = attacker.combatant().winChanceFromTable(defender.combatant()) / 100;
+	const stake = attacker.stakeFor(defender, level, world.epoch);
+	const staked = stake.ok ? money(stake.value) : "?";
+	const won = world.stats.wins;
+	const after = world.applyAttack(index, choice);
+	const attackerAfter = after.pets[index];
+	const defenderAfter = after.pets[target];
+	const opening = `attack ${nameOf(target)} ${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
+	if (after.stats.wins > won) {
+		const loot = money(defender.harvest - defenderAfter.harvest);
+		diary.note(index, `${opening} -> won, took ${loot}`);
+		const bitten = defenderAfter.hearts < defender.hearts ? ", bitten" : "";
+		diary.note(target, `robbed by ${nameOf(index)} -${loot}${bitten}`);
+		return after;
+	}
+	const hearts = `hearts ${attacker.hearts}->${attackerAfter.hearts}`;
+	diary.note(index, `${opening} -> lost, burrow ${change(attacker.burrow, attackerAfter.burrow)} ${hearts}`);
+	diary.note(target, `held off ${nameOf(index)}, burrow ${change(defender.burrow, defenderAfter.burrow)}`);
+	return after;
+}
+
+function step(this world: World, index: int32, diary: Diary): World {
+	if (!world.pets[index].alive) { return world; }
+	return world.economyStep(index, diary).nodeStep(index, diary).attackStep(index, diary);
+}
+
+function main(): int32 {
+	let world = World.create(WORLD_BLOCKS, DIARY_SEED);
+	const diary: Diary = { pets: [1, 4, 7], lines: ["", "", ""] };
+	const pages: string[] = [];
+	for (let day = 1; day <= EPISODE_EPOCHS; day++) {
+		const yesterday: Pet[] = [];
+		for (const index of diary.pets) { yesterday.push(world.pets[index]); }
+		world = world.beginEpoch(day as uint64);
+		const lines = diary.lines;
+		for (let row = 0; row < diary.pets.length; row++) {
+			lines[row] = world.pets[diary.pets[row]].morning(yesterday[row], day);
+		}
+		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
+			world = { ...world, round: round };
+			for (let index = 0; index < world.pets.length; index++) {
+				world = world.step(index, diary);
+			}
+		}
+		world = world.endEpoch();
+		for (const line of diary.lines) { pages.push(line); }
+	}
+	for (let row = 0; row < diary.pets.length; row++) {
+		const index = diary.pets[row];
+		const pet = world.pets[index];
+		console.log(`== ${nameOf(index)}, start ${pet.startRegion().toString()}, seed ${DIARY_SEED}`);
+		for (let day = 0; day < EPISODE_EPOCHS; day++) {
+			console.log(pages[day * diary.pets.length + row]);
+		}
+		console.log(`end: level ${pet.level} wealth ${money(pet.harvest + pet.burrow)} generation ${pet.lineageGeneration}`);
+		console.log("");
+	}
+	return 0;
+}
+
+process.exit(main());
