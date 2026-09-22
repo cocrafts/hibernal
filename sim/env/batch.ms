@@ -165,7 +165,7 @@ function opened(this batch: Batch): Batch {
 	const worlds = batch.worlds;
 	for (let env = 0; env < worlds.length; env++) {
 		const seed = worldSeed(batch.seed, env, batch.episode);
-		worlds[env] = World.create(batch.blocks, seed).beginEpoch(1);
+		worlds[env] = World.staggered(batch.blocks, seed).beginEpoch(1);
 	}
 	batch.rescore();
 	return { ...batch, cursor: { epoch: 1, round: 0, slot: 0, head: Head.Economy } };
@@ -425,7 +425,8 @@ export function step(
 		rewards[row] = earned as int32;
 		scores[env * pets + index] = now;
 		const running = closing ? Done.Truncated : Done.Running;
-		dones[row] = (pet.alive ? running : Done.Died) as int32;
+		const available = pet.alive || world.claimEpochs[index] != 0;
+		dones[row] = (available ? running : Done.Died) as int32;
 	}
 	return Result.ok(batch.advanced());
 }
@@ -444,7 +445,7 @@ function playTeacher(this start: Batch, untilEpoch: uint64): Batch {
 	return batch;
 }
 
-test "a batch opens on day one with every block on its first slot" {
+test "a batch opens on day one while later claims stay empty and running" {
 	const batch = Batch.create(5, 3, 2, 12);
 	assert batch.rows() == 6;
 	assert batch.cursor.epoch == 1;
@@ -457,9 +458,19 @@ test "a batch opens on day one with every block on its first slot" {
 	const legal = zeros(batch.rows() * actionCount(Head.Economy));
 	batch.observe(observations, legal);
 	for (let row = 0; row < batch.rows(); row++) {
-		assert legal[row * actionCount(Head.Economy) + (EconomyAction.Rest as int32)] == 1;
-		assert observations[row * observationSize(Head.Economy)] > 0;
+		const present = row % batch.blocks == 0;
+		const rest = legal[row * actionCount(Head.Economy) + (EconomyAction.Rest as int32)];
+		const firstFeature = observations[row * observationSize(Head.Economy)];
+		assert rest == (present ? 1 : 0);
+		assert present ? firstFeature > 0 : firstFeature == 0;
 	}
+	const actions = zeros(batch.rows());
+	const rewards = zeros(batch.rows());
+	const dones = zeros(batch.rows());
+	batch.teacherActions(actions);
+	assert batch.step(Head.Economy, actions, rewards, dones).ok;
+	assert rewards[1] == 0;
+	assert dones[1] == (Done.Running as int32);
 }
 
 test "heads step in order and a wrong head is refused" {
@@ -483,10 +494,10 @@ test "heads step in order and a wrong head is refused" {
 
 test "the teacher through the batch equals the teacher episode, block-parallel" {
 	const start = Batch.create(21, 2, 2, 120);
-	const batch = start.playTeacher(9);
-	assert batch.cursor.epoch == 9;
+	const batch = start.playTeacher(32);
+	assert batch.cursor.epoch == 32;
 	for (let env = 0; env < 2; env++) {
-		const episode = playEpisode(2, 8, worldSeed(21, env, 0)).beginEpoch(9);
+		const episode = playEpisode(2, 31, worldSeed(21, env, 0)).beginEpoch(32);
 		const world = batch.worlds[env];
 		assert world.stats.fights == episode.stats.fights;
 		assert world.stats.fights > 0;
@@ -564,8 +575,8 @@ test "feel counters agree with the world's own fight counts and survive the reop
 	for (let env = 0; env < 2; env++) {
 		assert batch.worlds[env].stats.fights == 0;
 		assert batch.feelTotal(env, FeelCounter.Attacks) > 0;
-		assert batch.feelTotal(env, FeelCounter.Living) == 2 * BLOCK_SLOTS;
-		assert batch.feelTotal(env, FeelCounter.LivingEpochs) == 12 * 2 * BLOCK_SLOTS;
+		assert batch.feelTotal(env, FeelCounter.Living) == 8;
+		assert batch.feelTotal(env, FeelCounter.LivingEpochs) == 56;
 		assert batch.feelTotal(env, FeelCounter.Wealth) > 0;
 	}
 }

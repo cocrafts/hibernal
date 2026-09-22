@@ -163,7 +163,7 @@ export function act(this world: World, index: int32): World {
 }
 
 export function playEpisode(blocks: int32, epochs: int32, seed: uint64): World {
-	let world = World.create(blocks, seed);
+	let world = World.staggered(blocks, seed);
 	for (let day = 1; day <= epochs; day++) {
 		world = world.beginEpoch(day as uint64);
 		for (let round = 0; round < ACTS_PER_EPOCH; round++) {

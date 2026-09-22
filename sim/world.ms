@@ -27,6 +27,7 @@ import {
 export const WORLD_BLOCKS: int32 = 20;
 export const ACTS_PER_EPOCH: int32 = 4;
 export const EPISODE_EPOCHS: int32 = 120;
+export const INITIAL_CLAIM_DAYS: int32 = 30;
 export const GRUDGE_EPOCHS: uint64 = 3;
 
 export struct Grudge {
@@ -69,6 +70,7 @@ export struct WorldStats {
 
 export struct World {
 	pets: Pet[];
+	claimEpochs: uint64[];
 	deathEpochs: uint64[];
 	levelTenEpochs: uint64[];
 	levelTwentyEpochs: uint64[];
@@ -83,6 +85,7 @@ export struct World {
 export function create(this typeof World, blocks: int32, seed: uint64): World {
 	let global = GlobalConfig.genesis(0);
 	const pets: Pet[] = [];
+	const claimEpochs: uint64[] = [];
 	const deathEpochs: uint64[] = [];
 	const levelTenEpochs: uint64[] = [];
 	const levelTwentyEpochs: uint64[] = [];
@@ -98,6 +101,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 			global,
 		);
 		pets.push(hatched.pet);
+		claimEpochs.push(0);
 		deathEpochs.push(0);
 		levelTenEpochs.push(0);
 		levelTwentyEpochs.push(0);
@@ -105,6 +109,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	}
 	return {
 		pets: pets,
+		claimEpochs: claimEpochs,
 		deathEpochs: deathEpochs,
 		levelTenEpochs: levelTenEpochs,
 		levelTwentyEpochs: levelTwentyEpochs,
@@ -115,6 +120,27 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		seed: seed,
 		stats: { fights: 0, wins: 0, deaths: 0, heirs: 0, illegal: 0 },
 	};
+}
+
+export function staggered(this typeof World, blocks: int32, seed: uint64): World {
+	const world = World.create(blocks, seed);
+	const pets = world.pets;
+	const claimEpochs = world.claimEpochs;
+	const total = blocks * BLOCK_SLOTS;
+	for (let index = 0; index < total; index++) {
+		const block = index / BLOCK_SLOTS;
+		const slot = index % BLOCK_SLOTS;
+		const ordinal = slot * blocks + block;
+		const claimEpoch = (1 + ordinal * INITIAL_CLAIM_DAYS / total) as uint64;
+		pets[index] = {
+			...pets[index],
+			alive: false,
+			bornEpoch: claimEpoch,
+			lastTickEpoch: claimEpoch,
+		};
+		claimEpochs[index] = claimEpoch;
+	}
+	return { ...world, global: GlobalConfig.genesis(0) };
 }
 
 export function blockStart(index: int32): int32 {
@@ -139,6 +165,7 @@ export function robberOf(this world: World, index: int32): Result<BlockSlot, Gru
 
 export function beginEpoch(this world: World, epoch: uint64): World {
 	const pets = world.pets;
+	const claimEpochs = world.claimEpochs;
 	const grudges = world.grudges;
 	const deathEpochs = world.deathEpochs;
 	const levelTenEpochs = world.levelTenEpochs;
@@ -146,7 +173,22 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 	let global = world.global;
 	let heirs = world.stats.heirs;
 	for (let index = 0; index < world.pets.length; index++) {
-		const pet = pets[index];
+		let pet = pets[index];
+		const claimEpoch = claimEpochs[index];
+		if (claimEpoch != 0) {
+			if (epoch < claimEpoch) { continue; }
+			const claimed = Pet.born(
+				pet.blockId,
+				pet.blockSlot(),
+				pet.startRegion(),
+				claimEpoch,
+				global,
+			);
+			pet = claimed.pet;
+			pets[index] = pet;
+			claimEpochs[index] = 0;
+			global = claimed.global;
+		}
 		if (!pet.alive) {
 			const diedAt = deathEpochs[index];
 			if (diedAt == 0 || epoch < diedAt + GRACE_EPOCHS) { continue; }
@@ -177,6 +219,7 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 
 export function endEpoch(this world: World): World {
 	const pets = world.pets;
+	const claimEpochs = world.claimEpochs;
 	const deathEpochs = world.deathEpochs;
 	const levelTenEpochs = world.levelTenEpochs;
 	const levelTwentyEpochs = world.levelTwentyEpochs;
@@ -184,6 +227,7 @@ export function endEpoch(this world: World): World {
 	let deaths = world.stats.deaths;
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = pets[index];
+		if (claimEpochs[index] != 0) { continue; }
 		if (pet.alive && pet.level >= 10 && levelTenEpochs[index] == 0) {
 			levelTenEpochs[index] = world.epoch;
 		}
@@ -363,6 +407,23 @@ test "a world starts full, alive and settled" {
 	assert world.pets[13].blockId == 1;
 	assert world.pets[13].slot == 3;
 	assert world.pets[13].startRegion() == Region.Worker;
+}
+
+test "a staggered world claims every slot across the first thirty days" {
+	let world = World.staggered(WORLD_BLOCKS, 1);
+	assert world.living() == 0;
+	for (let day = 1; day <= INITIAL_CLAIM_DAYS; day++) {
+		world = world.beginEpoch(day as uint64);
+		let claimedToday = 0;
+		for (let index = 0; index < world.pets.length; index++) {
+			const pet = world.pets[index];
+			if (pet.alive && pet.lineageGeneration == 0 && pet.bornEpoch == (day as uint64)) {
+				claimedToday += 1;
+			}
+		}
+		assert claimedToday >= 6 && claimedToday <= 7;
+	}
+	for (const claimEpoch of world.claimEpochs) { assert claimEpoch == 0; }
 }
 
 test "hold applies nothing and stays legal" {
