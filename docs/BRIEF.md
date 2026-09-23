@@ -93,7 +93,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | **D29** | Names: token **$HBRN**, project working title **Hibernal**, event **Winter**. Final project name is §10 Q1. | — |
 | ~~D30~~ | ~~Client in Kotlin + Compose with a hand-written GLES 3.0 renderer.~~ **Superseded by D31**; the surfaces (Live Wallpaper primary, widget, in-app SurfaceView) and the no-engine renderer recipe from `RENDERER-BRIEF.md` stand. | — |
 | **D32** | **Lifespan 90 days, in the hackathon build.** Decline from day 50 on every tree stat (70% on day 60, 50% on day 90), natural death on day 90, the heir inherits 70% of the wallet (30% inheritance tax to the pot) plus a lineage package (§3.7). | Progress repeats every generation instead of running dry at max level; death becomes a milestone. |
-| **D33** | **Hidden talent** revealed at level 10 by VRF in the ER: a grade multiplier (Common ×1.0–1.1 · Rare ×1.1–1.2 · Epic ×1.3–1.4 · Legendary ×1.6 · Mythic ×2 `[numbers to lock]`) on one core stat, `forage`, `might` or `grit` (§3.11). | Raise a pet to find out; chain data is public, so a talent computed at mint would be known to everyone on day 0. |
+| **D33** | **Hidden talent** revealed at level 10 by VRF in the ER: a grade multiplier (Common ×1.0–1.1 · Rare ×1.1–1.2 · Epic ×1.3–1.4 · Legendary ×1.6 · Mythic ×2 `[numbers to lock]`) on the level growth of one core stat, `forage`, `might` or `grit` (§3.11; `docs/SIM.md` F1). | Raise a pet to find out; chain data is public, so a talent computed at mint would be known to everyone on day 0. |
 | **D34** | **Reward weight `work_power²` with a 500-slot denominator floor.** Target: a few pets ×20 the median (Mythic talent plus gear), the rest ×1–3. No per-pet pot cap (§3.3, §3.14). | An income tail worth sharing, driven by luck; early players eat well but never take the whole emission. |
 | **D35** | **Items with rarity** (same grades as talent), 4 slots, stat bonuses, rare skills (revive, anti-robbery, damage reduction). Pets mint with `$HBRN` (VRF roll), sell back at a formula price (difference burned), trade in an ER market; items wear (§3.12). | The `$HBRN` sink once levels are free; stacks with talent toward ×20. |
 | **D36** | **The pet owns its `$HBRN`; the owner cannot withdraw.** Bonding (`i8`, decays every epoch) rises with feeding, SKR purchases and a capped daily `talk`. High bonding → the pet gifts `$HBRN` to its owner; low → it refuses the owner's food (§3.13). | Owners have a reason to show up daily; outflow to wallets is throttled by the pet's goodwill. |
@@ -125,7 +125,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `pantry`, `food_bought_today` | 3 × u8, u8 | Stored Small, Medium, Large portions and purchases today (D22); the tick empties the pantry after the hunger step. |
 | `insurance` | enum {None, Armed, Used} | Once per pet. |
 | `scars`, `lineage_generation` | u8, u16 | Prestige; generation also grants +1 starting point per generation, capped at +5, inside `bonus_points` (§3.7). |
-| `talent_kind`, `talent_grade` | u8, u8 | Unset until the level-10 VRF reveal (D33). |
+| `talent_kind`, `talent_bps` | u8, u16 | None and ×1.0 until the level-10 VRF reveal (D33); `talent_bps` is the rolled multiplier inside its grade. |
 | `bonding` | i8 | Owner bond, −127..+127, decays every epoch (D36). |
 | `gift_owed` | u64 | Gifts to the owner; hackathon points, paid out when a real mint exists (D17, D24). |
 | `equipment`, `heirlooms` | 4 × 8 bytes, 2 × 8 bytes | Equipped items (slot, rarity, stat, value, skill, wear) and items kept for the heir (D35). |
@@ -255,7 +255,7 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 
 ### 3.11 Hidden talent (D33)
 - Revealed at level 10 (day ~6–7): `level_up` to 10 requests VRF, `consume_talent` stores `talent_kind` and `talent_grade`.
-- Kinds: work (`forage × m`), fight (`might × m`), survive (`grit × m`). Grades `[numbers to lock]`: Common 60% ×1.0–1.1 · Rare 28% ×1.1–1.2 · Epic 10% ×1.3–1.4 · Legendary 1.8% ×1.6 · Mythic 0.2% ×2.
+- Kinds: work, fight, survive. The multiplier `m` scales the level growth of `forage`, `might` or `grit` (every level above 1 adds `5 × m`), not the start or tree part (`rules/talent.ms`, `rules/stats.ms: grown`). Grades `[numbers to lock]`: Common 60% ×1.0–1.1 · Rare 28% ×1.1–1.2 · Epic 10% ×1.3–1.4 · Legendary 1.8% ×1.6 · Mythic 0.2% ×2.
 - A talent only pays off on the matching build. Talent alone tops out near ×9 income; gear (§3.12) carries the rest of the ×20.
 
 ### 3.12 Items (D35)
