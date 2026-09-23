@@ -8,8 +8,8 @@ Entries 1 and 2 were reproduced on the installed `msc 0.2.54` (installed from re
 |---|---|---|---|
 | 1 | `a < x … b > (y)` parses as a generic call `a<…>(y)` | parser lookahead; the checker then accepts a call on an `int32` | open |
 | 2 | An extension named like a prelude method (`has`, `isEmpty`, `size`) is lost behind a barrel unless its module is the first `export *` | checker, star re-export | open |
-| 3 | The type annotation of a `for (let i: T = …)` counter is dropped; the counter takes the initializer's type | parser | open |
-| 4 | An argument of a method-syntax call (`x.f(a)`) gets no implicit numeric conversion; on JS a Number reaches a BigInt formal | checker, call argument fitting | open |
+| 3 | The type annotation of a `for (let i: T = …)` counter is dropped; the counter takes the initializer's type | parser | open, card `~/metascript/.inbox/compiler/2026-09-22-typed-for-init-loses-its-type.md` |
+| 4 | An argument of a method-syntax call (`x.f(a)`) gets no implicit numeric conversion; on JS a Number reaches a BigInt formal | checker, call argument fitting | open, card `~/metascript/.inbox/compiler/2026-09-22-method-call-is-not-an-ordinary-call.md` |
 
 ## 1. A comparison chain parses as a generic call
 
