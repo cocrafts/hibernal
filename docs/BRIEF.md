@@ -111,8 +111,8 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `owner` | Pubkey | Current authority (wallet holding the admission token). Session keys resolve to this. |
 | `block_id`, `slot` | u32, u8 | Fixed for life. |
 | `alive` | bool | |
-| `hearts`, `max_hearts` | u8 | Base max 10, +2 per heart node `[strawman]`. 0 = dead. |
-| `forage`, `might`, `grit` | u16 | Derived from tree bitmap; cached. Base 50 each; start region +30 to its stat; each small node +10. Talent multiplies one of them (§3.11), decline applies after day 50 (§3.7), equipped items add on top (§3.12). `speed` (base 50), `armor`, `accuracy`, `lifesteal`, `bleed` (base 0) are derived from the tree and items when needed, not stored. |
+| `hearts`, `max_hearts` | u8 | Base max 10, +1 per 2 levels, +2 per heart node `[strawman]`. 0 = dead. |
+| `forage`, `might`, `grit` | u16 | Derived from tree bitmap and level; cached. Base 50 each; start region +30 to its stat; each small node +10; each level above 1 adds +5 to all three `[strawman]` (`rules/stats.ms: grown`). Talent multiplies one of them (§3.11), decline applies after day 50 (§3.7), equipped items add on top (§3.12). `speed` (base 50), `armor`, `accuracy`, `lifesteal`, `bleed` (base 0) are derived from the tree and items when needed, not stored. |
 | `level`, `points_unspent`, `bonus_points`, `xp` | u16, u8, u8, u32 | Cap 20; 1 point per level, level 1 included (20); `bonus_points ≤ 10` from skill books and the heir package, 30 total; XP from work and fights only (D6). |
 | `tree_bitmap` | u64 | Allocated nodes (64, the full bitmap, ring layout §3.9). Adjacency is computed in `rules/tree.ms`, no table. |
 | `harvest` | u64 | Unclaimed earnings. **Lootable.** |
