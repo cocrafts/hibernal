@@ -124,6 +124,7 @@ Built in this order; balance and exact numbers come later (`BRIEF.md` §6, ROADM
 | 3 | `sim/world.ms`: 20 blocks × 10 pets, 4 `act` rounds per epoch, heir takes a dead pet's slot, 120-epoch episodes | done 2026-09-17, below |
 | 4 | `sim/env/`: observation, batched env with a C ABI, teacher actions; `train/`: behavior cloning, PPO, snapshot pool; `rules/policy.ms`: int8 inference used for every evaluation | done 2026-09-17, below: the pipeline runs end to end, the policy is not tuned |
 | 5 | `sim/env/feel.ms`: feel metrics counted in MetaScript; reward terms per persona; PFSP pool weighting; three seeds | done 2026-09-17, below: loss aversion makes the Cautious persona, PFSP and a revenge bonus measured no gain |
+| 5b | A world that lives and dies: lifespan and heirs (`BRIEF.md` §3.7), keystones per persona, grudge as a target feature, staggered claims; BC and PPO re-measured on it | done 2026-09-23, below: the numbers of packages 4 and 5 are on older engines and superseded |
 | 6 | `rules/policy.ms` and the observation on chain (ROADMAP S4), CU measured in LiteSVM | after 5, waits on `std/solana` |
 
 Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from the change in harvest plus burrow with penalties for lost hearts and death, persona as an input.
@@ -272,6 +273,73 @@ Three seeds (5, 6, 7) from the same clone, 30 rollouts, lr 1e-3, 4 passes, `--al
 **Revenge, measured negative.** A policy cannot avenge what it cannot see, so a branch moved the grudge into `World` and added a thirteenth target feature (attack input 25, blob 3,871 bytes, only the `observe` digest and the engine version move; clone retrained to the same accuracy). One seed each: no bonus 17.1% avenged by Vengeful pets in their own world (5.7% mixed), 100 `$HBRN` for a won revenge 16.7% (10.0%), 300 `$HBRN` 20.8% (11.1%), 100 `$HBRN` for any strike back 15.9% (10.9%). Inside the seed noise. The robber is usually the stronger pet and every policy stakes the whole cap, so a revenge is a bad bet that a bonus of one loot does not fix. Not merged (it would cost a `Pet` field on chain for nothing); the patch is `out/feel/grudge.worktree.patch`. What it needs first is a denominator that counts only revenges that were legal and affordable, and a stake head that uses the lower levels.
 
 Not in package 5: a persona signal that separates Greedy from Vengeful, hearts held above the floor, long self-play, sampling on chain (§8.4), the social head, CU in LiteSVM.
+
+### Package 5b: a world that lives and dies — Measured
+
+`rules/` gained lifespan, decline and the heir package (`BRIEF.md` §3.7) and Glass Cannon keeps its hearts (§3.9). In `sim/`: each persona's teacher takes only its own keystone (`sim/teacher.ms`), the grudge moved into `World.robberOf` with the thirteenth target feature above (so it did merge, in the Vengeful teacher's quarter-stake strike back), and `World.staggered` claims the 200 first pets over days 1–30. Engine `13955993101127523059`.
+
+Why the earlier numbers are superseded: before the keystone change every teacher pet took the Pacifist keystone, and on seed 7 all 200 were Pacifist by day 20 with 0 fights on days 20–120, so every number of packages 4 and 5 came from days 3–20. The world before `World.staggered` hatched all 200 pets on day 0, killed them together on day 90, stood empty on days 90–96 and hatched 200 heirs on day 97. Every checkpoint trained before this engine refuses to load.
+
+Measured on tree `49edc902` (commit `6b32f90`), default `RewardWeights.of`, all runs in this worktree:
+
+```bash
+cd train && uv run python bc.py --envs 16 --steps 4000
+uv run python evaluate.py --policy teacher        # and --policy bc, v5, v6, v7
+uv run python ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --seed $seed --alternate --pool uniform --name v$seed
+```
+
+**Lifecycle**, 4 worlds of one controller each, seed 9001, per-epoch `hibernal_stats` (throwaway probe, not kept). The episode resets inside day 120, so the probe sees days 1–119:
+
+| Controller | Fights per world | Fights per day, days 1–30 / 31–60 / 61–90 / 91–119 | Days without a fight | Natural deaths per world | Heirs per world | Empty days | Illegal |
+|---|---|---|---|---|---|---|---|
+| Teacher | 14,152 | 65 / 177 / 138 / 92 | 1–6 | 194, days 91–119, ≤ 7 a day | 154, days 97–119, ≤ 7 a day | 0 | 0 |
+| Cloned | 13,974 | 66 / 177 / 134 / 88 | 1–6 | same | same | 0 | 0 |
+| PPO seed 5 / 6 / 7 | 12,416 / 12,432 / 11,704 | 65 / 173 / 102 / 74 · 62 / 175 / 103 / 74 · 58 / 170 / 97 / 64 | 1–6 · 1–6 · 1–7 | same | same | 0 | 0 |
+
+- Days 1–6 have no fight by design, not by a bug: `World.staggered` gives slot 0 of the 20 blocks days 1–3 and slot 1 days 4–6, so until day 7 no block holds two pets outside the 3-epoch newborn shield (`BRIEF.md` §3.2). The first fights come on day 7 (7 of them, then 14, 20, 34). The "fights every day" condition does not hold for days 1–6, and it is not special-cased.
+- Deaths and heirs do not depend on the controller: every pet ages out (no starved and no bitten death anywhere), and the heir comes back after the 7-epoch grace.
+
+**Behavior cloning**, 16 worlds (1.24M economy, 1.02M node, 381k attack decisions with more than one legal action; collection 222 s, 7 min in all):
+
+| Head | Held-out accuracy | Macro recall |
+|---|---|---|
+| Economy | 98.6% | 0.96 |
+| Node | 98.8% | 0.78 |
+| Attack | 88.8% | 0.51 |
+
+**Strength**, `evaluate.py`, 16 worlds per run (4 per group), wealth counter:
+
+| Policy | Own world, `$HBRN` per pet | Mixed world, both seats, vs teacher |
+|---|---|---|
+| Teacher | 53,665 | −0.8% (teacher against itself: 53,461 vs 53,895; the seat noise) |
+| Cloned | 55,717 | −4.5% |
+| PPO seeds 5 / 6 / 7 | 56,956 / 56,845 / 57,119 | +68.1 / +62.3 / +65.1% |
+| PPO mean ± sample standard deviation | +6.2 ± 0.3% over the teacher | +65.2 ± 2.9% |
+
+- The mixed gap is the learner preying on the teacher, not a richer economy: in mixed worlds each teacher Greedy pet is robbed 127–131 times against 83 in its own world, and the teacher Cautious pet takes 20–22% of its attacks under its own 70% table odds against 5% in its own world.
+- Reproducible: seed 5 trained twice gives the same `v5.policy` byte for byte (sha1 `ac9c01fd…`) and the same evaluation table; evaluation of a fixed blob is deterministic (the teacher rows are identical across all five evaluation runs).
+
+**Feel**, own worlds, 0 illegal actions, 0 attacks under 40% table odds for every learned policy, every pet aged out:
+
+| | Teacher | Cloned | PPO, mean ± sd of seeds 5–7 |
+|---|---|---|---|
+| Starved: total / with harvest unbanked / with a meal in the burrow | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 in every seed |
+| Bitten to death | 0 | 0 | 0 |
+| Attacks under 40% table odds, C / G / V | 0.0 / 0.7 / 0.2% | 0 / 0 / 0 | 0 / 0 / 0 |
+| Cautious attacks under its own 70% | 5.3% | 1.7% | 0.3 ± 0.3% |
+| Fights per pet, C / G / V | 39.8 / 106.8 / 77.7 | 40.9 / 107.1 / 73.2 | 44.3 ± 3.0 / 77.8 ± 1.0 / 68.1 ± 3.2 |
+| Mean table odds of its attacks, C / G / V | 86.6 / 68.9 / 75.6% | 86.8 / 67.7 / 64.7% | 92.0 / 88.5 / 87.7% |
+| Meals per pet, C / G / V | 44.0 / 42.9 / 35.8 | 41.8 / 42.7 / 37.9 | 35.7 ± 5.3 / 28.9 ± 4.7 / 29.2 ± 4.3 |
+| Hearts held per day, C / G / V | 5.78 / 4.95 / 4.98 | 5.79 / 4.71 / 4.74 | 4.91 ± 0.48 / 4.39 ± 0.59 / 4.50 ± 0.37 |
+| Vengeful avenged within 3 epochs | 2.4% | 4.1% | 0.1 / 0.1 / 0.0% |
+| Persona told from one pet's log, own / mixed | 0.95 / 0.96 | 1.00 / 0.98 | 0.79 ± 0.10 / 0.74 ± 0.11 (0.86, 0.68, 0.83 / 0.62, 0.77, 0.83) |
+
+- With its own keystone each teacher persona is now told apart from one pet's log (Cautious and Greedy 1.00, Vengeful 0.85); in package 5 the teacher read 0.75 and Greedy was not separable from Vengeful. The clone copies it.
+- PPO makes every persona pickier and more alike: all three attack at 88–92% table odds, Greedy fights 27% less than its teacher, and recall falls to 0.79 with one seed at 0.68. Cautious is the persona that loses its identity (recall 0.75, 0.50, 0.75).
+- PPO strikes back almost never (0.0–0.1% of Vengeful pets' robberies), where the teacher's rule gives 2.4%.
+- Food is not a pressure: nobody starves in any run, and pets hold 4–6 hearts on a floor of 2.
+
+Not measured here: the reward-variant and pool rows of package 5 on this engine, runs longer than 30 rollouts, self-play.
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
