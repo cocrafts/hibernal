@@ -53,9 +53,11 @@ function morning(this pet: Pet, yesterday: Pet, day: int32): string {
 	}
 	if (!yesterday.alive) { return line; }
 	line = line + ` | earned ${change(yesterday.harvest, pet.harvest)}`;
-	if (pet.burrow < yesterday.burrow) {
-		line = line + ` | auto-ate ${money(yesterday.burrow - pet.burrow)}`;
-	}
+	const stored = yesterday.pantry.stored();
+	const ateOvernight = stored > 0 && pet.hearts >= yesterday.hearts;
+	if (ateOvernight) { line = line + " | ate from the pantry overnight"; }
+	const spoiled = stored - (ateOvernight ? 1 : 0);
+	if (spoiled > 0) { line = line + ` | ${spoiled} portions spoiled`; }
 	return line;
 }
 
