@@ -52,6 +52,23 @@ export function adding(this pantry: Pantry, food: Food, count: int32): Pantry {
 	};
 }
 
+export function nightMeals(
+	this pantry: Pantry,
+	hearts: int32,
+	floor: int32,
+	maxHearts: int32,
+): [int32, Pantry] {
+	let fed = hearts;
+	let left = pantry;
+	while (fed < floor) {
+		const meal = left.smallest();
+		if (!meal.ok) { break; }
+		fed = Math.min(fed + foodHearts(meal.value), maxHearts);
+		left = left.adding(meal.value, -1);
+	}
+	return [fed, left];
+}
+
 export function smallest(this pantry: Pantry): Result<Food, PantryError> {
 	for (let ordinal = 0; ordinal <= (Food.Large as int32); ordinal++) {
 		const food = ordinal as Food;
@@ -71,7 +88,7 @@ export function largest(this pantry: Pantry): Result<Food, PantryError> {
 test "a pantry counts portions and the hearts they hold" {
 	const pantry = Pantry.unstocked().adding(Food.Large, 1).adding(Food.Small, 2);
 	assert pantry.stored() == 3;
-	assert pantry.storedHearts() == 5;
+	assert pantry.storedHearts() == 16;
 	assert pantry.adding(Food.Small, -1).portions(Food.Small) == 1;
 }
 
@@ -84,6 +101,19 @@ test "a pantry picks its smallest and largest portion" {
 	assert large.ok;
 	if (large.ok) { assert large.value == Food.Large; }
 	assert !Pantry.unstocked().smallest().ok;
+}
+
+test "at night a pet under its floor eats its smallest portions until it is back over it" {
+	const pantry = Pantry.unstocked().adding(Food.Small, 2).adding(Food.Large, 1);
+	const [fed, left] = pantry.nightMeals(-1, 4, 20);
+	assert fed == 5;
+	assert left.portions(Food.Small) == 0;
+	assert left.portions(Food.Large) == 1;
+	const [calm, kept] = pantry.nightMeals(6, 4, 20);
+	assert calm == 6;
+	assert kept == pantry;
+	const [starving, _nothing] = Pantry.unstocked().nightMeals(-2, 4, 20);
+	assert starving == -2;
 }
 
 test "a newborn gets a ration on each shielded day only" {

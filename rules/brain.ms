@@ -31,7 +31,7 @@ export struct Persona {
 	minWinChanceBps: int32;
 	reserveBps: int32;
 	stakeBps: int32;
-	minHearts: int32;
+	eatBelowBps: int32;
 }
 
 export function of(this typeof Persona, kind: PersonaKind): Persona {
@@ -40,25 +40,34 @@ export function of(this typeof Persona, kind: PersonaKind): Persona {
 			minWinChanceBps: 7000,
 			reserveBps: 7000,
 			stakeBps: 5000,
-			minHearts: 3,
+			eatBelowBps: 8000,
 		}),
 		PersonaKind.Greedy => ({
 			minWinChanceBps: 5000,
 			reserveBps: 3000,
 			stakeBps: 10000,
-			minHearts: 2,
+			eatBelowBps: 6000,
 		}),
 		PersonaKind.Vengeful => ({
 			minWinChanceBps: 4500,
 			reserveBps: 5000,
 			stakeBps: 10000,
-			minHearts: 2,
+			eatBelowBps: 6000,
 		}),
 	};
 }
 
-export function pickMeal(this persona: Persona, hearts: int32, pantry: Pantry): Result<Food, Skip> {
-	if (hearts > persona.minHearts + 1) { return Result.err(Skip.NotHungry); }
+export function hungry(this persona: Persona, hearts: int32, maxHearts: int32): boolean {
+	return (hearts as int64) * (BPS as int64) <= (maxHearts as int64) * (persona.eatBelowBps as int64);
+}
+
+export function pickMeal(
+	this persona: Persona,
+	hearts: int32,
+	maxHearts: int32,
+	pantry: Pantry,
+): Result<Food, Skip> {
+	if (!persona.hungry(hearts, maxHearts)) { return Result.err(Skip.NotHungry); }
 	const meal = pantry.largest();
 	if (!meal.ok) { return Result.err(Skip.NoFood); }
 	return Result.ok(meal.value);
@@ -67,11 +76,12 @@ export function pickMeal(this persona: Persona, hearts: int32, pantry: Pantry): 
 export function pickPurchase(
 	this persona: Persona,
 	hearts: int32,
+	maxHearts: int32,
 	pantry: Pantry,
 	burrow: uint64,
 	level: int32,
 ): Result<Food, Skip> {
-	if (hearts > persona.minHearts + 1) { return Result.err(Skip.NotHungry); }
+	if (!persona.hungry(hearts, maxHearts)) { return Result.err(Skip.NotHungry); }
 	if (pantry.stored() > 0) { return Result.err(Skip.Stocked); }
 	for (let ordinal = Food.Large as int32; ordinal >= 0; ordinal--) {
 		const food = ordinal as Food;
@@ -168,19 +178,19 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 test "a low pet buys the best affordable food into an empty pantry" {
 	const greedy = Persona.of(PersonaKind.Greedy);
 	const empty = Pantry.unstocked();
-	const full = greedy.pickPurchase(5, empty, 1000000000, 0);
+	const full = greedy.pickPurchase(10, 10, empty, 1000000000, 0);
 	assert !full.ok;
 	if (!full.ok) { assert full.error == Skip.NotHungry; }
-	const rich = greedy.pickPurchase(3, empty, 1000000000, 0);
+	const rich = greedy.pickPurchase(6, 10, empty, 1000000000, 0);
 	assert rich.ok;
 	if (rich.ok) { assert rich.value == Food.Large; }
-	const tight = greedy.pickPurchase(3, empty, 9000000, 0);
+	const tight = greedy.pickPurchase(6, 10, empty, 30000000, 0);
 	assert tight.ok;
 	if (tight.ok) { assert tight.value == Food.Small; }
-	const broke = greedy.pickPurchase(1, empty, 0, 0);
+	const broke = greedy.pickPurchase(1, 10, empty, 0, 0);
 	assert !broke.ok;
 	if (!broke.ok) { assert broke.error == Skip.Broke; }
-	const stocked = greedy.pickPurchase(1, empty.adding(Food.Small, 1), 1000000000, 0);
+	const stocked = greedy.pickPurchase(1, 10, empty.adding(Food.Small, 1), 1000000000, 0);
 	assert !stocked.ok;
 	if (!stocked.ok) { assert stocked.error == Skip.Stocked; }
 }
@@ -188,11 +198,11 @@ test "a low pet buys the best affordable food into an empty pantry" {
 test "a low pet eats the largest portion it holds" {
 	const greedy = Persona.of(PersonaKind.Greedy);
 	const pantry = Pantry.unstocked().adding(Food.Small, 1).adding(Food.Medium, 1);
-	const meal = greedy.pickMeal(3, pantry);
+	const meal = greedy.pickMeal(6, 10, pantry);
 	assert meal.ok;
 	if (meal.ok) { assert meal.value == Food.Medium; }
-	assert !greedy.pickMeal(4, pantry).ok;
-	const hungry = greedy.pickMeal(3, Pantry.unstocked());
+	assert !greedy.pickMeal(7, 10, pantry).ok;
+	const hungry = greedy.pickMeal(6, 10, Pantry.unstocked());
 	assert !hungry.ok;
 	if (!hungry.ok) { assert hungry.error == Skip.NoFood; }
 }

@@ -638,7 +638,7 @@ test "a dead pet scores the death weight once" {
 	const alive = world.pets[2];
 	const dead: Pet = { ...alive, alive: false, hearts: 0 };
 	const wealth = (alive.harvest / MILLI_PER_UNIT) as int64;
-	assert alive.score(weights) == 4 * weights.heartMilli + wealth;
+	assert alive.score(weights) == (alive.hearts as int64) * weights.heartMilli + wealth;
 	assert dead.score(weights) == -weights.deathMilli;
 	const buried: Pet = { ...dead, harvest: 0, burrow: 0 };
 	assert buried.score(weights) == dead.score(weights);

@@ -84,15 +84,19 @@ export function growthBonus(pending: uint64, multiplierBps: int32): uint64 {
 
 export function foodCost(food: Food, level: int32): uint64 {
 	const base: uint64 = match (food) {
-		Food.Small => 8,
-		Food.Medium => 15,
-		Food.Large => 21,
+		Food.Small => 24,
+		Food.Medium => 45,
+		Food.Large => 70,
 	};
 	return base * HBRN_UNIT * ((20 + level) as uint64) / 20;
 }
 
 export function foodHearts(food: Food): int32 {
-	return (food as int32) + 1;
+	return match (food) {
+		Food.Small => 3,
+		Food.Medium => 6,
+		Food.Large => 10,
+	};
 }
 
 export function isShielded(epoch: uint64, bornEpoch: uint64): boolean {
@@ -149,11 +153,11 @@ test "growth bonus is capped at 20 percent" {
 }
 
 test "food cost curve" {
-	assert foodCost(Food.Small, 0) == 8 * HBRN_UNIT;
-	assert foodCost(Food.Large, 20) == 42 * HBRN_UNIT;
-	assert foodHearts(Food.Small) == 1;
-	assert foodHearts(Food.Medium) == 2;
-	assert foodHearts(Food.Large) == 3;
+	assert foodCost(Food.Small, 0) == 24 * HBRN_UNIT;
+	assert foodCost(Food.Large, 20) == 140 * HBRN_UNIT;
+	assert foodHearts(Food.Small) == 3;
+	assert foodHearts(Food.Medium) == 6;
+	assert foodHearts(Food.Large) == 10;
 }
 
 test "splits conserve value" {

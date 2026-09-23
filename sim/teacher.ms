@@ -55,9 +55,15 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	const pet = world.pets[index];
 	const persona = Persona.of(personaKindOf(index));
 	const hearts = pet.hearts as int32;
-	const meal = persona.pickMeal(hearts, pet.pantry);
+	const meal = persona.pickMeal(hearts, pet.maxHearts as int32, pet.pantry);
 	if (meal.ok && masks.economy.has(eatAction(meal.value))) { return eatAction(meal.value); }
-	const purchase = persona.pickPurchase(hearts, pet.pantry, pet.burrow, pet.level as int32);
+	const purchase = persona.pickPurchase(
+		hearts,
+		pet.maxHearts as int32,
+		pet.pantry,
+		pet.burrow,
+		pet.level as int32,
+	);
 	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
 		return buyAction(purchase.value);
 	}
@@ -193,21 +199,21 @@ export function playEpisode(blocks: int32, epochs: int32, seed: uint64): World {
 	return world;
 }
 
-test "on day one the teacher eats its ration, takes a node of its region and holds its attack" {
+test "on day one the teacher banks, takes a node of its region and holds its attack" {
 	const world = World.create(1, 6).beginEpoch(1);
 	const masks = world.masksFor(1);
 	const actions = world.teach(1, masks);
 	assert actions.node != ALLOCATE_HOLD;
 	assert regionOfNode(actions.node) == world.pets[1].startRegion();
 	assert actions.attack == ATTACK_HOLD;
-	assert actions.economy == EconomyAction.EatSmall;
+	assert actions.economy == EconomyAction.Bank;
 }
 
 function armedBlock(): World {
 	const start = World.create(1, 6);
 	const pets = start.pets;
 	for (let index = 0; index < pets.length; index++) {
-		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT, hearts: 50, maxHearts: 50 };
+		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT, lastTickEpoch: 9 };
 	}
 	const world = start.beginEpoch(10);
 	for (let index = 0; index < pets.length; index++) {

@@ -1,4 +1,12 @@
-import { START_BONUS, NODE_BONUS, BASE_MAX_HEARTS, Stats, Region, Mod } from "./stats";
+import {
+	START_BONUS,
+	NODE_BONUS,
+	BASE_MAX_HEARTS,
+	HEART_NODE_BONUS,
+	Stats,
+	Region,
+	Mod,
+} from "./stats";
 
 export const TREE_NODES: int32 = 24;
 export const KEYSTONE_COST: int32 = 3;
@@ -164,7 +172,7 @@ function withSmall(this stats: Stats, id: int32): Stats {
 		Region.Survivor => ({ ...stats, might: stats.might + NODE_BONUS }),
 		_ => ({ ...stats, grit: stats.grit + NODE_BONUS }),
 	};
-	const extraHeart: Stats = { ...stats, maxHearts: stats.maxHearts + 1 };
+	const extraHeart: Stats = { ...stats, maxHearts: stats.maxHearts + HEART_NODE_BONUS };
 	return match (offsetOf(id)) {
 		2 => extraHeart,
 		4 => secondaryStat,
@@ -277,7 +285,7 @@ test "derived stats for a fighter path" {
 	assert stats.might == 90;
 	assert stats.grit == 60;
 	assert stats.forage == 50;
-	assert stats.maxHearts == BASE_MAX_HEARTS + 1;
+	assert stats.maxHearts == BASE_MAX_HEARTS + HEART_NODE_BONUS;
 	assert stats.mods.has(Mod.Scavenger);
 	assert stats.mods.has(Mod.GlassCannon);
 	assert !stats.mods.has(Mod.ThickHide);

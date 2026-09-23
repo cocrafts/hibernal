@@ -143,6 +143,10 @@ function put(features: int32[], position: int32, value: int32): void {
 	features[position] = Math.max(-FEATURE_ONE, Math.min(value, FEATURE_ONE));
 }
 
+function heartShare(hearts: uint8, maxHearts: uint8): int32 {
+	return (hearts as int32) * FEATURE_ONE / Math.max(maxHearts as int32, 1);
+}
+
 function clear(features: int32[], offset: int32, count: int32): void {
 	for (let position = offset; position < offset + count; position++) {
 		features[position] = 0;
@@ -168,8 +172,8 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	const level = pet.level as int32;
 	const meal = foodCost(Food.Small, level);
 	const attacksLeft = try fighter.attacksLeft(pet.fightsOutOn(world.epoch)) catch 0;
-	put(features, selfSlot(offset, SelfFeature.Hearts), (pet.hearts as int32) * 15);
-	put(features, selfSlot(offset, SelfFeature.MaxHearts), (pet.maxHearts as int32) * 15);
+	put(features, selfSlot(offset, SelfFeature.Hearts), heartShare(pet.hearts, pet.maxHearts));
+	put(features, selfSlot(offset, SelfFeature.MaxHearts), (pet.maxHearts as int32) * 2);
 	const mealsAfforded = Math.min(pet.burrow / meal, 31 as uint64) as int32;
 	const age = Math.min(world.epoch - pet.bornEpoch, FEATURE_ONE as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.MealsAfforded), mealsAfforded * 4);
@@ -201,7 +205,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	}
 	put(features, selfSlot(offset, SelfFeature.SmallMealCost), moneyFeature(meal));
 	put(features, selfSlot(offset, SelfFeature.LivingMates), world.livingMates(index) * 14);
-	put(features, selfSlot(offset, SelfFeature.PantryHearts), pet.pantry.storedHearts() * 15);
+	put(features, selfSlot(offset, SelfFeature.PantryHearts), pet.pantry.storedHearts() * 4);
 	const base = blockStart(index);
 	let richest = 0;
 	let threat = 0;
@@ -278,7 +282,7 @@ function writeTargets(this world: World, index: int32, features: int32[], offset
 			targetSlot(row, TargetFeature.AttackedToday),
 			flag(pet.attackedOn(target.blockSlot(), world.epoch)),
 		);
-		put(features, targetSlot(row, TargetFeature.Hearts), (target.hearts as int32) * 15);
+		put(features, targetSlot(row, TargetFeature.Hearts), heartShare(target.hearts, target.maxHearts));
 		put(
 			features,
 			targetSlot(row, TargetFeature.Grudge),
@@ -387,9 +391,9 @@ test "a newborn sees itself, its legal nodes and no attackable target" {
 	const world = World.create(1, 6).beginEpoch(1);
 	const features = zeros(observationSize(Head.Node) + 3);
 	world.observeInto(4, Head.Economy, features, 3);
-	assert world.pets[4].hearts == 4;
-	assert features[3 + (SelfFeature.Hearts as int32)] == 60;
-	assert features[3 + (SelfFeature.MaxHearts as int32)] == 75;
+	assert world.pets[4].hearts == 9;
+	assert features[3 + (SelfFeature.Hearts as int32)] == 9 * FEATURE_ONE / 10;
+	assert features[3 + (SelfFeature.MaxHearts as int32)] == 20;
 	assert features[3 + (SelfFeature.RegionFighter as int32)] == FEATURE_ONE;
 	assert total(features, 3 + (SelfFeature.RegionWorker as int32), 3) == FEATURE_ONE;
 	assert total(features, 3 + (SelfFeature.PersonaCautious as int32), 3) == FEATURE_ONE;

@@ -11,6 +11,7 @@ import {
 	Outcome,
 	maxStake,
 	biteHearts,
+	defeatHearts,
 } from "./fight";
 import { DEFENSE_WIN_XP, DEFENSE_LOSS_XP, raidXp, gainXp } from "./level";
 import {
@@ -341,6 +342,7 @@ export function settleAttack(
 			loot,
 			attackerToday.stats().power(),
 			defenderToday.stats().power(),
+			defenderToday.maxHearts as int32,
 			defenderToday.bitesInToday as int32,
 		);
 		const hearts = Math.max((struck.hearts as int32) - bites, 0);
@@ -361,7 +363,8 @@ export function settleAttack(
 		});
 	}
 	const [kept, fee] = stakeSplit(stake);
-	const hearts = (committed.hearts as int32) - 1;
+	const lost = defeatHearts(committed.maxHearts as int32);
+	const hearts = Math.max((committed.hearts as int32) - lost, 0);
 	const beaten: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
 	const holder: Pet = { ...struck, burrow: struck.burrow + kept };
 	const paid = global.withProtocolFee(fee);
@@ -471,7 +474,7 @@ test "bank moves harvest, buying needs money and quota, eating needs room and fo
 	const fed = bought.value.pet.eat(Food.Medium, newborn.global);
 	assert fed.ok;
 	if (fed.ok) {
-		assert fed.value.pet.hearts == 4;
+		assert fed.value.pet.hearts == 8;
 		assert fed.value.pet.pantry.stored() == 0;
 	}
 	const spent: Pet = { ...hurtWithMoney, foodBoughtToday: FOOD_BUYS_PER_DAY as uint8 };

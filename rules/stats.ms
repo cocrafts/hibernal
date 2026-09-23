@@ -4,7 +4,8 @@ export const BASE_STAT: int32 = 50;
 export const BASE_SPEED: int32 = 50;
 export const START_BONUS: int32 = 30;
 export const NODE_BONUS: int32 = 10;
-export const BASE_MAX_HEARTS: int32 = 5;
+export const BASE_MAX_HEARTS: int32 = 10;
+export const HEART_NODE_BONUS: int32 = 2;
 
 export enum Region {
 	Worker,
