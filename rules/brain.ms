@@ -172,6 +172,8 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		lineageGeneration: 0,
 		pantry: Pantry.unstocked(),
 		foodBoughtToday: 0,
+		talentKind: 0,
+		talentBps: 10000,
 	};
 }
 

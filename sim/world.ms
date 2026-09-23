@@ -209,6 +209,12 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		if (!ticked.ok) { continue; }
 		pets[index] = ticked.value.pet;
 		global = ticked.value.global;
+		const randomness = mixSeeds(mixSeeds(world.seed, index as uint64), epoch);
+		const revealed = pets[index].revealTalent(global, randomness);
+		if (revealed.ok) {
+			pets[index] = revealed.value.pet;
+			global = revealed.value.global;
+		}
 	}
 	return {
 		...world,

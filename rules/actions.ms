@@ -205,7 +205,7 @@ export function allocateNode(
 	const cost = nodeCost(id);
 	if ((pet.pointsUnspent as int32) < cost) { return Result.err(AllocationError.NoPoints); }
 	const tree = try pet.tree.allocate(id, pet.startRegion());
-	const derived = Stats.fromTree(tree).grown(pet.level as int32).aged(pet.vigor());
+	const derived = Stats.fromTree(tree).grown(pet.level as int32, pet.talent()).aged(pet.vigor());
 	const grown: Pet = {
 		...pet,
 		tree: tree,

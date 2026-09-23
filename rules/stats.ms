@@ -1,4 +1,5 @@
 import { BPS } from "./units";
+import { Talent, TalentKind } from "./talent";
 
 export const BASE_STAT: int32 = 50;
 export const BASE_SPEED: int32 = 50;
@@ -81,13 +82,18 @@ function faded(value: int32, vigorBps: int32): int32 {
 	return BASE_STAT + (value - BASE_STAT) * vigorBps / BPS;
 }
 
-export function grown(this stats: Stats, level: int32): Stats {
+function talentGrowth(growth: int32, talent: Talent, kind: TalentKind): int32 {
+	if (talent.kind != kind) { return growth; }
+	return growth * talent.multiplierBps / BPS;
+}
+
+export function grown(this stats: Stats, level: int32, talent: Talent): Stats {
 	const growth = Math.max(level - 1, 0) * LEVEL_STAT_GROWTH;
 	return {
 		...stats,
-		forage: stats.forage + growth,
-		might: stats.might + growth,
-		grit: stats.grit + growth,
+		forage: stats.forage + talentGrowth(growth, talent, TalentKind.Forage),
+		might: stats.might + talentGrowth(growth, talent, TalentKind.Might),
+		grit: stats.grit + talentGrowth(growth, talent, TalentKind.Grit),
 		maxHearts: stats.maxHearts + level / LEVELS_PER_HEART,
 	};
 }

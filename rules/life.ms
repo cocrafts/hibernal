@@ -1,5 +1,5 @@
 import { BPS } from "./units";
-import { BASE_STAT, Region, Stats, aged } from "./stats";
+import { BASE_STAT, LEVEL_STAT_GROWTH, Region, Stats, aged } from "./stats";
 import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
 import {
@@ -12,6 +12,7 @@ import {
 	deathSplit,
 } from "./emission";
 import { Pantry } from "./pantry";
+import { TALENT_LEVEL, Talent, TalentKind } from "./talent";
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 
 export const DEFAULT_MIN_HEARTS: int32 = 2;
@@ -27,6 +28,12 @@ export const MIGHT_APPETITE_BPS: int32 = 50;
 export const FORAGE_APPETITE_BPS: int32 = 30;
 export const GRIT_APPETITE_BPS: int32 = 40;
 export const MIN_APPETITE_BPS: int32 = 5000;
+
+export enum TalentError {
+	Dead,
+	TooYoung,
+	Revealed,
+}
 
 export enum TickError {
 	Dead,
@@ -112,7 +119,7 @@ export function born(
 	const settled = global.settle(epoch);
 	const tree = Tree.empty().withNode(region as int32);
 	const level = levelForXp(NEWBORN_XP);
-	const stats = Stats.fromTree(tree).grown(level);
+	const stats = Stats.fromTree(tree).grown(level, Talent.unrevealed());
 	const pet: Pet = {
 		blockId: blockId,
 		slot: (slot as int32) as uint8,
@@ -142,6 +149,8 @@ export function born(
 		minHearts: DEFAULT_MIN_HEARTS as uint8,
 		pantry: Pantry.rationOn(epoch, epoch),
 		foodBoughtToday: 0,
+		talentKind: TalentKind.None as uint8,
+		talentBps: BPS as uint16,
 		insurance: 0,
 		scars: 0,
 		lineageGeneration: 0,
@@ -162,6 +171,31 @@ export function vigorBps(age: uint64): int32 {
 
 export function vigor(this pet: Pet): int32 {
 	return vigorBps(pet.lastTickEpoch - pet.bornEpoch);
+}
+
+export function revealTalent(
+	this pet: Pet,
+	global: GlobalConfig,
+	randomness: uint64,
+): Result<PetAndGlobal, TalentError> {
+	if (!pet.alive) { return Result.err(TalentError.Dead); }
+	if ((pet.level as int32) < TALENT_LEVEL) { return Result.err(TalentError.TooYoung); }
+	if (pet.talentKind != (TalentKind.None as uint8)) { return Result.err(TalentError.Revealed); }
+	const talent = Talent.rolled(randomness);
+	const before = pet.stats().workPower();
+	const stats = Stats.fromTree(pet.tree).grown(pet.level as int32, talent).aged(pet.vigor());
+	const revealed: Pet = {
+		...pet,
+		talentKind: talent.kind as uint8,
+		talentBps: talent.multiplierBps as uint16,
+		forage: stats.forage as uint16,
+		might: stats.might as uint16,
+		grit: stats.grit as uint16,
+	};
+	return Result.ok({
+		pet: revealed,
+		global: global.withWorkPower(before, revealed.stats().workPower()),
+	});
 }
 
 export function agedOut(this pet: Pet): boolean {
@@ -217,7 +251,7 @@ export function tickTo(
 	const alive = hearts > 0 && !old;
 	const risen = pet.gainXp(workXp(workPower, workedEpochs));
 	const faded = Stats.fromTree(pet.tree)
-		.grown(risen.level as int32)
+		.grown(risen.level as int32, pet.talent())
 		.aged(vigorBps(epoch - pet.bornEpoch));
 	const fed: Pet = {
 		...risen,
@@ -434,12 +468,13 @@ test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
 	const prime = newborn.pet.fedDailyTo(newborn.global, DECLINE_START_EPOCHS);
 	const primeLevel = prime.pet.level as int32;
-	assert (prime.pet.forage as int32) == Stats.fromTree(prime.pet.tree).grown(primeLevel).forage;
+	const primeStats = Stats.fromTree(prime.pet.tree).grown(primeLevel, prime.pet.talent());
+	assert (prime.pet.forage as int32) == primeStats.forage;
 	assert prime.pet.forage > 80;
 	const fading = prime.pet.fedDailyTo(prime.global, DECLINE_KNEE_EPOCHS);
 	assert fading.pet.alive;
 	const knee = Stats.fromTree(fading.pet.tree)
-		.grown(fading.pet.level as int32)
+		.grown(fading.pet.level as int32, fading.pet.talent())
 		.aged(KNEE_VIGOR_BPS);
 	assert (fading.pet.forage as int32) == knee.forage;
 	assert fading.pet.forage < prime.pet.forage;
@@ -459,6 +494,34 @@ test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 		assert burial.value.pet.burrow == wallet - tax;
 		assert burial.value.global.recycledPending == gone.global.recycledPending + tax;
 	}
+}
+
+function strongForager(talent: Talent): boolean {
+	return talent.kind == TalentKind.Forage && talent.multiplierBps >= 13000;
+}
+
+test "a talent shows at level ten once, scales the growth of its stat and moves the work power" {
+	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
+	const young = newborn.pet.revealTalent(newborn.global, 7);
+	assert !young.ok;
+	if (!young.ok) { assert young.error == TalentError.TooYoung; }
+	const grown = newborn.pet.fedDailyTo(newborn.global, 20);
+	assert (grown.pet.level as int32) >= TALENT_LEVEL;
+	let seed: uint64 = 1;
+	while (!strongForager(Talent.rolled(seed))) { seed += 1; }
+	const shown = grown.pet.revealTalent(grown.global, seed);
+	assert shown.ok;
+	if (!shown.ok) { return; }
+	const pet = shown.value.pet;
+	const talent = Talent.rolled(seed);
+	const growth = ((pet.level as int32) - 1) * LEVEL_STAT_GROWTH;
+	assert (pet.forage as int32) == 80 + growth * talent.multiplierBps / BPS;
+	assert pet.might == grown.pet.might;
+	const added = pet.stats().workPower() - grown.pet.stats().workPower();
+	assert shown.value.global.totalWorkPower == grown.global.totalWorkPower + added;
+	const again = pet.revealTalent(shown.value.global, seed);
+	assert !again.ok;
+	if (!again.ok) { assert again.error == TalentError.Revealed; }
 }
 
 test "an heir keeps the slot and the estate and gets a point per generation" {

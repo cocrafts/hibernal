@@ -3,6 +3,7 @@ import { Tree } from "./tree";
 import { Outcome } from "./fight";
 import { isShielded } from "./emission";
 import { Pantry } from "./pantry";
+import { Talent, TalentKind } from "./talent";
 
 export const GRACE_EPOCHS: uint64 = 7;
 export const BLOCK_SLOTS: int32 = 10;
@@ -56,6 +57,8 @@ export struct Pet {
 	minHearts: uint8;
 	pantry: Pantry;
 	foodBoughtToday: uint8;
+	talentKind: uint8;
+	talentBps: uint16;
 	insurance: uint8;
 	scars: uint8;
 	lineageGeneration: uint16;
@@ -91,6 +94,13 @@ export function stats(this pet: Pet): Stats {
 		might: pet.might as int32,
 		grit: pet.grit as int32,
 		maxHearts: pet.maxHearts as int32,
+	};
+}
+
+export function talent(this pet: Pet): Talent {
+	return {
+		kind: (pet.talentKind as int32) as TalentKind,
+		multiplierBps: pet.talentBps as int32,
 	};
 }
 

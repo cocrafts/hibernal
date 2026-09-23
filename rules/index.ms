@@ -1,4 +1,5 @@
 export * from "./units";
+export * from "./talent";
 export * from "./stats";
 export * from "./rng";
 export * from "./tree";
