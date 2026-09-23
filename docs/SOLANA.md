@@ -52,7 +52,7 @@ From the MetaScript Solana meetup demo (LiteSVM and a local validator, 2026-09-0
 | `hello.ms` (log only) | 108 CU, `.so` 1,840 bytes; Anchor 1.2.0 equivalent 346 CU, 49,280 bytes |
 | `math.ms` | 4,037 CU: calls, recursion, `for` loops, mutable locals, struct by value, int32/int64 arithmetic all run on chain |
 | `fib(15)` / `fib(18)` / `fib(20)` | 20,220 / 85,320 CU / over the 200k default budget |
-| `tools/rulesProbe.ms` | builds natively; `--os=solana` link fails on R12 |
+| `tools/rulesProbe.ms` | links with `--os=solana` since R12 scalars landed (17 KB `.so` on `cce059c8`, 2026-09-24) |
 
 - Pipeline: MetaScript → C → LLVM bitcode → `llvm-link` → `sbpf-linker` → sBPF **v3** ELF (`e_machine=247, e_flags=3`). `cargo-build-sbf` defaults to v0, which agave 4.2.2 refuses to deploy; Rust control programs must pass `--arch v3`.
 - `@comptime` results are free on chain but must be locals, not module constants (R12).
@@ -62,7 +62,7 @@ From the MetaScript Solana meetup demo (LiteSVM and a local validator, 2026-09-0
 
 | Construct | Symptom |
 |---|---|
-| module `const` outside the entry file | link error, discarded `.data` (R12) |
+| module `const` of struct, `T[N]` or string type | compile error `FREESTANDING E02` at the binding; `.rodata` for aggregates waits on SOLANA-BUGS #8 |
 | `console.log(number)`, template literals, string `+` | `exceeded max BPF to BPF call depth` |
 | `String(uint64)` | same |
 | `process.exit()` | `ProgramFailedToComplete` |
@@ -77,7 +77,7 @@ Work items live in the recompiler repo; ids match `ROADMAP.md`.
 | Id | What | Why Hibernal needs it | ER probe | Est. |
 |---|---|---|---|---|
 | **R2** | Parse the entrypoint buffer into typed, zero-copy `AccountInfo` views (`std/solana/entrypoint.ms`); reference: C SDK `sol_deserialize` | every instruction reads and writes `Pet`, `Block`, `GlobalConfig` | **yes, first** | 2 d |
-| **R12** | Module constants must not become discarded `.data` globals: fold scalar constants, emit `static const` into `.rodata` | `rules/` shares constants across files; `fight`, `emission`, `tree` cannot link without it; parked on `~/metascript/.inbox/compiler/2026-09-22-solana-module-const-discarded-data.md` | **yes, first** | 0.5–1 d |
+| **R12** | Module constants must not become discarded `.data` globals: fold scalar constants, emit `static const` into `.rodata` | `rules/` shares constants across files. Scalars fold since `8be46044..e5f0ec68` (installed `cce059c8`): `rulesProbe` and `fightProbe` link. Aggregates in `.rodata` open behind SOLANA-BUGS #8 | **yes, first** | 0.5–1 d |
 | **R3** | Syscalls: `sol_create_program_address`, `sol_try_find_program_address`, `sol_sha256`, `sol_get_clock_sysvar`, `sol_log_64_` | verify PDAs, sign as PDA in CPI, epoch from clock, log numbers without strings | yes | 1 d |
 | **R6** | CPI through `sol_invoke_signed_c`: build `SolInstruction` / `SolAccountMeta` / `SolAccountInfo` / `SolSignerSeeds` in C ABI without heap, behind a flattened shim | delegation, commit, undelegate, VRF, crank, System, Token-2022: **no ER without it** | **yes, decisive** | 2–3 d |
 | R5 | Error ABI: `u64` return codes, `panic` → log + abort, `ProgramError` | clean failure codes the client and tests can match | after | 0.5 d |

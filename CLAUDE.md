@@ -40,7 +40,7 @@ cd train && uv run python bc.py && uv run python ppo.py && uv run python evaluat
 
 - Integer only: `int32`, `int64`, `uint64`. No floats, no strings, no arrays, no allocation. It has to run on chain.
 - Every rule change is measured, not argued: rerun `sim/curve.ms` and `msc test rules/index.ms`, and update the numbers in `docs/BRIEF.md` §3.6 / §6.
-- Tuning knobs live at the top of their file as `export const`. They do not link under `--os=solana` yet (any `const` in a non-entry module, R12); that is a compiler fix, not a reason to rewrite them as functions.
+- Tuning knobs live at the top of their file as `export const`. Scalar module consts fold under `--os=solana` (R12). A struct, `T[N]` or string module const is `FREESTANDING E02` until `SOLANA-BUGS.md` #8, so knobs stay scalar.
 
 ## Code style
 
@@ -48,7 +48,7 @@ cd train && uv run python bc.py && uv run python ppo.py && uv run python evaluat
 
 Repo-specific on top of it:
 
-- `rules/` must satisfy the on-chain column of CODE-STYLE §11: no allocation, no module-scope `let`, no `String(uint64)` or `process.exit()` in code that reaches the chain (R13). Module `const`s stay and wait on R12.
+- `rules/` must satisfy the on-chain column of CODE-STYLE §11: no allocation, no module-scope `let`, no `String(uint64)` or `process.exit()` in code that reaches the chain (R13).
 - `sim/determinism.ms` must print the same digests and engine version on native and `--target=js`; a rule change that moves a digest needs a reason in the commit.
 - Host entry files end with `process.exit(main());`, chain builds with bare `main();`.
 

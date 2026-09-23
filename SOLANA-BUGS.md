@@ -26,7 +26,7 @@ Re-measured 2026-09-22 on installed `d757c7e1`: nothing below has landed except 
 | 3 | A | `try` does not check the error type | checker type rule | 12 (instance part, fixed with it) | **fixed, not landed** |
 | 4 | A | `.length` and `for..of` on a fixed array `T[N]` fail in C | native lowering | — | **fixed, not landed** |
 | 5 | A | `==` on structs fails for every struct in JS (the C case over 24 bytes is fixed on `d101b611`) | hook generation on the JS backend | — | open (JS only) |
-| 6 | A | Module `const` does not link on Solana | codegen of module bindings | — | scalars **fixed, not landed**; aggregates open (after #8) |
+| 6 | A | Module `const` does not link on Solana | codegen of module bindings | — | scalars **landed** `8be46044..e5f0ec68`; aggregates open (after #8) |
 | 7 | A | Type mismatch message drops type arguments | diagnostic | — | open |
 | 8 | A | `const` bindings and value parameters are writable | missing assignability check (soundness) | — | open |
 | 9 | B | Macro called with method syntax | macro dispatch | B core | open |
@@ -212,7 +212,7 @@ if (owner == signer) { … }
 
 ### 6. Module `const` does not link on Solana
 
-Parked on `~/metascript/.inbox/compiler/2026-09-22-solana-module-const-discarded-data.md` and `~/metascript/.inbox/compiler/2026-09-22-dead-if-without-else-crashes-c-build.md`. Re-measured 2026-09-22 on installed `d757c7e1`: still fails the link; the fix below never landed and its worktree is gone.
+Scalars landed `8be46044..e5f0ec68` (arc `wt/solana-const-fold`, 2026-09-23), with the dead-`if` crash below. Re-measured 2026-09-24 on installed `cce059c8`: `tools/rulesProbe.ms` builds a 17 KB `.so` and `tools/fightProbe.ms` a 68 KB `.so` with `--os=solana`; `msc test rules/index.ms` 353/353; the seven `sim/determinism.ms` digests are identical on native and JS; a module `const` of struct type fails at compile time with `FREESTANDING E02` at the binding. Aggregate consts in `.rodata` stay open behind #8. The history below is the trace and the first fix.
 
 ```ms
 import { DAMAGE } from "./knobs";
@@ -224,7 +224,7 @@ function main(): int32 {
 main();
 ```
 
-- Blocks on-chain code: `rules/` keeps its tuning knobs as `export const`, so `fight`, `emission` and `tree` cannot link. This is R12 in `docs/SOLANA.md` and `docs/ROADMAP.md`.
+- Blocked on-chain code until the scalar fix landed: `rules/` keeps its tuning knobs as `export const`, so `fight`, `emission` and `tree` could not link. This is R12 in `docs/SOLANA.md` and `docs/ROADMAP.md`.
 - Measured on `ba16897a` with `--os=solana`. Each of these fails at the link with `ld.lld: error: relocation refers to a symbol in a discarded section`, naming the constant and the module's `Init000`:
   - a literal `const LIMIT: uint64 = 9` in the entry file;
   - `const START: uint64 = seed()` in the entry file;
