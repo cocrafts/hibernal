@@ -406,7 +406,7 @@ Compiler and library work lands in the `recompiler` and `void` repos; this repo 
 ---
 
 ## 6. Tuning invariants (what the numbers must satisfy)
-1. A well-played pet with **zero SKR** reaches level 10 in ~7 epochs and level 20 in ~30, and **never starves while it works and banks daily.**
+1. A well-played pet with **zero SKR** reaches level 10 in ~7 epochs and level 20 in ~30, and **never starves while it works and banks daily.** Sim, 120 days: 0 starved for the teacher, the clone and PPO seeds 5–7 (`ON-CHAIN-AI.md` §6, package 5b).
 2. A maxed pet's food bill ≈ **60–70%** of its expected daily harvest → 3 idle days is dangerous at any power.
 3. **Income tail (D34):** p90 ≈ ×2.6 the median, p99 ≈ ×4, a few pets ×20 (Mythic talent plus gear). Sim reports the distribution with and without gear purchases.
 4. A pet born at epoch 60 can reach the top quartile of the *current* generation by epoch 120 (aging is in the build, D32).
