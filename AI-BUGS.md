@@ -8,7 +8,7 @@ Entries 1 and 2 were reproduced on the installed `msc 0.2.54` (installed from re
 |---|---|---|---|
 | 1 | `a < x … b > (y)` parses as a generic call `a<…>(y)` | parser lookahead; the checker then accepts a call on an `int32` | open |
 | 2 | An extension named like a prelude method (`has`, `isEmpty`, `size`) is lost behind a barrel unless its module is the first `export *` | checker, star re-export | open |
-| 3 | The type annotation of a `for (let i: T = …)` counter is dropped; the counter takes the initializer's type | parser | open, card `~/metascript/.inbox/compiler/2026-09-22-typed-for-init-loses-its-type.md` |
+| 3 | The type annotation of a `for (let i: T = …)` counter is dropped; the counter takes the initializer's type | parser | **fixed** recompiler `25cc503d`, installed |
 | 4 | An argument of a method-syntax call (`x.f(a)`) gets no implicit numeric conversion; on JS a Number reaches a BigInt formal | checker, call argument fitting | open, card `~/metascript/.inbox/compiler/2026-09-22-method-call-is-not-an-ordinary-call.md` |
 
 ## 1. A comparison chain parses as a generic call
@@ -139,7 +139,7 @@ process.exit(main());
 - Trigger: a declaration in the init clause of a C-style `for`. `for..of`, `for..in` and statement declarations are unaffected.
 - Where: `parseForStmt` in `src/parser/statements/control.ms:209` calls `skipOptionalType(state)` and builds the `VariableDecl` with `declType: ""` (:218). The statement parser `parseVariableDecl` (`declaration.ms:112`) uses `captureOptionalType` and sets `typeExpr`. Present since the parser's first commit (`51f08221`, 2026-02-21; `skipOptionalType` from `1eb790b1`), never recorded as a divergence.
 - Nim: `semVarOrLet` (`semstmts.nim:848-875`) types the symbol from the annotation (`semTypeNode`) and fits the initializer to it (`fitNodeConsiderViewType`); the initializer's type is used only when there is no annotation. Verdict: DIVERGE-UNINTENTIONAL; the fix is to keep the annotation, as `parseVariableDecl` does.
-- Fix verified, not landed: `captureOptionalType` + `getLastTypeExpr` in `parseForStmt` (7 lines, worktree `/tmp/hib-js64/rc` on `f8a913e5`, binary `mscA`). The overflow repro prints `2147483649` on C and JS, and so does `out/jsUint64/dotCall.ms` (`6`), because the counter is now a `uint64` and needs no conversion. Entry 4 is still red on the same binary. The recompiler suite has not been run yet.
+- Fixed in recompiler `25cc503d` (`fix(parser): keep typed for-init annotation`), pinned by `src/test/fixedbugs/bug203TypedForInit.ms`, installed 2026-09-24. Re-measured on the installed `msc`: the overflow repro prints `2147483649` and `dotCall` prints `6`, both on C and JS. The `beginEpoch(day as uint64)` casts stay, because `day` is an `int32` passed through method syntax, which is entry 4.
 - Found alongside, separate and not traced: `let x: uint64 = 1n;` as a plain statement fails to compile on C (`assigning to 'uint64_t' from 'msBigInt *'`), before and after the fix.
 - Hibernal counters it touches today, all below 2^31 so harmless on C: `rules/actions.ms:531,553`, `rules/fight.ms:352,397,459`, `sim/digests.ms:80`.
 
