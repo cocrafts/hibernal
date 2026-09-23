@@ -64,7 +64,7 @@ class PetPolicy(nn.Module):
         super().__init__()
         self.register_buffer("nodeSelf", torch.tensor(selfInputIndexes[NODE], dtype=torch.long))
         self.register_buffer("attackSelf", torch.tensor(selfInputIndexes[ATTACK], dtype=torch.long))
-        self.economy = stack(QuantDense(32, 32, True), QuantDense(32, 5, False))
+        self.economy = stack(QuantDense(32, 32, True), QuantDense(32, 8, False))
         self.node = stack(QuantDense(24, 32, True), QuantDense(32, 1, False))
         self.attack = stack(QuantDense(25, 32, True), QuantDense(32, 16, True), QuantDense(16, 4, False))
         self.critic = stack(nn.Linear(SELF_FEATURES, 64), nn.Tanh(), nn.Linear(64, 64), nn.Tanh(), nn.Linear(64, 1))

@@ -99,22 +99,6 @@ export function isShielded(epoch: uint64, bornEpoch: uint64): boolean {
 	return epoch < bornEpoch + NEWBORN_EPOCHS;
 }
 
-export function hungerOn(epoch: uint64, bornEpoch: uint64): boolean {
-	return !isShielded(epoch, bornEpoch) || (epoch - bornEpoch) % 2 == 1;
-}
-
-export function hungerStepsBetween(
-	lastTickEpoch: uint64,
-	currentEpoch: uint64,
-	bornEpoch: uint64,
-): int32 {
-	let steps = 0;
-	for (let epoch = lastTickEpoch + 1; epoch <= currentEpoch; epoch++) {
-		if (hungerOn(epoch, bornEpoch)) { steps += 1; }
-	}
-	return steps;
-}
-
 export function ofSpend(this typeof Split, amount: uint64): Split {
 	const protocol = amount * SPEND_PROTOCOL_PERCENT / 100;
 	const burned = amount * SPEND_BURN_PERCENT / 100;
@@ -170,12 +154,6 @@ test "food cost curve" {
 	assert foodHearts(Food.Small) == 1;
 	assert foodHearts(Food.Medium) == 2;
 	assert foodHearts(Food.Large) == 3;
-}
-
-test "newborn hunger is halved" {
-	assert hungerStepsBetween(0, 6, 0) == 5;
-	assert hungerStepsBetween(0, 3, 0) == 2;
-	assert hungerStepsBetween(10, 16, 0) == 6;
 }
 
 test "splits conserve value" {

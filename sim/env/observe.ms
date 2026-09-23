@@ -13,7 +13,6 @@ import {
 	EconomyAction,
 	StakeLevel,
 	foodCost,
-	hungerOn,
 	adjacent,
 	nodeKind,
 	nodeCost,
@@ -66,7 +65,7 @@ export enum SelfFeature {
 	ModCannibal,
 	SmallMealCost,
 	LivingMates,
-	HungerTomorrow,
+	PantryHearts,
 	RichestHarvest,
 	Threat,
 }
@@ -202,11 +201,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	}
 	put(features, selfSlot(offset, SelfFeature.SmallMealCost), moneyFeature(meal));
 	put(features, selfSlot(offset, SelfFeature.LivingMates), world.livingMates(index) * 14);
-	put(
-		features,
-		selfSlot(offset, SelfFeature.HungerTomorrow),
-		flag(hungerOn(world.epoch + 1, pet.bornEpoch)),
-	);
+	put(features, selfSlot(offset, SelfFeature.PantryHearts), pet.pantry.storedHearts() * 15);
 	const base = blockStart(index);
 	let richest = 0;
 	let threat = 0;
@@ -383,7 +378,7 @@ test "sizes follow the three heads" {
 	assert observationSize(Head.Economy) == 32;
 	assert observationSize(Head.Node) == 32 + 25 * 16;
 	assert observationSize(Head.Attack) == 32 + 11 * 13;
-	assert actionCount(Head.Economy) == 5;
+	assert actionCount(Head.Economy) == 8;
 	assert actionCount(Head.Node) == 25;
 	assert actionCount(Head.Attack) == 41;
 }
@@ -443,6 +438,7 @@ test "grown pets see odds and values for every attack the mask allows" {
 		world = world.beginEpoch(day as uint64);
 		for (let index = 0; index < world.pets.length; index++) {
 			world = world.applyEconomy(index, EconomyAction.Bank);
+			world = world.applyEconomy(index, EconomyAction.BuyLarge);
 		}
 		world = world.endEpoch();
 	}

@@ -10,6 +10,7 @@ import {
 	EconomyAction,
 	StakeLevel,
 	foodCost,
+	Pantry,
 	stakeShareBps,
 	winChanceFromTable,
 	agedOut,
@@ -104,7 +105,7 @@ function tally(this feel: Feel, key: int32, counter: FeelCounter, amount: int32)
 export function larderOf(this pet: Pet): Larder {
 	if (!pet.alive) { return Larder.Dead; }
 	const meal = foodCost(Food.Small, pet.level as int32);
-	if (pet.burrow >= meal) { return Larder.Stocked; }
+	if (pet.pantry.stored() > 0 || pet.burrow >= meal) { return Larder.Stocked; }
 	return pet.harvest + pet.burrow >= meal ? Larder.Unbanked : Larder.Empty;
 }
 
@@ -130,7 +131,7 @@ export function momentOf(
 }
 
 function noteEconomy(this feel: Feel, key: int32, actor: Pet, after: Pet): void {
-	if (after.burrow < actor.burrow) {
+	if (after.hearts > actor.hearts) {
 		feel.tally(key, FeelCounter.Meals, 1);
 		feel.tally(key, FeelCounter.MealHeartsSum, actor.hearts as int32);
 	}
@@ -253,7 +254,7 @@ test "a moment keeps the pet as it was before the action applied" {
 test "a meal counts the hearts the pet had when it ate" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
-	pets[4] = { ...pets[4], hearts: 2, burrow: 500 * HBRN_UNIT };
+	pets[4] = { ...pets[4], hearts: 2, pantry: Pantry.unstocked().adding(Food.Small, 1) };
 	const moment = world.momentOf(0, 4, Head.Economy, EconomyAction.EatSmall as int32);
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.note(moment, world.applyEconomy(4, EconomyAction.EatSmall));
@@ -308,9 +309,9 @@ test "a starved pet is sorted by what it could still have eaten" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
 	const meal = foodCost(Food.Small, pets[0].level as int32);
-	pets[0] = { ...pets[0], harvest: 0, burrow: 0 };
-	pets[1] = { ...pets[1], harvest: meal, burrow: 0 };
-	pets[2] = { ...pets[2], harvest: 0, burrow: meal };
+	pets[0] = { ...pets[0], harvest: 0, burrow: 0, pantry: Pantry.unstocked() };
+	pets[1] = { ...pets[1], harvest: meal, burrow: 0, pantry: Pantry.unstocked() };
+	pets[2] = { ...pets[2], harvest: 0, burrow: meal, pantry: Pantry.unstocked() };
 	assert pets[0].larderOf() == Larder.Empty;
 	assert pets[1].larderOf() == Larder.Unbanked;
 	assert pets[2].larderOf() == Larder.Stocked;

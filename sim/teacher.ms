@@ -23,6 +23,9 @@ import {
 	splitmix,
 	winChanceFromTable,
 } from "../rules/index";
+// C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
+// ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
+import { Pantry } from "../rules/pantry";
 import { ACTS_PER_EPOCH, ActionSet, Masks, World, blockStart } from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
@@ -32,7 +35,7 @@ export function personaKindOf(index: int32): PersonaKind {
 	return (((index % BLOCK_SLOTS) / 3) % 3) as PersonaKind;
 }
 
-function foodAction(food: Food): EconomyAction {
+function eatAction(food: Food): EconomyAction {
 	return match (food) {
 		Food.Small => EconomyAction.EatSmall,
 		Food.Medium => EconomyAction.EatMedium,
@@ -40,11 +43,24 @@ function foodAction(food: Food): EconomyAction {
 	};
 }
 
+function buyAction(food: Food): EconomyAction {
+	return match (food) {
+		Food.Small => EconomyAction.BuySmall,
+		Food.Medium => EconomyAction.BuyMedium,
+		Food.Large => EconomyAction.BuyLarge,
+	};
+}
+
 export function teachEconomy(this world: World, index: int32, masks: Masks): EconomyAction {
 	const pet = world.pets[index];
 	const persona = Persona.of(personaKindOf(index));
-	const food = persona.pickFood(pet.hearts as int32, pet.burrow, pet.level as int32);
-	if (food.ok && masks.economy.has(foodAction(food.value))) { return foodAction(food.value); }
+	const hearts = pet.hearts as int32;
+	const meal = persona.pickMeal(hearts, pet.pantry);
+	if (meal.ok && masks.economy.has(eatAction(meal.value))) { return eatAction(meal.value); }
+	const purchase = persona.pickPurchase(hearts, pet.pantry, pet.burrow, pet.level as int32);
+	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
+		return buyAction(purchase.value);
+	}
 	const lastRound = world.round == ACTS_PER_EPOCH - 1;
 	const heavy = pet.harvest * 4 > pet.burrow;
 	if (masks.economy.has(EconomyAction.Bank) && (lastRound || heavy)) { return EconomyAction.Bank; }
@@ -177,21 +193,21 @@ export function playEpisode(blocks: int32, epochs: int32, seed: uint64): World {
 	return world;
 }
 
-test "the teacher takes a node of its own region on day one and never attacks under shield" {
+test "on day one the teacher eats its ration, takes a node of its region and holds its attack" {
 	const world = World.create(1, 6).beginEpoch(1);
 	const masks = world.masksFor(1);
 	const actions = world.teach(1, masks);
 	assert actions.node != ALLOCATE_HOLD;
 	assert regionOfNode(actions.node) == world.pets[1].startRegion();
 	assert actions.attack == ATTACK_HOLD;
-	assert actions.economy == EconomyAction.Bank;
+	assert actions.economy == EconomyAction.EatSmall;
 }
 
 function armedBlock(): World {
 	const start = World.create(1, 6);
 	const pets = start.pets;
 	for (let index = 0; index < pets.length; index++) {
-		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT };
+		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT, hearts: 50, maxHearts: 50 };
 	}
 	const world = start.beginEpoch(10);
 	for (let index = 0; index < pets.length; index++) {

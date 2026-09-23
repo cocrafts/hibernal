@@ -2,6 +2,7 @@ import { Region, Stats, Combatant } from "./stats";
 import { Tree } from "./tree";
 import { Outcome } from "./fight";
 import { isShielded } from "./emission";
+import { Pantry } from "./pantry";
 
 export const GRACE_EPOCHS: uint64 = 7;
 export const BLOCK_SLOTS: int32 = 10;
@@ -53,6 +54,8 @@ export struct Pet {
 	growthMultiplierBps: uint16;
 	growthMultiplierExpiry: uint64;
 	minHearts: uint8;
+	pantry: Pantry;
+	foodBoughtToday: uint8;
 	insurance: uint8;
 	scars: uint8;
 	lineageGeneration: uint16;

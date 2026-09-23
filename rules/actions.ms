@@ -3,6 +3,7 @@ import { Region, Stats, aged } from "./stats";
 import { TREE_NODES, AllocationError, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord } from "./layout";
 import { Food, Split, foodCost, foodHearts, stakeSplit } from "./emission";
+import { FOOD_BUYS_PER_DAY, Pantry } from "./pantry";
 import {
 	INCOMING_CAP,
 	MIN_BITE_STAKE,
@@ -26,6 +27,9 @@ import {
 export enum EconomyAction {
 	Rest,
 	Bank,
+	BuySmall,
+	BuyMedium,
+	BuyLarge,
 	EatSmall,
 	EatMedium,
 	EatLarge,
@@ -47,6 +51,8 @@ export enum EconomyError {
 	EmptyHarvest,
 	Full,
 	Broke,
+	QuotaSpent,
+	NoFood,
 }
 
 export struct NodeMask {
@@ -122,6 +128,28 @@ export function bank(this pet: Pet, global: GlobalConfig): Result<PetAndGlobal, 
 	});
 }
 
+export function buy(
+	this pet: Pet,
+	food: Food,
+	global: GlobalConfig,
+): Result<PetAndGlobal, EconomyError> {
+	if (!pet.alive) { return Result.err(EconomyError.Dead); }
+	if ((pet.foodBoughtToday as int32) >= FOOD_BUYS_PER_DAY) {
+		return Result.err(EconomyError.QuotaSpent);
+	}
+	const cost = foodCost(food, pet.level as int32);
+	if (pet.burrow < cost) { return Result.err(EconomyError.Broke); }
+	return Result.ok({
+		pet: {
+			...pet,
+			burrow: pet.burrow - cost,
+			pantry: pet.pantry.adding(food, 1),
+			foodBoughtToday: pet.foodBoughtToday + 1,
+		},
+		global: global.withSpend(Split.ofSpend(cost)),
+	});
+}
+
 export function eat(
 	this pet: Pet,
 	food: Food,
@@ -129,12 +157,11 @@ export function eat(
 ): Result<PetAndGlobal, EconomyError> {
 	if (!pet.alive) { return Result.err(EconomyError.Dead); }
 	if (pet.hearts >= pet.maxHearts) { return Result.err(EconomyError.Full); }
-	const cost = foodCost(food, pet.level as int32);
-	if (pet.burrow < cost) { return Result.err(EconomyError.Broke); }
+	if (pet.pantry.portions(food) == 0) { return Result.err(EconomyError.NoFood); }
 	const hearts = Math.min((pet.hearts as int32) + foodHearts(food), pet.maxHearts as int32);
 	return Result.ok({
-		pet: { ...pet, hearts: hearts as uint8, burrow: pet.burrow - cost },
-		global: global.withSpend(Split.ofSpend(cost)),
+		pet: { ...pet, hearts: hearts as uint8, pantry: pet.pantry.adding(food, -1) },
+		global: global,
 	});
 }
 
@@ -147,6 +174,9 @@ export function doEconomy(
 	return match (action) {
 		EconomyAction.Rest => Result.ok({ pet: pet, global: global }),
 		EconomyAction.Bank => pet.bank(global),
+		EconomyAction.BuySmall => pet.buy(Food.Small, global),
+		EconomyAction.BuyMedium => pet.buy(Food.Medium, global),
+		EconomyAction.BuyLarge => pet.buy(Food.Large, global),
 		EconomyAction.EatSmall => pet.eat(Food.Small, global),
 		EconomyAction.EatMedium => pet.eat(Food.Medium, global),
 		EconomyAction.EatLarge => pet.eat(Food.Large, global),
@@ -343,7 +373,7 @@ export function settleAttack(
 	});
 }
 
-const DUEL_EPOCH: uint64 = 5;
+const DUEL_EPOCH: uint64 = 4;
 
 struct Duel {
 	attacker: Pet;
@@ -412,7 +442,7 @@ test "action ids and masks" {
 	assert nodeHoldMask().allowsNode(ALLOCATE_HOLD);
 }
 
-test "bank moves harvest and eating needs room and money" {
+test "bank moves harvest, buying needs money and quota, eating needs room and food" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
 	const earner: Pet = { ...newborn.pet, harvest: 500 };
 	const banked = earner.bank(newborn.global);
@@ -422,20 +452,32 @@ test "bank moves harvest and eating needs room and money" {
 	const full = newborn.pet.eat(Food.Small, newborn.global);
 	assert !full.ok;
 	if (!full.ok) { assert full.error == EconomyError.Full; }
-	const hurt: Pet = { ...newborn.pet, hearts: 2 };
-	const broke = hurt.eat(Food.Small, newborn.global);
+	const hurt: Pet = { ...newborn.pet, hearts: 2, pantry: Pantry.unstocked() };
+	const hungry = hurt.eat(Food.Small, newborn.global);
+	assert !hungry.ok;
+	if (!hungry.ok) { assert hungry.error == EconomyError.NoFood; }
+	const broke = hurt.buy(Food.Small, newborn.global);
 	assert !broke.ok;
 	if (!broke.ok) { assert broke.error == EconomyError.Broke; }
 	const cost = foodCost(Food.Medium, 1);
-	const hurtWithMoney: Pet = { ...hurt, burrow: cost };
-	const fed = hurtWithMoney.eat(Food.Medium, newborn.global);
+	const hurtWithMoney: Pet = { ...hurt, burrow: cost * 10 };
+	const bought = hurtWithMoney.buy(Food.Medium, newborn.global);
+	assert bought.ok;
+	if (!bought.ok) { return; }
+	const spend = bought.value.global;
+	assert bought.value.pet.burrow == cost * 9;
+	assert bought.value.pet.pantry.portions(Food.Medium) == 1;
+	assert spend.recycledPending + spend.burned + spend.protocolPending == cost;
+	const fed = bought.value.pet.eat(Food.Medium, newborn.global);
 	assert fed.ok;
 	if (fed.ok) {
-		const spend = fed.value.global;
 		assert fed.value.pet.hearts == 4;
-		assert fed.value.pet.burrow == 0;
-		assert spend.recycledPending + spend.burned + spend.protocolPending == cost;
+		assert fed.value.pet.pantry.stored() == 0;
 	}
+	const spent: Pet = { ...hurtWithMoney, foodBoughtToday: FOOD_BUYS_PER_DAY as uint8 };
+	const refused = spent.buy(Food.Small, newborn.global);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == EconomyError.QuotaSpent; }
 }
 
 test "the economy mask is exactly the actions that apply" {
@@ -449,6 +491,8 @@ test "the economy mask is exactly the actions that apply" {
 	const legal = pet.legalEconomy(newborn.global);
 	assert legal.has(EconomyAction.Rest);
 	assert legal.has(EconomyAction.Bank);
+	assert legal.has(EconomyAction.BuySmall);
+	assert !legal.has(EconomyAction.BuyMedium);
 	assert legal.has(EconomyAction.EatSmall);
 	assert !legal.has(EconomyAction.EatMedium);
 	assert !legal.has(EconomyAction.EatLarge);

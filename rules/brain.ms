@@ -3,6 +3,7 @@ import { BPS } from "./units";
 import { Tree } from "./tree";
 import { BlockSlot, Pet } from "./layout";
 import { Food, foodCost, stakeSplit } from "./emission";
+import { Pantry } from "./pantry";
 import { maxStake } from "./fight";
 import { winChanceAgainst } from "./winOdds";
 
@@ -17,6 +18,8 @@ export enum PersonaKind {
 export enum Skip {
 	NotHungry,
 	Broke,
+	NoFood,
+	Stocked,
 	Shielded,
 	CannotAttack,
 	EmptyHarvest,
@@ -54,13 +57,22 @@ export function of(this typeof Persona, kind: PersonaKind): Persona {
 	};
 }
 
-export function pickFood(
+export function pickMeal(this persona: Persona, hearts: int32, pantry: Pantry): Result<Food, Skip> {
+	if (hearts > persona.minHearts + 1) { return Result.err(Skip.NotHungry); }
+	const meal = pantry.largest();
+	if (!meal.ok) { return Result.err(Skip.NoFood); }
+	return Result.ok(meal.value);
+}
+
+export function pickPurchase(
 	this persona: Persona,
 	hearts: int32,
+	pantry: Pantry,
 	burrow: uint64,
 	level: int32,
 ): Result<Food, Skip> {
 	if (hearts > persona.minHearts + 1) { return Result.err(Skip.NotHungry); }
+	if (pantry.stored() > 0) { return Result.err(Skip.Stocked); }
 	for (let ordinal = Food.Large as int32; ordinal >= 0; ordinal--) {
 		const food = ordinal as Food;
 		if (burrow >= foodCost(food, level)) { return Result.ok(food); }
@@ -148,23 +160,41 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		insurance: 0,
 		scars: 0,
 		lineageGeneration: 0,
+		pantry: Pantry.unstocked(),
+		foodBoughtToday: 0,
 	};
 }
 
-test "eat picks the best affordable food only when low" {
+test "a low pet buys the best affordable food into an empty pantry" {
 	const greedy = Persona.of(PersonaKind.Greedy);
-	const full = greedy.pickFood(5, 1000000000, 0);
+	const empty = Pantry.unstocked();
+	const full = greedy.pickPurchase(5, empty, 1000000000, 0);
 	assert !full.ok;
 	if (!full.ok) { assert full.error == Skip.NotHungry; }
-	const rich = greedy.pickFood(3, 1000000000, 0);
+	const rich = greedy.pickPurchase(3, empty, 1000000000, 0);
 	assert rich.ok;
 	if (rich.ok) { assert rich.value == Food.Large; }
-	const tight = greedy.pickFood(3, 9000000, 0);
+	const tight = greedy.pickPurchase(3, empty, 9000000, 0);
 	assert tight.ok;
 	if (tight.ok) { assert tight.value == Food.Small; }
-	const broke = greedy.pickFood(1, 0, 0);
+	const broke = greedy.pickPurchase(1, empty, 0, 0);
 	assert !broke.ok;
 	if (!broke.ok) { assert broke.error == Skip.Broke; }
+	const stocked = greedy.pickPurchase(1, empty.adding(Food.Small, 1), 1000000000, 0);
+	assert !stocked.ok;
+	if (!stocked.ok) { assert stocked.error == Skip.Stocked; }
+}
+
+test "a low pet eats the largest portion it holds" {
+	const greedy = Persona.of(PersonaKind.Greedy);
+	const pantry = Pantry.unstocked().adding(Food.Small, 1).adding(Food.Medium, 1);
+	const meal = greedy.pickMeal(3, pantry);
+	assert meal.ok;
+	if (meal.ok) { assert meal.value == Food.Medium; }
+	assert !greedy.pickMeal(4, pantry).ok;
+	const hungry = greedy.pickMeal(3, Pantry.unstocked());
+	assert !hungry.ok;
+	if (!hungry.ok) { assert hungry.error == Skip.NoFood; }
 }
 
 test "attack expected value follows odds" {

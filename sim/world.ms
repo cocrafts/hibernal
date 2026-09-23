@@ -17,12 +17,14 @@ import {
 	attackHoldMask,
 	attackChoice,
 	HBRN_UNIT,
-	EMISSION_START,
 	LIFESPAN_EPOCHS,
 	INHERITANCE_TAX_PERCENT,
 	agedOut,
 	heirOf,
 } from "../rules/index";
+// C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
+// ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
+import { Pantry } from "../rules/pantry";
 
 export const WORLD_BLOCKS: int32 = 20;
 export const ACTS_PER_EPOCH: int32 = 4;
@@ -484,7 +486,7 @@ test "an heir takes the slot after the grace period" {
 test "a pet dies of age on day 90 and its heir returns with the estate after the grace" {
 	const start = World.create(1, 5);
 	const pets = start.pets;
-	pets[4] = { ...pets[4], burrow: 1000 * EMISSION_START };
+	pets[4] = { ...pets[4], hearts: 200, maxHearts: 200 };
 	let world = start.beginEpoch(LIFESPAN_EPOCHS - 1);
 	assert world.pets[4].alive;
 	world = world.endEpoch().beginEpoch(LIFESPAN_EPOCHS);
@@ -504,7 +506,7 @@ test "a robbery leaves a grudge for three epochs and striking back settles it" {
 	const start = World.create(1, 6);
 	const pets = start.pets;
 	for (let index = 0; index < pets.length; index++) {
-		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT };
+		pets[index] = { ...pets[index], burrow: 400 * HBRN_UNIT, hearts: 50, maxHearts: 50 };
 	}
 	const world = start.beginEpoch(10);
 	for (let index = 0; index < pets.length; index++) {

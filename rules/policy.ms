@@ -8,7 +8,7 @@ export const ACTIVATION_MAX: int32 = 127;
 
 export const ECONOMY_INPUTS: int32 = 32;
 export const ECONOMY_HIDDEN: int32 = 32;
-export const ECONOMY_OUTPUTS: int32 = 5;
+export const ECONOMY_OUTPUTS: int32 = 8;
 export const NODE_INPUTS: int32 = 24;
 export const NODE_HIDDEN: int32 = 32;
 export const ATTACK_INPUTS: int32 = 25;
@@ -135,10 +135,10 @@ export function attackLogits(
 test "the policy fits one account and the heads follow each other" {
 	assert layerBytes(32, 32) == 1 + 1024 + 128;
 	assert economyOffset() == 16;
-	assert nodeOffset() == 16 + 1153 + 181;
+	assert nodeOffset() == 16 + 1153 + 289;
 	assert attackOffset() == nodeOffset() + 897 + 37;
 	assert policyBytes() == attackOffset() + 929 + 577 + 81;
-	assert policyBytes() == 3871;
+	assert policyBytes() == 3979;
 	assert policyBytes() <= 10240;
 }
 

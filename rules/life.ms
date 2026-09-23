@@ -4,15 +4,15 @@ import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
 import {
 	EMISSION_START,
-	Food,
 	Split,
 	settleGlobal,
 	pendingReward,
 	growthBonus,
-	foodCost,
-	hungerOn,
+	Food,
+	foodHearts,
 	deathSplit,
 } from "./emission";
+import { Pantry } from "./pantry";
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 
 export const DEFAULT_MIN_HEARTS: int32 = 2;
@@ -136,6 +136,8 @@ export function born(
 		growthMultiplierBps: 0,
 		growthMultiplierExpiry: 0,
 		minHearts: DEFAULT_MIN_HEARTS as uint8,
+		pantry: Pantry.rationOn(epoch, epoch),
+		foodBoughtToday: 0,
 		insurance: 0,
 		scars: 0,
 		lineageGeneration: 0,
@@ -174,24 +176,22 @@ export function tickTo(
 	const pending = pendingReward(workPower, settled.rewardPerWorkPower, pet.rewardSnapshot);
 	const growing = epoch < pet.growthMultiplierExpiry;
 	const multiplierBps = growing ? pet.growthMultiplierBps as int32 : 0;
-	const meal = foodCost(Food.Small, pet.level as int32);
 	let hearts = pet.hearts as int32;
-	let burrow = pet.burrow;
-	let spent: uint64 = 0;
+	let pantry = pet.pantry;
 	let workedEpochs = 0;
 	let old = false;
 	for (let day = pet.lastTickEpoch + 1; day <= epoch && hearts > 0 && !old; day++) {
 		workedEpochs += 1;
 		old = day >= pet.bornEpoch + LIFESPAN_EPOCHS;
 		if (old) { continue; }
-		if (!hungerOn(day, pet.bornEpoch)) { continue; }
-		if (hearts - 1 < (pet.minHearts as int32) && burrow >= meal) {
-			burrow -= meal;
-			spent += meal;
-		} else {
-			hearts -= 1;
+		hearts -= 1;
+		const meal = pantry.smallest();
+		if (hearts < (pet.minHearts as int32) && meal.ok) {
+			hearts = Math.min(hearts + foodHearts(meal.value), pet.maxHearts as int32);
 		}
+		pantry = Pantry.rationOn(day, pet.bornEpoch);
 	}
+	const newDay = epoch > pet.lastTickEpoch;
 	const alive = hearts > 0 && !old;
 	const faded = Stats.fromTree(pet.tree).aged(vigorBps(epoch - pet.bornEpoch));
 	const fed: Pet = {
@@ -201,15 +201,15 @@ export function tickTo(
 		might: faded.might as uint16,
 		grit: faded.grit as uint16,
 		hearts: hearts as uint8,
-		burrow: burrow,
+		pantry: pantry,
+		foodBoughtToday: newDay ? 0 : pet.foodBoughtToday,
 		harvest: pet.harvest + pending + growthBonus(pending, multiplierBps),
 		rewardSnapshot: settled.rewardPerWorkPower,
 		lastTickEpoch: epoch,
 	};
-	const afterSpend = settled.withSpend(Split.ofSpend(spent));
 	return Result.ok({
 		pet: fed.gainXp(workXp(workPower, workedEpochs)).onFightDay(epoch),
-		global: afterSpend.withWorkPower(workPower, alive ? faded.workPower() : 0),
+		global: settled.withWorkPower(workPower, alive ? faded.workPower() : 0),
 	});
 }
 
@@ -293,26 +293,57 @@ test "the first tick pays the emission share and levels on work xp" {
 	assert firstTicked.pet.pointsUnspent == 3;
 }
 
-test "hunger takes hearts, the floor eats from the burrow, starvation leaves the work power" {
+test "hunger takes a heart every day and starvation leaves the work power" {
 	const newborn = hatch(Region.Survivor, 0, GlobalConfig.genesis(0));
 	const hungry: Pet = { ...newborn.pet, minHearts: 0 };
-	const starved = hungry.tickedTo(newborn.global, 6);
+	assert hungry.tickedTo(newborn.global, 3).pet.hearts == 2;
+	const starved = hungry.tickedTo(newborn.global, 5);
 	assert starved.pet.hearts == 0;
 	assert !starved.pet.alive;
 	assert starved.global.totalWorkPower == 0;
-	const floored: Pet = { ...newborn.pet, burrow: 1000 * EMISSION_START };
-	const fed = floored.tickedTo(newborn.global, 10);
-	assert fed.pet.alive;
-	assert (fed.pet.hearts as int32) == DEFAULT_MIN_HEARTS;
-	assert fed.global.burned > 0;
-	assert fed.global.recycledPending + fed.global.burned + fed.global.protocolPending ==
-		floored.burrow - fed.pet.burrow;
 }
 
-test "newborn hunger is halved while shielded" {
+test "the floor eats from the pantry at night, never from the burrow" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
-	const hungry: Pet = { ...newborn.pet, minHearts: 0 };
-	assert hungry.tickedTo(newborn.global, 3).pet.hearts == 3;
+	const stocked: Pet = {
+		...newborn.pet,
+		hearts: 2,
+		burrow: 1000 * EMISSION_START,
+		pantry: Pantry.unstocked().adding(Food.Large, 1),
+		foodBoughtToday: 1,
+		lastTickEpoch: 9,
+	};
+	const fed = stocked.tickedTo(newborn.global, 10);
+	assert fed.pet.hearts == 4;
+	assert fed.pet.pantry.stored() == 0;
+	assert fed.pet.foodBoughtToday == 0;
+	assert fed.pet.burrow == stocked.burrow;
+	assert fed.global.burned == newborn.global.burned;
+	const unfed = fed.pet.tickedTo(fed.global, 12);
+	assert unfed.pet.hearts == 2;
+}
+
+test "food left after the night is thrown away" {
+	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
+	const full: Pet = {
+		...newborn.pet,
+		pantry: Pantry.unstocked().adding(Food.Small, 2),
+		lastTickEpoch: 9,
+	};
+	const ticked = full.tickedTo(newborn.global, 10);
+	assert ticked.pet.hearts == 4;
+	assert ticked.pet.pantry.stored() == 0;
+}
+
+test "a newborn gets a small ration on each of its three shielded days" {
+	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
+	assert newborn.pet.pantry.portions(Food.Small) == 1;
+	assert newborn.pet.tickedTo(newborn.global, 2).pet.pantry.portions(Food.Small) == 1;
+	assert newborn.pet.tickedTo(newborn.global, 3).pet.pantry.stored() == 0;
+	const faint: Pet = { ...newborn.pet, hearts: 1 };
+	const rescued = faint.tickedTo(newborn.global, 1);
+	assert rescued.pet.alive;
+	assert rescued.pet.hearts == 1;
 }
 
 test "ticks refuse the dead and the past, and a burial splits the wallet" {
@@ -321,7 +352,7 @@ test "ticks refuse the dead and the past, and a burial splits the wallet" {
 	const refused = dead.tickTo(newborn.global, 1);
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == TickError.Dead; }
-	const later = newborn.pet.tickedTo(newborn.global, 5);
+	const later = newborn.pet.tickedTo(newborn.global, 4);
 	const behind = later.pet.tickTo(later.global, 3);
 	assert !behind.ok;
 	if (!behind.ok) { assert behind.error == TickError.Behind; }
@@ -347,7 +378,7 @@ test "vigor holds to day 50, bends to 70% on day 60 and ends at half" {
 
 test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
-	const fed: Pet = { ...newborn.pet, burrow: 1000 * EMISSION_START };
+	const fed: Pet = { ...newborn.pet, hearts: 200, maxHearts: 200 };
 	const prime = fed.tickedTo(newborn.global, DECLINE_START_EPOCHS);
 	assert prime.pet.forage == 80;
 	const fading = prime.pet.tickedTo(prime.global, DECLINE_KNEE_EPOCHS);

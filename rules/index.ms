@@ -3,6 +3,7 @@ export * from "./stats";
 export * from "./rng";
 export * from "./tree";
 export * from "./emission";
+export * from "./pantry";
 export * from "./fight";
 export * from "./winOdds";
 export * from "./logarithm";
