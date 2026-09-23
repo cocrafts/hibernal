@@ -391,9 +391,11 @@ test "a newborn sees itself, its legal nodes and no attackable target" {
 	const world = World.create(1, 6).beginEpoch(1);
 	const features = zeros(observationSize(Head.Node) + 3);
 	world.observeInto(4, Head.Economy, features, 3);
-	assert world.pets[4].hearts == 9;
-	assert features[3 + (SelfFeature.Hearts as int32)] == 9 * FEATURE_ONE / 10;
-	assert features[3 + (SelfFeature.MaxHearts as int32)] == 20;
+	const pet = world.pets[4];
+	assert pet.hearts < pet.maxHearts;
+	const share = (pet.hearts as int32) * FEATURE_ONE / (pet.maxHearts as int32);
+	assert features[3 + (SelfFeature.Hearts as int32)] == share;
+	assert features[3 + (SelfFeature.MaxHearts as int32)] == (pet.maxHearts as int32) * 2;
 	assert features[3 + (SelfFeature.RegionFighter as int32)] == FEATURE_ONE;
 	assert total(features, 3 + (SelfFeature.RegionWorker as int32), 3) == FEATURE_ONE;
 	assert total(features, 3 + (SelfFeature.PersonaCautious as int32), 3) == FEATURE_ONE;

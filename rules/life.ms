@@ -111,8 +111,8 @@ export function born(
 ): PetAndGlobal {
 	const settled = global.settle(epoch);
 	const tree = Tree.empty().withNode(region as int32);
-	const stats = Stats.fromTree(tree);
 	const level = levelForXp(NEWBORN_XP);
+	const stats = Stats.fromTree(tree).grown(level);
 	const pet: Pet = {
 		blockId: blockId,
 		slot: (slot as int32) as uint8,
@@ -215,13 +215,17 @@ export function tickTo(
 	}
 	const newDay = epoch > pet.lastTickEpoch;
 	const alive = hearts > 0 && !old;
-	const faded = Stats.fromTree(pet.tree).aged(vigorBps(epoch - pet.bornEpoch));
+	const risen = pet.gainXp(workXp(workPower, workedEpochs));
+	const faded = Stats.fromTree(pet.tree)
+		.grown(risen.level as int32)
+		.aged(vigorBps(epoch - pet.bornEpoch));
 	const fed: Pet = {
-		...pet,
+		...risen,
 		alive: alive,
 		forage: faded.forage as uint16,
 		might: faded.might as uint16,
 		grit: faded.grit as uint16,
+		maxHearts: faded.maxHearts as uint8,
 		hearts: hearts as uint8,
 		pantry: pantry,
 		foodBoughtToday: newDay ? 0 : pet.foodBoughtToday,
@@ -230,7 +234,7 @@ export function tickTo(
 		lastTickEpoch: epoch,
 	};
 	return Result.ok({
-		pet: fed.gainXp(workXp(workPower, workedEpochs)).onFightDay(epoch),
+		pet: fed.onFightDay(epoch),
 		global: settled.withWorkPower(workPower, alive ? faded.workPower() : 0),
 	});
 }
@@ -429,11 +433,17 @@ test "vigor holds to day 50, bends to 70% on day 60 and ends at half" {
 test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
 	const prime = newborn.pet.fedDailyTo(newborn.global, DECLINE_START_EPOCHS);
-	assert prime.pet.forage == 80;
+	const primeLevel = prime.pet.level as int32;
+	assert (prime.pet.forage as int32) == Stats.fromTree(prime.pet.tree).grown(primeLevel).forage;
+	assert prime.pet.forage > 80;
 	const fading = prime.pet.fedDailyTo(prime.global, DECLINE_KNEE_EPOCHS);
 	assert fading.pet.alive;
-	assert fading.pet.forage == 71;
-	assert fading.global.totalWorkPower == Stats.fromTree(fading.pet.tree).aged(KNEE_VIGOR_BPS).workPower();
+	const knee = Stats.fromTree(fading.pet.tree)
+		.grown(fading.pet.level as int32)
+		.aged(KNEE_VIGOR_BPS);
+	assert (fading.pet.forage as int32) == knee.forage;
+	assert fading.pet.forage < prime.pet.forage;
+	assert fading.global.totalWorkPower == knee.workPower();
 	const last = fading.pet.fedDailyTo(fading.global, LIFESPAN_EPOCHS - 1);
 	assert last.pet.alive;
 	const gone = last.pet.tickedTo(last.global, LIFESPAN_EPOCHS);

@@ -6,6 +6,8 @@ export const START_BONUS: int32 = 30;
 export const NODE_BONUS: int32 = 10;
 export const BASE_MAX_HEARTS: int32 = 10;
 export const HEART_NODE_BONUS: int32 = 2;
+export const LEVEL_STAT_GROWTH: int32 = 5;
+export const LEVELS_PER_HEART: int32 = 2;
 
 export enum Region {
 	Worker,
@@ -77,6 +79,17 @@ export function workPower(this stats: Stats): uint64 {
 
 function faded(value: int32, vigorBps: int32): int32 {
 	return BASE_STAT + (value - BASE_STAT) * vigorBps / BPS;
+}
+
+export function grown(this stats: Stats, level: int32): Stats {
+	const growth = Math.max(level - 1, 0) * LEVEL_STAT_GROWTH;
+	return {
+		...stats,
+		forage: stats.forage + growth,
+		might: stats.might + growth,
+		grit: stats.grit + growth,
+		maxHearts: stats.maxHearts + level / LEVELS_PER_HEART,
+	};
 }
 
 export function aged(this stats: Stats, vigorBps: int32): Stats {

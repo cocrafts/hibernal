@@ -205,7 +205,7 @@ export function allocateNode(
 	const cost = nodeCost(id);
 	if ((pet.pointsUnspent as int32) < cost) { return Result.err(AllocationError.NoPoints); }
 	const tree = try pet.tree.allocate(id, pet.startRegion());
-	const derived = Stats.fromTree(tree).aged(pet.vigor());
+	const derived = Stats.fromTree(tree).grown(pet.level as int32).aged(pet.vigor());
 	const grown: Pet = {
 		...pet,
 		tree: tree,
@@ -396,7 +396,7 @@ function duelOver(defenderHarvest: uint64): Duel {
 	const attacker = fighter.pet.readyAt(worker.global, DUEL_EPOCH);
 	const defender = worker.pet.readyAt(attacker.global, DUEL_EPOCH);
 	return {
-		attacker: { ...attacker.pet, hearts: 5, burrow: 1000 * HBRN_UNIT },
+		attacker: { ...attacker.pet, hearts: 5, might: 80, burrow: 1000 * HBRN_UNIT },
 		defender: { ...defender.pet, hearts: 5, harvest: defenderHarvest, burrow: 40 * HBRN_UNIT },
 		global: defender.global,
 	};
@@ -589,7 +589,7 @@ test "attack settlement conserves money and counts the fight" {
 		} else {
 			losses += 1;
 			assert after.record.loot == 0;
-			assert after.attacker.hearts == 4;
+			assert (after.attacker.hearts as int32) == 5 - defeatHearts(duel.attacker.maxHearts as int32);
 		}
 	}
 	assert wins > 0 && losses > 0;
@@ -615,7 +615,16 @@ test "a winning attacker bites an empty harvest" {
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
 		if (after.record.outcome == Outcome.AttackerWins) {
-			assert after.defender.hearts == 4;
+			const bite = biteHearts(
+				after.record.stake,
+				after.record.loot,
+				duel.attacker.stats().power(),
+				duel.defender.stats().power(),
+				duel.defender.maxHearts as int32,
+				0,
+			);
+			assert bite > 0;
+			assert (after.defender.hearts as int32) == 5 - bite;
 			assert after.defender.bitesInToday == 1;
 			bitten += 1;
 		}
