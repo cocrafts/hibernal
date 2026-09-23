@@ -4,6 +4,8 @@ import { Dice } from "./rng";
 
 export const INCOMING_CAP: int32 = 3;
 export const BITES_CAP: int32 = 1;
+export const BITE_HEARTS_CAP: int32 = 2;
+export const CRUSHING_POWER_RATIO: int32 = 2;
 export const FIGHT_HP_BASE: int32 = 800;
 export const FIGHT_HP_PER_GRIT: int32 = 7;
 export const DAMAGE: int32 = 3;
@@ -327,14 +329,15 @@ export function lootFor(
 	return thickHide ? applyCut(afterPacifist, THICK_HIDE_LOOT_CUT_BPS) : afterPacifist;
 }
 
-export function biteAllowed(
-	defenderHarvestBefore: uint64,
+export function biteHearts(
+	stake: uint64,
+	loot: uint64,
 	attackerPower: int32,
 	defenderPower: int32,
 	defenderBitesToday: int32,
-): boolean {
-	const comparable = defenderPower * 2 >= attackerPower;
-	return defenderHarvestBefore == 0 && comparable && defenderBitesToday < BITES_CAP;
+): int32 {
+	if (loot >= stake || defenderBitesToday >= BITES_CAP) { return 0; }
+	return attackerPower >= defenderPower * CRUSHING_POWER_RATIO ? BITE_HEARTS_CAP : 1;
 }
 
 test "fight is deterministic per seed" {
@@ -386,11 +389,12 @@ test "stake bounds and attack budget" {
 	if (!noneLeft.ok) { assert noneLeft.error == AttackError.OutOfAttacks; }
 }
 
-test "bite needs empty harvest, comparable power and no bite yet" {
-	assert biteAllowed(0, 20, 10, 0);
-	assert !biteAllowed(0, 21, 10, 0);
-	assert !biteAllowed(1, 20, 10, 0);
-	assert !biteAllowed(0, 20, 10, 1);
+test "a robber that takes back its stake leaves the hearts alone, one that does not bites" {
+	assert biteHearts(100, 100, 30, 10, 0) == 0;
+	assert biteHearts(100, 99, 10, 10, 0) == 1;
+	assert biteHearts(100, 0, 19, 10, 0) == 1;
+	assert biteHearts(100, 0, 20, 10, 0) == BITE_HEARTS_CAP;
+	assert biteHearts(100, 0, 20, 10, BITES_CAP) == 0;
 }
 
 function firstHitSeed(attacker: Combatant, defender: Combatant): uint64 {

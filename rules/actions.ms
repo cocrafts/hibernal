@@ -10,7 +10,7 @@ import {
 	AttackError,
 	Outcome,
 	maxStake,
-	biteAllowed,
+	biteHearts,
 } from "./fight";
 import { DEFENSE_WIN_XP, DEFENSE_LOSS_XP, raidXp, gainXp } from "./level";
 import {
@@ -336,20 +336,20 @@ export function settleAttack(
 			defenderToday.fightsInToday as int32,
 		);
 		const [winnings, fee] = stakeSplit(loot);
-		const bite = biteAllowed(
-			harvestBefore,
+		const bites = biteHearts(
+			stake,
+			loot,
 			attackerToday.stats().power(),
 			defenderToday.stats().power(),
 			defenderToday.bitesInToday as int32,
 		);
-		const bites = bite ? 1 : 0;
-		const hearts = (struck.hearts as int32) - bites;
+		const hearts = Math.max((struck.hearts as int32) - bites, 0);
 		const robbed: Pet = {
 			...struck,
 			alive: hearts > 0,
 			hearts: hearts as uint8,
 			harvest: struck.harvest - loot,
-			bitesInToday: ((struck.bitesInToday as int32) + bites) as uint8,
+			bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
 		};
 		const raider: Pet = { ...committed, burrow: committed.burrow + stake + winnings };
 		const paid = global.withProtocolFee(fee);
@@ -590,6 +590,20 @@ test "attack settlement conserves money and counts the fight" {
 		}
 	}
 	assert wins > 0 && losses > 0;
+}
+
+test "a winning attacker that takes back its stake leaves the hearts alone" {
+	const duel = duelOver(400 * HBRN_UNIT);
+	let won = 0;
+	for (let seed: uint64 = 0; seed < 60; seed++) {
+		const after = duel.settledOn(StakeLevel.Quarter, seed);
+		if (after.record.outcome == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
+			assert after.defender.hearts == 5;
+			assert after.defender.bitesInToday == 0;
+			won += 1;
+		}
+	}
+	assert won > 0;
 }
 
 test "a winning attacker bites an empty harvest" {
