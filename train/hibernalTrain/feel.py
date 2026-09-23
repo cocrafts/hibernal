@@ -24,13 +24,15 @@ FEEL_FIELDS = (
     "wealth",
     "living",
     "agedOut",
+    "heartsBitten",
+    "heartsLostAttacking",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])
 HEADER = (
     f"{'':24s} {'pets':>5s} {'fights':>6s} {'won':>5s} {'odds':>5s} {'<40%':>5s} {'<own':>5s} "
     f"{'stake':>5s} {'burrow':>6s} {'meals':>6s} {'at':>6s} {'hearts':>6s} {'robbed':>6s} {'avenged':>7s} "
-    f"{'starved':>9s} {'bitten':>6s} {'aged':>5s} {'wealth':>7s}"
+    f"{'starved':>9s} {'bitten':>6s} {'aged':>5s} {'wealth':>7s} {'bite♥':>6s} {'lost♥':>6s}"
 )
 
 
@@ -51,7 +53,8 @@ def feelLine(name, counters):
         f"{ratio(total['robbed'], pets):6.2f} "
         f"{ratio(total['avenged'], total['robbed']) * 100:6.1f}% "
         f"{total['starved']:3d}/{total['starvedUnbanked']}/{total['starvedStocked']:<3d} {total['bitten']:6d} {total['agedOut']:5d} "
-        f"{ratio(total['wealth'], total['living']):7.0f}"
+        f"{ratio(total['wealth'], total['living']):7.0f} {ratio(total['heartsBitten'], pets):6.2f} "
+        f"{ratio(total['heartsLostAttacking'], pets):6.2f}"
     )
 
 

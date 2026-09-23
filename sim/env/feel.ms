@@ -44,9 +44,11 @@ export enum FeelCounter {
 	Wealth,
 	Living,
 	AgedOut,
+	HeartsBitten,
+	HeartsLostAttacking,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.AgedOut as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.HeartsLostAttacking as int32) + 1;
 
 export enum Larder {
 	Dead,
@@ -164,12 +166,18 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 		feel.tally(key, FeelCounter.Avenged, 1);
 		grudges[key] = { robber: BlockSlot.First, epoch: 0 };
 	}
-	if (world.stats.wins == moment.stats.wins) { return; }
+	if (world.stats.wins == moment.stats.wins) {
+		const beaten = world.pets[moment.index];
+		const lost = (attacker.hearts as int32) - (beaten.hearts as int32);
+		feel.tally(key, FeelCounter.HeartsLostAttacking, lost);
+		return;
+	}
 	const victim = moment.env * feel.pets + blockStart(moment.index) + (defender.slot as int32);
 	feel.tally(key, FeelCounter.AttacksWon, 1);
 	feel.tally(victim, FeelCounter.Robbed, 1);
 	grudges[victim] = { robber: attacker.blockSlot(), epoch: world.epoch };
 	const struck = world.pets[blockStart(moment.index) + (defender.slot as int32)];
+	feel.tally(victim, FeelCounter.HeartsBitten, (defender.hearts as int32) - (struck.hearts as int32));
 	if (!struck.alive) { feel.tally(victim, FeelCounter.Bitten, 1); }
 }
 
@@ -330,4 +338,19 @@ test "a starved pet is sorted by what it could still have eaten" {
 	assert feel.tallied(3, FeelCounter.Starved) == 0;
 	assert feel.tallied(3, FeelCounter.LivingEpochs) == 2;
 	assert feel.tallied(3, FeelCounter.HeartsSum) == 2 * (pets[3].hearts as int32);
+}
+
+test "hearts lost to a bite and to a lost attack are counted on the pet that lost them" {
+	const world = World.create(1, 3).beginEpoch(1);
+	const pets = world.pets;
+	const feel = Feel.create(1, BLOCK_SLOTS);
+	const bite = world.momentOf(0, 3, Head.Attack, attackOn(5));
+	pets[5] = { ...pets[5], hearts: (pets[5].hearts as int32 - 2) as uint8 };
+	feel.note(bite, world.fought(10, true));
+	assert feel.tallied(5, FeelCounter.HeartsBitten) == 2;
+	const loss = world.momentOf(0, 6, Head.Attack, attackOn(4));
+	pets[6] = { ...pets[6], hearts: (pets[6].hearts as int32 - 1) as uint8 };
+	feel.note(loss, world.fought(10, false));
+	assert feel.tallied(6, FeelCounter.HeartsLostAttacking) == 1;
+	assert feel.tallied(4, FeelCounter.HeartsBitten) == 0;
 }
