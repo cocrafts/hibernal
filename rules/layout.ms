@@ -62,6 +62,10 @@ export struct Pet {
 	insurance: uint8;
 	scars: uint8;
 	lineageGeneration: uint16;
+	bonding: int8;
+	talksToday: uint8;
+	ownerFedToday: uint8;
+	giftOwed: uint64;
 }
 
 export struct GlobalConfig {

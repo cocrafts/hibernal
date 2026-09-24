@@ -1,7 +1,8 @@
 import { BPS, HBRN_UNIT } from "./units";
 import { REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
+import { revived } from "./owner";
 import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
-import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord } from "./layout";
+import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord, Insurance } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
 import { FOOD_BUYS_PER_DAY, Pantry, mealHearts } from "./pantry";
 import {
@@ -372,10 +373,11 @@ export function settleAttack(
 			harvest: struck.harvest - loot,
 			bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
 		};
+		const [survivor, insuredGlobal] = robbed.revived(global);
 		const cannibal = attackerToday.stats().mods.has(Mod.Cannibal);
-		const [remains, devoured] = robbed.devouredBy(cannibal);
+		const [remains, devoured] = survivor.devouredBy(cannibal);
 		const raider: Pet = { ...committed, burrow: committed.burrow + stake + winnings + devoured };
-		const paid = global.withProtocolFee(fee);
+		const paid = insuredGlobal.withProtocolFee(fee);
 		return Result.ok({
 			attacker: raider.gainXp(raidXp(loot)),
 			defender: remains.gainXp(DEFENSE_LOSS_XP),
@@ -386,9 +388,10 @@ export function settleAttack(
 	const [kept, fee] = stakeSplit(stake);
 	const lost = defeatHearts(committed.maxHearts as int32);
 	const hearts = Math.max((committed.hearts as int32) - lost, 0);
-	const beaten: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
+	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
+	const [beaten, insuredGlobal] = fallen.revived(global);
 	const holder: Pet = { ...struck, burrow: struck.burrow + kept };
-	const paid = global.withProtocolFee(fee);
+	const paid = insuredGlobal.withProtocolFee(fee);
 	return Result.ok({
 		attacker: beaten,
 		defender: holder.gainXp(DEFENSE_WIN_XP),
@@ -688,4 +691,25 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
 		assert plain.value.defender.burrow == frail.burrow;
 	}
+}
+
+test "an insured pet bitten to death comes back once, and no cannibal eats it" {
+	const duel = duelOver(0);
+	const cannibal: Pet = { ...duel.attacker, tree: { bits: (1 as uint64) << (KEYSTONE_CANNIBAL as uint64) } };
+	const frail: Pet = { ...duel.defender, hearts: 1, insurance: Insurance.Armed as uint8 };
+	let saves = 0;
+	for (let seed: uint64 = 0; seed < 60; seed++) {
+		const result = cannibal.settleAttack(frail, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		if (!result.ok) { unreachable; }
+		const after = result.value;
+		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		assert after.defender.alive;
+		assert after.defender.insurance == (Insurance.Used as uint8);
+		assert after.defender.scars == 1;
+		assert after.defender.burrow == frail.burrow / 2;
+		assert after.attacker.burrow == cannibal.burrow;
+		assert after.global.burned == duel.global.burned + frail.burrow / 2;
+		saves += 1;
+	}
+	assert saves > 0;
 }

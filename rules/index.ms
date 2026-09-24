@@ -16,3 +16,4 @@ export * from "./life";
 export * from "./actions";
 export * from "./brain";
 export * from "./policy";
+export * from "./owner";
