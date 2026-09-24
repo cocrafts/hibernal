@@ -10,6 +10,7 @@ from hibernalTrain.rollout import SLOTS, holdActions
 POLICY_SLOT = 0
 TEACHER = "teacher"
 REGIONS = ("worker", "fighter", "survivor")
+OWNERS = ("devoted", "casual", "absent")
 LATE_BORN_EPOCH = 60
 
 
@@ -48,12 +49,36 @@ def play(arguments):
         with open(f"checkpoints/{arguments.policy}.policy", "rb") as source:
             env.loadPolicy(POLICY_SLOT, source.read())
         env.assignAll(lambda index, slot: POLICY_SLOT)
+    owners = env.ownerKinds()
     while env.episode == 0:
         closing = env.epoch == arguments.epochs and env.head == 2
         if closing:
             stats = env.stats()
         env.step(holdActions(env, env.head))
-    return env, stats, env.feel(len(FEEL_FIELDS))
+    return env, stats, env.feel(len(FEEL_FIELDS)), owners
+
+
+def ownerRows(counters, owners):
+    rows = []
+    for kind, name in enumerate(OWNERS):
+        mine = counters[owners == kind]
+        days = field(mine, "livingEpochs").sum()
+        lives = field(mine, "lives").sum()
+        early = field(mine, "starved").sum() + field(mine, "bitten").sum() + field(mine, "diedAttacking").sum()
+        living = field(mine, "living") > 0
+        rows += [
+            (f"{name} owners: share of pets, %", 100 * ratio(len(mine), len(counters)), None, None, "SIM B"),
+            (f"{name} owners: mean bonding", ratio(field(mine, "bondingSum").sum(), days), None, None, "SIM B2"),
+            (f"{name} owners: gift HBRN per pet-day", ratio(field(mine, "gifted").sum(), days), None, None, "SIM B2"),
+            (f"{name} owners: gifts, % of the pet's income", 100 * ratio(field(mine, "gifted").sum(), field(mine, "earned").sum()), None, None, "SIM B2"),
+            (f"{name} owners: SKR per pet-day", ratio(field(mine, "skr").sum(), days), None, None, "SIM B3"),
+            (f"{name} owners: gift HBRN per SKR", ratio(field(mine, "gifted").sum(), field(mine, "skr").sum()), None, None, "SIM B3"),
+            (f"{name} owners: early deaths per 100 lives", 100 * ratio(early, lives), None, None, "SIM B"),
+            (f"{name} owners: insurance revivals per 100 lives", 100 * ratio(field(mine, "revived").sum(), lives), None, None, "BRIEF 3.5"),
+            (f"{name} owners: refused meals", field(mine, "ownerRefusals").sum(), None, None, "SIM B1"),
+            (f"{name} owners: wealth median", float(np.median(field(mine, "wealth")[living])) if living.any() else float("nan"), None, None, "SIM B"),
+        ]
+    return rows
 
 
 def scorecard(counters, stats, epochs):
@@ -120,7 +145,7 @@ def main():
     parser.add_argument("--save", default="")
     arguments = parser.parse_args()
     started = time.perf_counter()
-    env, stats, counters = play(arguments)
+    env, stats, counters, owners = play(arguments)
     if arguments.save:
         np.save(arguments.save, counters)
     print(
@@ -128,7 +153,7 @@ def main():
         f"x {arguments.epochs} days · seed {arguments.seed} · {time.perf_counter() - started:.0f}s"
     )
     off = 0
-    for name, value, low, high, source in scorecard(counters, stats, arguments.epochs):
+    for name, value, low, high, source in scorecard(counters, stats, arguments.epochs) + ownerRows(counters, owners):
         mark = verdict(float(value), low, high)
         off += mark == "OFF"
         print(f"{name:44s} {float(value):10.2f}  target {bounds(low, high):>10s}  {mark:4s}  {source}")
