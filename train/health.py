@@ -73,6 +73,8 @@ def scorecard(counters, stats, epochs):
     topQuartile = np.percentile(wealth, 75) if len(wealth) else float("nan")
     late = born >= LATE_BORN_EPOCH
     vengeful = personas == PERSONAS.index("vengeful")
+    days = field(counters, "livingEpochs")
+    dailyIncome = earned[days > 0] / days[days > 0]
     rows = [
         ("illegal actions", stats["illegal"], 0, 0, "gate"),
         ("starved with food or money", field(counters, "starvedStocked").sum(), 0, 0, "SIM A7"),
@@ -86,6 +88,9 @@ def scorecard(counters, stats, epochs):
         ("wealth p90 / median", ratio(np.percentile(wealth, 90), median), 2.0, 3.2, "BRIEF 6.3"),
         ("wealth p99 / median", ratio(np.percentile(wealth, 99), median), 3.0, 5.0, "BRIEF 6.3"),
         ("wealth top / median", ratio(wealth.max(), median), 10.0, None, "BRIEF 6.3"),
+        ("income per day p90 / median", ratio(np.percentile(dailyIncome, 90), np.median(dailyIncome)), 2.0, 3.2, "BRIEF 6.3"),
+        ("income per day p99 / median", ratio(np.percentile(dailyIncome, 99), np.median(dailyIncome)), 3.0, 5.0, "BRIEF 6.3"),
+        ("income per day top / median", ratio(dailyIncome.max(), np.median(dailyIncome)), 10.0, None, "BRIEF 6.3"),
         ("born day 60+ in the top wealth quartile, %", 100 * ratio((wealth[late] >= topQuartile).sum(), late.sum()), 5, None, "BRIEF 6.4"),
     ]
     for region, name in enumerate(REGIONS):
