@@ -10,9 +10,11 @@ import {
 	policyBytes,
 	agedOut,
 } from "../../rules/index";
-// C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
+// C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
+// (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../../rules/pantry";
+import { Gear, Item } from "../../rules/items";
 import { ACTS_PER_EPOCH, Masks, World, WorldStats } from "../world";
 import { personaKindOf, playEpisode } from "../teacher";
 import {

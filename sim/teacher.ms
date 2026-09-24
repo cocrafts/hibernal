@@ -27,10 +27,17 @@ import {
 	attackChoice,
 	splitmix,
 	winChanceFromTable,
+	BPS,
+	mintPrice,
+	at,
+	weakestSlot,
+	isEmpty,
 } from "../rules/index";
-// C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
+// C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
+// (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../rules/pantry";
+import { Gear, Item } from "../rules/items";
 import {
 	ACTS_PER_EPOCH,
 	NO_KEYSTONE,
@@ -82,9 +89,17 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
 		return buyAction(purchase.value);
 	}
+	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
+	const weakest = pet.gear.at(pet.gear.weakestSlot());
+	const due = weakest.isEmpty() || (weakest.wear as int32) >= ITEM_REPLACE_WEAR;
+	if (due && masks.economy.has(EconomyAction.Mint) && mintPrice(pet.level as int32) <= spare) {
+		return EconomyAction.Mint;
+	}
 	return EconomyAction.Rest;
 }
 
+
+export const ITEM_REPLACE_WEAR: int32 = 50;
 
 export function keystoneOf(kind: PersonaKind): int32 {
 	return match (kind) {

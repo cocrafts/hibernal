@@ -23,9 +23,11 @@ import {
 	agedOut,
 	heirOf,
 } from "../rules/index";
-// C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
+// C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
+// (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../rules/pantry";
+import { Gear, Item } from "../rules/items";
 import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited } from "./owner";
 
 export const WORLD_BLOCKS: int32 = 20;
@@ -353,7 +355,9 @@ export function applyEconomy(this world: World, index: int32, action: EconomyAct
 	const pets = world.pets;
 	const pet = pets[index];
 	if (!pet.alive) { return world; }
-	const economy = pet.doEconomy(action, world.global);
+	const round = (world.epoch << (2 as uint64)) | (world.round as uint64);
+	const seed = mixSeeds(mixSeeds(mixSeeds(world.seed, 7919), index as uint64), round);
+	const economy = pet.doEconomy(action, world.global, seed);
 	if (!economy.ok) { return world.counted(true); }
 	pets[index] = economy.value.pet;
 	return { ...world, global: economy.value.global };

@@ -1,9 +1,11 @@
+import { BPS } from "./units";
 import { Region, Stats, Combatant } from "./stats";
 import { Tree, built } from "./tree";
 import { Outcome } from "./fight";
 import { isShielded } from "./emission";
 import { Pantry } from "./pantry";
 import { Talent, TalentKind } from "./talent";
+import { Gear, statBonusBps } from "./items";
 
 export const GRACE_EPOCHS: uint64 = 7;
 export const BLOCK_SLOTS: int32 = 10;
@@ -66,6 +68,7 @@ export struct Pet {
 	talksToday: uint8;
 	ownerFedToday: uint8;
 	giftOwed: uint64;
+	gear: Gear;
 }
 
 export struct GlobalConfig {
@@ -92,13 +95,18 @@ export struct FightRecord {
 }
 
 export function stats(this pet: Pet): Stats {
+	const gear = pet.gear;
 	return {
 		...Stats.built(pet.tree, pet.level as int32, pet.talent()),
-		forage: pet.forage as int32,
-		might: pet.might as int32,
-		grit: pet.grit as int32,
+		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage)),
+		might: geared(pet.might, gear.statBonusBps(TalentKind.Might)),
+		grit: geared(pet.grit, gear.statBonusBps(TalentKind.Grit)),
 		maxHearts: pet.maxHearts as int32,
 	};
+}
+
+function geared(value: uint16, bonusBps: int32): int32 {
+	return (value as int32) * (BPS + bonusBps) / BPS;
 }
 
 export function talent(this pet: Pet): Talent {

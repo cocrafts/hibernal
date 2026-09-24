@@ -4,6 +4,7 @@ import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
 import { Pantry, mealHearts } from "./pantry";
 import { Tree } from "./tree";
 import { TalentKind } from "./talent";
+import { Gear } from "./items";
 
 export const BONDING_MAX: int32 = 127;
 export const BONDING_DECAY: int32 = 2;
@@ -242,5 +243,6 @@ function testPet(): Pet {
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		gear: Gear.bare(),
 	};
 }

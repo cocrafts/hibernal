@@ -4,6 +4,7 @@ import { Tree } from "./tree";
 import { BlockSlot, Pet } from "./layout";
 import { Food, foodCost, stakeSplit } from "./emission";
 import { Pantry } from "./pantry";
+import { Gear } from "./items";
 import { maxStake } from "./fight";
 import { winChanceAgainst } from "./winOdds";
 
@@ -174,6 +175,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		gear: Gear.bare(),
 		pantry: Pantry.unstocked(),
 		foodBoughtToday: 0,
 		talentKind: 0,

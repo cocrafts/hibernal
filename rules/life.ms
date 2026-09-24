@@ -12,6 +12,7 @@ import {
 	deathSplit,
 } from "./emission";
 import { Pantry } from "./pantry";
+import { Gear, allWornBy } from "./items";
 import { TALENT_LEVEL, Talent, TalentKind } from "./talent";
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 import {
@@ -167,6 +168,7 @@ export function born(
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		gear: Gear.bare(),
 	};
 	return { pet: pet, global: settled.withWorkPower(0, stats.rewardWeight()) };
 }
@@ -300,12 +302,13 @@ export function tickTo(
 		scars: ((pet.scars as int32) + revivals) as uint8,
 		harvest: income - harvestBurned,
 		burrow: pet.burrow - burrowBurned,
+		gear: pet.gear.allWornBy(workedEpochs),
 		rewardSnapshot: settled.rewardPerWorkPower,
 		lastTickEpoch: epoch,
 	};
 	const gift = newDay && alive ? fed.giftFor(foodReserve(fed.level as int32, hunger)) : 0;
 	const gifted: Pet = { ...fed, burrow: fed.burrow - gift, giftOwed: fed.giftOwed + gift };
-	const weighed = settled.withWorkPower(weight, alive ? faded.rewardWeight() : 0);
+	const weighed = settled.withWorkPower(weight, alive ? gifted.stats().rewardWeight() : 0);
 	return Result.ok({
 		pet: gifted.onFightDay(epoch),
 		global: { ...weighed, burned: weighed.burned + harvestBurned + burrowBurned },
@@ -329,7 +332,7 @@ export function bury(
 	}
 	const [perMate, burned] = deathSplit(wallet, livingMates);
 	return Result.ok({
-		pet: { ...pet, harvest: 0, burrow: 0 },
+		pet: { ...pet, harvest: 0, burrow: 0, gear: Gear.bare() },
 		global: { ...global, burned: global.burned + burned },
 		perMate: perMate,
 	});
@@ -344,15 +347,17 @@ export function heirOf(
 	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, global);
 	const generation = (dead.lineageGeneration as int32) + 1;
 	const points = (hatched.pet.pointsUnspent as int32) + Math.min(generation, HEIR_POINTS_CAP);
+	const heir: Pet = {
+		...hatched.pet,
+		burrow: dead.burrow,
+		pointsUnspent: points as uint8,
+		lineageGeneration: generation as uint16,
+		giftOwed: dead.giftOwed,
+		gear: dead.gear,
+	};
 	return Result.ok({
-		pet: {
-			...hatched.pet,
-			burrow: dead.burrow,
-			pointsUnspent: points as uint8,
-			lineageGeneration: generation as uint16,
-			giftOwed: dead.giftOwed,
-		},
-		global: hatched.global,
+		pet: heir,
+		global: hatched.global.withWorkPower(hatched.pet.stats().rewardWeight(), heir.stats().rewardWeight()),
 	});
 }
 

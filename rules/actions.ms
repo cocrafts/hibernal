@@ -4,6 +4,8 @@ import { revived } from "./owner";
 import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord, Insurance } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
+import { Item, mintPrice, rolledGrade, rolledStat, sellPrice, weakestSlot, at, with, bonusBps } from "./items";
+import { TalentKind } from "./talent";
 import { FOOD_BUYS_PER_DAY, Pantry, mealHearts } from "./pantry";
 import {
 	INCOMING_CAP,
@@ -37,6 +39,7 @@ export enum EconomyAction {
 	EatSmall,
 	EatMedium,
 	EatLarge,
+	Mint,
 }
 
 export enum StakeLevel {
@@ -173,10 +176,39 @@ export function eat(
 	});
 }
 
+export function mintItem(
+	this pet: Pet,
+	global: GlobalConfig,
+	seed: uint64,
+): Result<PetAndGlobal, EconomyError> {
+	if (!pet.alive) { return Result.err(EconomyError.Dead); }
+	const level = pet.level as int32;
+	const price = mintPrice(level);
+	if (pet.burrow < price) { return Result.err(EconomyError.Broke); }
+	const slot = pet.gear.weakestSlot();
+	const worn = pet.gear.at(slot);
+	const fresh = Item.minted(rolledGrade(seed), rolledStat(seed));
+	const upgrade = fresh.bonusBps() > worn.bonusBps();
+	const sold = upgrade ? worn : fresh;
+	const spent = price - sold.sellPrice(level);
+	const geared: Pet = {
+		...pet,
+		burrow: pet.burrow - spent,
+		gear: upgrade ? pet.gear.with(slot, fresh) : pet.gear,
+	};
+	return Result.ok({
+		pet: geared,
+		global: global
+			.withSpend(Split.ofSpend(spent))
+			.withWorkPower(pet.stats().rewardWeight(), geared.stats().rewardWeight()),
+	});
+}
+
 export function doEconomy(
 	this pet: Pet,
 	action: EconomyAction,
 	global: GlobalConfig,
+	seed: uint64,
 ): Result<PetAndGlobal, EconomyError> {
 	if (!pet.alive) { return Result.err(EconomyError.Dead); }
 	return match (action) {
@@ -188,14 +220,15 @@ export function doEconomy(
 		EconomyAction.EatSmall => pet.eat(Food.Small, global),
 		EconomyAction.EatMedium => pet.eat(Food.Medium, global),
 		EconomyAction.EatLarge => pet.eat(Food.Large, global),
+		EconomyAction.Mint => pet.mintItem(global, seed),
 	};
 }
 
 export function legalEconomy(this pet: Pet, global: GlobalConfig): BitSet<EconomyAction> {
 	let legal = 0 as BitSet<EconomyAction>;
-	for (let ordinal = 0; ordinal <= (EconomyAction.EatLarge as int32); ordinal++) {
+	for (let ordinal = 0; ordinal <= (EconomyAction.Mint as int32); ordinal++) {
 		const action = ordinal as EconomyAction;
-		if (pet.doEconomy(action, global).ok) { legal = legal.incl(action); }
+		if (pet.doEconomy(action, global, 0).ok) { legal = legal.incl(action); }
 	}
 	return legal;
 }
