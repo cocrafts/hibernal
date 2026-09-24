@@ -237,9 +237,9 @@ export function playEpisode(blocks: int32, epochs: int32, seed: uint64): World {
 	for (let day = 1; day <= epochs; day++) {
 		world = world.beginEpoch(day as uint64);
 		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
-			world = { ...world, round: round };
-			for (let index = 0; index < world.pets.length; index++) {
-				world = world.act(index);
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				world = world.act(world.actorAt(turn));
 			}
 		}
 		world = world.endEpoch();

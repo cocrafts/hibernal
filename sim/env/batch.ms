@@ -65,7 +65,7 @@ export struct RewardWeights {
 export struct Cursor {
 	epoch: uint64;
 	round: int32;
-	slot: int32;
+	turn: int32;
 	head: Head;
 }
 
@@ -179,7 +179,7 @@ function opened(this batch: Batch): Batch {
 		worlds[env] = World.staggered(batch.blocks, seed).beginEpoch(1);
 	}
 	batch.rescore();
-	return { ...batch, cursor: { epoch: 1, round: 0, slot: 0, head: Head.Economy } };
+	return { ...batch, cursor: { epoch: 1, round: 0, turn: 0, head: Head.Economy } };
 }
 
 export function create(
@@ -218,7 +218,7 @@ export function create(
 		blocks: blocks,
 		epochs: epochs,
 		episode: 0,
-		cursor: { epoch: 1, round: 0, slot: 0, head: Head.Economy },
+		cursor: { epoch: 1, round: 0, turn: 0, head: Head.Economy },
 	};
 	return batch.opened();
 }
@@ -228,11 +228,12 @@ export function rows(this batch: Batch): int32 {
 }
 
 export function petOf(this batch: Batch, row: int32): int32 {
-	return (row % batch.blocks) * BLOCK_SLOTS + batch.cursor.slot;
+	const world = batch.worlds[row / batch.blocks];
+	return world.actorAt((row % batch.blocks) * BLOCK_SLOTS + batch.cursor.turn);
 }
 
 export function controllerOf(this batch: Batch, row: int32): int32 {
-	return batch.controllers[(row / batch.blocks) * BLOCK_SLOTS + batch.cursor.slot];
+	return batch.controllers[(row / batch.blocks) * BLOCK_SLOTS + batch.petOf(row) % BLOCK_SLOTS];
 }
 
 export function assign(this batch: Batch, env: int32, slot: int32, controller: int32): boolean {
@@ -363,17 +364,17 @@ function advanced(this batch: Batch): Batch {
 	if (cursor.head != Head.Attack) {
 		return { ...batch, cursor: { ...cursor, head: ((cursor.head as int32) + 1) as Head } };
 	}
-	if (cursor.slot + 1 < BLOCK_SLOTS) {
-		return { ...batch, cursor: { ...cursor, slot: cursor.slot + 1, head: Head.Economy } };
+	if (cursor.turn + 1 < BLOCK_SLOTS) {
+		return { ...batch, cursor: { ...cursor, turn: cursor.turn + 1, head: Head.Economy } };
 	}
 	const worlds = batch.worlds;
 	if (cursor.round + 1 < ACTS_PER_EPOCH) {
 		for (let env = 0; env < worlds.length; env++) {
-			worlds[env] = { ...worlds[env], round: cursor.round + 1 };
+			worlds[env] = worlds[env].inRound(cursor.round + 1);
 		}
 		return {
 			...batch,
-			cursor: { ...cursor, round: cursor.round + 1, slot: 0, head: Head.Economy },
+			cursor: { ...cursor, round: cursor.round + 1, turn: 0, head: Head.Economy },
 		};
 	}
 	if (cursor.epoch >= (batch.epochs as uint64)) {
@@ -397,7 +398,7 @@ function advanced(this batch: Batch): Batch {
 	}
 	return {
 		...batch,
-		cursor: { epoch: cursor.epoch + 1, round: 0, slot: 0, head: Head.Economy },
+		cursor: { epoch: cursor.epoch + 1, round: 0, turn: 0, head: Head.Economy },
 	};
 }
 
@@ -456,25 +457,41 @@ function playTeacher(this start: Batch, untilEpoch: uint64): Batch {
 	return batch;
 }
 
+function heldTurn(this start: Batch): Batch {
+	let batch = start;
+	const actions = zeros(batch.rows());
+	const rewards = zeros(batch.rows());
+	const dones = zeros(batch.rows());
+	for (let ordinal = 0; ordinal <= (Head.Attack as int32); ordinal++) {
+		const head = ordinal as Head;
+		for (let row = 0; row < batch.rows(); row++) { actions[row] = holdAction(head); }
+		const stepped = batch.step(head, actions, rewards, dones);
+		if (!stepped.ok) { unreachable; }
+		batch = stepped.value;
+	}
+	return batch;
+}
+
 test "a batch opens on day one while later claims stay empty and running" {
-	const batch = Batch.create(5, 3, 2, 12);
+	let batch = Batch.create(5, 3, 2, 12);
 	assert batch.rows() == 6;
 	assert batch.cursor.epoch == 1;
 	assert batch.cursor.head == Head.Economy;
-	assert batch.petOf(0) == 0;
-	assert batch.petOf(1) == 10;
-	assert batch.petOf(2) == 0;
+	assert batch.petOf(1) / BLOCK_SLOTS == 1;
+	assert batch.petOf(2) / BLOCK_SLOTS == 0;
 	assert batch.worlds[0].seed != batch.worlds[1].seed;
+	while (batch.petOf(0) != 0) { batch = batch.heldTurn(); }
 	const observations = zeros(batch.rows() * observationSize(Head.Economy));
 	const legal = zeros(batch.rows() * actionCount(Head.Economy));
 	batch.observe(observations, legal);
 	for (let row = 0; row < batch.rows(); row++) {
-		const present = row % batch.blocks == 0;
+		const present = batch.petOf(row) == 0;
 		const rest = legal[row * actionCount(Head.Economy) + (EconomyAction.Rest as int32)];
 		const firstFeature = observations[row * observationSize(Head.Economy)];
 		assert rest == (present ? 1 : 0);
 		assert present ? firstFeature > 0 : firstFeature == 0;
 	}
+	assert legal[EconomyAction.Rest as int32] == 1;
 	const actions = zeros(batch.rows());
 	const rewards = zeros(batch.rows());
 	const dones = zeros(batch.rows());
@@ -485,11 +502,13 @@ test "a batch opens on day one while later claims stay empty and running" {
 }
 
 test "heads step in order and a wrong head is refused" {
-	const batch = Batch.create(5, 1, 1, 12);
+	let batch = Batch.create(5, 1, 1, 12);
 	const actions = zeros(1);
 	const rewards = zeros(1);
 	const dones = zeros(1);
 	assert !batch.step(Head.Attack, actions, rewards, dones).ok;
+	while (batch.petOf(0) != 0) { batch = batch.heldTurn(); }
+	const turn = batch.cursor.turn;
 	actions[0] = holdAction(Head.Economy);
 	const pet = batch.worlds[0].pets[0];
 	const spare = (pet.hearts as int64) - (pet.minHearts as int64);
@@ -497,7 +516,7 @@ test "heads step in order and a wrong head is refused" {
 	assert afterEconomy.ok;
 	if (afterEconomy.ok) {
 		assert afterEconomy.value.cursor.head == Head.Node;
-		assert afterEconomy.value.cursor.slot == 0;
+		assert afterEconomy.value.cursor.turn == turn;
 		assert (rewards[0] as int64) == spare * RewardWeights.of(PersonaKind.Cautious).comfortMilli;
 		assert dones[0] == (Done.Running as int32);
 	}
@@ -533,10 +552,10 @@ test "rewards add up to the change in score and an episode truncates then reopen
 	let last: Pet = batch.worlds[0].pets[0];
 	while (batch.episode == 0) {
 		batch.teacherActions(actions);
-		const slot = batch.cursor.slot;
+		const actor = batch.petOf(0);
 		const stepped = batch.step(batch.cursor.head, actions, rewards, dones);
 		if (!stepped.ok) { unreachable; }
-		if (slot == 0) {
+		if (actor == 0) {
 			earned += rewards[0] as int64;
 			last = batch.worlds[0].pets[0];
 		}

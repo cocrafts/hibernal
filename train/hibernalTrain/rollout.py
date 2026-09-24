@@ -19,6 +19,7 @@ class Rollout:
         self.values = np.zeros((steps, env.rows), dtype=np.float32)
         self.rewards = np.zeros((steps, env.rows), dtype=np.float32)
         self.dones = np.zeros((steps, env.rows), dtype=np.int8)
+        self.actors = np.zeros((steps, env.rows), dtype=np.int64)
         self.active = np.zeros((steps, env.rows), dtype=bool)
         self.choices = [
             {"observations": [], "legal": [], "actions": [], "logProbabilities": [], "steps": [], "rows": []}
@@ -53,6 +54,7 @@ class Rollout:
                     actions[choosing] = sampled.numpy().astype(np.int32)
             forced = np.flatnonzero(legalCount == 1)
             actions[forced] = legal[forced].argmax(axis=1).astype(np.int32)
+            self.actors[step] = env.actors()
             rewards, dones = env.step(actions)
             self.selfObservations[step] = observations[:, :SELF_FEATURES]
             self.rewards[step] = rewards / REWARD_UNIT
@@ -61,15 +63,21 @@ class Rollout:
             step += 1
         return self
 
+    def petIndexes(self):
+        steps = np.arange(self.actors.shape[0])
+        moments = (steps // (SLOTS * len(HEADS))) * len(HEADS) + steps % len(HEADS)
+        pets = self.actors * self.env.rows + np.arange(self.env.rows)
+        return moments[:, None], pets
+
     def perPet(self, values):
-        rounds = values.shape[0] // (SLOTS * len(HEADS))
-        shaped = values.reshape(rounds, SLOTS, len(HEADS), self.env.rows)
-        return shaped.transpose(0, 2, 1, 3).reshape(rounds * len(HEADS), SLOTS * self.env.rows)
+        moments, pets = self.petIndexes()
+        grouped = np.zeros((values.shape[0] // SLOTS, SLOTS * self.env.rows), dtype=values.dtype)
+        grouped[moments, pets] = values
+        return grouped
 
     def fromPerPet(self, values):
-        rounds = values.shape[0] // len(HEADS)
-        shaped = values.reshape(rounds, len(HEADS), SLOTS, self.env.rows)
-        return shaped.transpose(0, 2, 1, 3).reshape(rounds * SLOTS * len(HEADS), self.env.rows)
+        moments, pets = self.petIndexes()
+        return values[moments, pets]
 
     def advantages(self, discount, smoothing):
         rewards = self.perPet(self.rewards).copy()

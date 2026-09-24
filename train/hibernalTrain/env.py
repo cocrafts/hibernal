@@ -40,6 +40,7 @@ class HibernalEnv:
         lib.hibernal_reset.argtypes = [ctypes.c_uint64, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
         lib.hibernal_observe.argtypes = [ctypes.c_int32, pointer, pointer]
         lib.hibernal_teacher_actions.argtypes = [ctypes.c_int32, pointer]
+        lib.hibernal_actors.argtypes = [pointer]
         lib.hibernal_step.argtypes = [ctypes.c_int32, pointer, pointer, pointer]
         lib.hibernal_stats.argtypes = [ctypes.c_int32, pointer]
         lib.hibernal_load_policy.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32]
@@ -57,6 +58,7 @@ class HibernalEnv:
         self.observations = [np.zeros((self.rows, size), dtype=np.int32) for size in self.observationSizes]
         self.legal = [np.zeros((self.rows, count), dtype=np.int32) for count in self.actionCounts]
         self.teacher = np.zeros(self.rows, dtype=np.int32)
+        self.actorSlots = np.zeros(self.rows, dtype=np.int32)
         self.rewards = np.zeros(self.rows, dtype=np.int32)
         self.dones = np.zeros(self.rows, dtype=np.int32)
         self.statBuffer = np.zeros(len(STAT_FIELDS), dtype=np.int32)
@@ -93,6 +95,11 @@ class HibernalEnv:
         if self.lib.hibernal_teacher_actions(self.head, self.teacher.ctypes.data) != self.rows:
             raise RuntimeError("hibernal_teacher_actions refused")
         return self.teacher
+
+    def actors(self):
+        if self.lib.hibernal_actors(self.actorSlots.ctypes.data) != self.rows:
+            raise RuntimeError("hibernal_actors refused")
+        return self.actorSlots
 
     def step(self, actions):
         actions = np.ascontiguousarray(actions, dtype=np.int32)

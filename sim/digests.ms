@@ -118,7 +118,7 @@ export function digestWorld(): uint64 {
 }
 
 export function digestObserve(): uint64 {
-	const world: World = { ...playEpisode(2, 12, 13).beginEpoch(13), round: ACTS_PER_EPOCH - 1 };
+	const world = playEpisode(2, 12, 13).beginEpoch(13).inRound(ACTS_PER_EPOCH - 1);
 	let digest: Digest = { value: 4 };
 	for (let ordinal = 0; ordinal <= (Head.Attack as int32); ordinal++) {
 		const head = ordinal as Head;

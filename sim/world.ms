@@ -12,6 +12,7 @@ import {
 	StakeLevel,
 	NodeMask,
 	AttackMask,
+	Dice,
 	mixSeeds,
 	fightSeed,
 	attackHoldMask,
@@ -83,6 +84,7 @@ export struct World {
 	global: GlobalConfig;
 	epoch: uint64;
 	round: int32;
+	turns: int32[];
 	seed: uint64;
 	stats: WorldStats;
 }
@@ -96,8 +98,10 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const levelTwentyEpochs: uint64[] = [];
 	const grudges: Grudge[] = [];
 	const buildTargets: int32[] = [];
+	const turns: int32[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
 		const slot = index % BLOCK_SLOTS;
+		turns.push(index);
 		grudges.push(Grudge.none());
 		buildTargets.push(PERSONA_BUILD);
 		const hatched = Pet.born(
@@ -125,6 +129,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		global: global,
 		epoch: 0,
 		round: 0,
+		turns: turns,
 		seed: seed,
 		stats: { fights: 0, wins: 0, deaths: 0, heirs: 0, illegal: 0 },
 	};
@@ -222,13 +227,36 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 			global = revealed.value.global;
 		}
 	}
-	return {
+	const begun: World = {
 		...world,
 		global: global,
 		epoch: epoch,
-		round: 0,
 		stats: { ...world.stats, heirs: heirs },
 	};
+	return begun.inRound(0);
+}
+
+export function inRound(this world: World, round: int32): World {
+	const turns = world.turns;
+	for (let base = 0; base < turns.length; base += BLOCK_SLOTS) {
+		const block = (base / BLOCK_SLOTS) as uint64;
+		const dice: Dice = {
+			seed: mixSeeds(mixSeeds(world.seed, world.epoch), (block << 8) | (round as uint64)),
+			draw: 0,
+		};
+		for (let slot = 0; slot < BLOCK_SLOTS; slot++) { turns[base + slot] = base + slot; }
+		for (let last = BLOCK_SLOTS - 1; last > 0; last--) {
+			const picked = base + dice.roll(last, 0, last);
+			const waiting = turns[base + last];
+			turns[base + last] = turns[picked];
+			turns[picked] = waiting;
+		}
+	}
+	return { ...world, round: round };
+}
+
+export function actorAt(this world: World, turn: int32): int32 {
+	return world.turns[turn];
 }
 
 export function endEpoch(this world: World): World {
@@ -421,6 +449,31 @@ test "a world starts full, alive and settled" {
 	assert world.pets[13].blockId == 1;
 	assert world.pets[13].slot == 3;
 	assert world.pets[13].startRegion() == Region.Worker;
+}
+
+test "every round draws a turn order per block in which each pet acts once" {
+	const start = World.create(2, 9);
+	const firsts: int32[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+	const everyone = ((1 as uint64) << (BLOCK_SLOTS as uint64)) - 1;
+	for (let day = 1; day <= 40; day++) {
+		const dawn: World = { ...start, epoch: day as uint64 };
+		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
+			const world = dawn.inRound(round);
+			for (let base = 0; base < world.pets.length; base += BLOCK_SLOTS) {
+				let seen: uint64 = 0;
+				for (let turn = base; turn < base + BLOCK_SLOTS; turn++) {
+					const actor = world.actorAt(turn);
+					assert actor / BLOCK_SLOTS == base / BLOCK_SLOTS;
+					seen = seen | ((1 as uint64) << ((actor - base) as uint64));
+				}
+				assert seen == everyone;
+			}
+			firsts[world.actorAt(0)] += 1;
+		}
+	}
+	for (const count of firsts) { assert count > 0; }
+	const again: World = { ...start, epoch: 7 };
+	assert again.inRound(2).actorAt(13) == again.inRound(2).actorAt(13);
 }
 
 test "a staggered world claims every slot across the first thirty days" {

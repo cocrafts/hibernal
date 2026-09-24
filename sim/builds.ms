@@ -91,8 +91,10 @@ function playLives(seed: uint64, lives: Life[]): void {
 		world = world.beginEpoch(day as uint64);
 		world.recordDeaths(lives, recordedBirth);
 		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
-			world = { ...world, round: round };
-			for (let index = 0; index < world.pets.length; index++) { world = world.act(index); }
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				world = world.act(world.actorAt(turn));
+			}
 		}
 		world.recordDeaths(lives, recordedBirth);
 		world = world.endEpoch();

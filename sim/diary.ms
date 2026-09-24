@@ -132,9 +132,9 @@ function main(): int32 {
 			lines[row] = world.pets[diary.pets[row]].morning(yesterday[row], day);
 		}
 		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
-			world = { ...world, round: round };
-			for (let index = 0; index < world.pets.length; index++) {
-				world = world.step(index, diary);
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				world = world.step(world.actorAt(turn), diary);
 			}
 		}
 		world = world.endEpoch();
