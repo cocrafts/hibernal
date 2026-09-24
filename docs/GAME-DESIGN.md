@@ -100,25 +100,27 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 
 **Shape (agreed).** Path of Exile style: every pet starts at the center, three directions radiate out, and a pet can only cross into another class near the center, never at the high-tier nodes. Wandering buys breadth, not depth.
 
-**64-node layout `[draft, atlas 2026-09-15]`.** `64 = 3 starts + 1 core + 3 × 18 per direction + 6 keystones`. Ids grow outward, so a `2 × u64` expansion appends outer rings without renumbering. Kind, effect and neighbours are formulas of the id.
+**64-node layout, v2 (implemented 2026-09-24, `rules/tree.ms`).** Rebuilt after reading the real Path of Exile 3.29.1 and Grim Dawn 1.3.0.8 data (numbers and sources in `docs/SIM.md` F1): investment makes a pet very different, small and notable nodes add percentages to one family, only keystones multiply. `64 = 3 starts + 1 gate + 3 × 18 per direction + 6 keystones`; kind, family and neighbours are formulas of the id.
 
-| Ids | Ring | Per direction | Grants |
-|---|---|---|---|
-| 0–2 | start | 1 | +30 main stat |
-| 3 | gate | shared | +1 max heart; adjacent to the three ring-1 nodes, the only crossing between classes |
-| 4–6 | 1 | 1 | +10 main |
-| 7–12 | 2 | 2 | +10 main |
-| 13–24 | 3 | 4 | +1 heart · +10 main · +10 main · +10 secondary |
-| 25–48 | 4 | 8 | +10 per node, by direction (below) |
-| 49–57 | notable | 3 | Worker: Thrifty, Overtime, Apprentice · Fighter: Bloodthirst, Scavenger, Relentless · Survivor: Nightwatch, Thick Hide, Spite |
-| 58–63 | keystone | 2 per border | Worker\|Fighter: Glass Cannon, Tithe · Fighter\|Survivor: Cannibal, Bloodline · Survivor\|Worker: Pacifist, Hibernate |
+| Ids | Role | Grants |
+|---|---|---|
+| 0–2 | start (Worker, Fighter, Survivor) | +30 to the main stat |
+| 3 | gate, shared | +10% max hearts; adjacent to the three entries, the only crossing between directions |
+| 4 + 18d | entry | +10% to the direction's first family; adjacent to its start and the gate |
+| 5 + 18d | fork | +10% to the first family; opens the four clusters |
+| 6 + 18d + 4c … +3 | cluster c: 3 small nodes in a chain, then the notable | small +10%, notable +25% to the cluster's family |
+| 58–63 | keystones, 2 per border | multiplier with a cost, 3 points, dead end |
 
-- Ring 4 lanes: Worker speed, forage, armor, forage, accuracy, forage, grit, speed · Fighter speed, might, accuracy, bleed, might, lifesteal, accuracy, speed · Survivor armor, grit, lifesteal, grit, armor, +1 heart, might, speed. Both border lanes grant speed or armor so the flanks lean toward the neighbour direction.
-- Adjacency: a ring node links to its parent one ring in, its side neighbours on the same ring **inside its own direction** and its two children one ring out. Rings never link across a direction border. A ring-4 node links to the notable over its lane pair; the two border lanes link to both keystones of that border.
-- **Crossing classes (decided 2026-09-15):** only through the gate at the center (own ring 1 → gate → the other ring 1). Border keystones can be taken from either side but are dead ends: `allocate` does not count a keystone as the adjacent node, so a keystone never opens the other direction. On chain that is one mask, `neighbors(id) & tree.bits & ~KEYSTONE_MASK`.
-- **Small and notable nodes cost 1 skill point, keystones cost 3** (decided 2026-09-15). Ring *n* is *n* points after the start; own notable 5, own border keystone 7; another class's notable 7, the keystone between the two other classes 9. The two keystones of a border share the same two ring-4 nodes, so without the 3-point price a pet at the rim would pick up both for 2 points. A direction holds 18 nodes after its start; 20 points buy one keystone plus most of the direction, or two keystones and a thin path; 30 buy about two keystones plus the whole direction.
-- Checked in the atlas: adjacency symmetric, every node reachable from every start through the gate.
-- New notable effects `[strawman]`: Thrifty auto-eat −25% cost, Apprentice +25% work XP, Bloodthirst lifesteal ×2 below half HP, Relentless +1 attack per day, Spite reflects 20% of damage taken.
+| Direction | Cluster 0 | Cluster 1 | Cluster 2 | Cluster 3 |
+|---|---|---|---|---|
+| Worker | forage | forage, notable *Overtime* | food (hearts per portion) | experience |
+| Fighter | might | might, notable *Scavenger* | loot | attacks: +5% might per small, notable *Relentless* +1 attack a day |
+| Survivor | grit | max hearts | max hearts | bite guard, notable *Thick Hide* |
+
+- Keystones: Worker|Fighter *Glass Cannon* (58), *Tycoon* (59) · Fighter|Survivor *Cannibal* (60), *Berserker* (61) · Survivor|Worker *Pacifist* (62), *Bulwark* (63). A border's pair hangs off cluster 3's notable of the first direction and cluster 2's notable of the second. Effects in `BRIEF.md` §3.9.
+- Stats are built in one order: base, start, level growth (scaled by talent), then the sum of family percentages, then keystone multipliers (`Stats.built`).
+- Distances: own notable 6 points from the start, an own-border keystone 9; the other directions through the gate: entry, gate, entry, fork, cluster.
+- The draft ring layout this replaces (rings 1–4, lanes by stat) is in git history of this file before 2026-09-24.
 
 **Size.** A pet gets one point per level, level 1 included, so 20 at the level cap:
 
@@ -127,7 +129,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 | 24 nodes | 83% (no real choice left) |
 | 48 nodes | 42% (about one direction plus its keystone, or two directions shallow) |
 | **64 nodes (full `u64`)** | **31%** (one keystone plus most of a direction) · 47% at the 30-point cap |
-| Path of Exile | 123 points / 1,325 nodes ≈ 9% |
+| Path of Exile 3.29.1 | 123 points / 2,314 allocatable nodes ≈ 5.3% (`docs/SIM.md` F1) |
 
 - **Bonus points** (decided 2026-09-15): up to **+10** from outside leveling, e.g. skill books (§11) and the heir package (§7, its +1 per generation counts inside the 10). Hard cap **30** total; about 25 is an excellent pet, 30 is very rare. `Pet.bonus_points: u8` enforces the cap.
 - **64 nodes** (decided 2026-09-14, replaces 48). With lineage (§7) a family needs 3–4 generations to try every direction.
