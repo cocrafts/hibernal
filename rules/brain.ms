@@ -186,7 +186,7 @@ test "a low pet buys the best affordable food into an empty pantry" {
 	const rich = greedy.pickPurchase(6, 10, empty, 1000000000, 0);
 	assert rich.ok;
 	if (rich.ok) { assert rich.value == Food.Large; }
-	const tight = greedy.pickPurchase(6, 10, empty, 30000000, 0);
+	const tight = greedy.pickPurchase(6, 10, empty, 200000000, 0);
 	assert tight.ok;
 	if (tight.ok) { assert tight.value == Food.Small; }
 	const broke = greedy.pickPurchase(1, 10, empty, 0, 0);

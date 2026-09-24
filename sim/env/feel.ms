@@ -465,7 +465,7 @@ test "income is what reaches the harvest between one close and the next open" {
 test "a portion bought counts its price as food spent" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
-	pets[2] = { ...pets[2], burrow: 500 * HBRN_UNIT };
+	pets[2] = { ...pets[2], burrow: 2000 * HBRN_UNIT };
 	const moment = world.momentOf(0, 2, Head.Economy, EconomyAction.BuyLarge as int32);
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.note(moment, world.applyEconomy(2, EconomyAction.BuyLarge));

@@ -84,9 +84,9 @@ export function growthBonus(pending: uint64, multiplierBps: int32): uint64 {
 
 export function foodCost(food: Food, level: int32): uint64 {
 	const base: uint64 = match (food) {
-		Food.Small => 24,
-		Food.Medium => 45,
-		Food.Large => 70,
+		Food.Small => 168,
+		Food.Medium => 315,
+		Food.Large => 490,
 	};
 	return base * HBRN_UNIT * ((20 + level) as uint64) / 20;
 }
@@ -153,8 +153,8 @@ test "growth bonus is capped at 20 percent" {
 }
 
 test "food cost curve" {
-	assert foodCost(Food.Small, 0) == 24 * HBRN_UNIT;
-	assert foodCost(Food.Large, 20) == 140 * HBRN_UNIT;
+	assert foodCost(Food.Small, 0) == 168 * HBRN_UNIT;
+	assert foodCost(Food.Large, 20) == 980 * HBRN_UNIT;
 	assert foodHearts(Food.Small) == 3;
 	assert foodHearts(Food.Medium) == 6;
 	assert foodHearts(Food.Large) == 10;
