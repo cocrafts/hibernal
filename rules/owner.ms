@@ -14,7 +14,7 @@ export const PURCHASE_BONDING: int32 = 15;
 export const OWNER_FOOD_PER_DAY: int32 = 1;
 export const REFUSAL_BONDING: int32 = -40;
 export const GIFT_BONDING: int32 = 60;
-export const GIFT_SHARE_BPS: int32 = 500;
+export const GIFT_SHARE_BPS: int32 = 100;
 export const GIFT_CAP: uint64 = 500 * HBRN_UNIT;
 export const GIFT_RESERVE_DAYS: uint64 = 3;
 export const GROWTH_STEP_BPS: int32 = 500;
@@ -193,7 +193,7 @@ test "insurance revives once, burns half the wallet and leaves a scar" {
 test "a devoted pet gifts a capped share and keeps its food reserve" {
 	const reserve = foodReserve(20, 4);
 	assert reserve == foodCost(Food.Large, 20) * 4 / 10 * GIFT_RESERVE_DAYS;
-	const devoted: Pet = { ...testPet(), bonding: 127, burrow: 10000 * HBRN_UNIT };
+	const devoted: Pet = { ...testPet(), bonding: 127, burrow: 100000 * HBRN_UNIT };
 	assert devoted.giftFor(reserve) == GIFT_CAP;
 	const modest: Pet = { ...devoted, burrow: 2000 * HBRN_UNIT };
 	assert modest.giftFor(reserve) == 2000 * HBRN_UNIT * (GIFT_SHARE_BPS as uint64) / (BPS as uint64);
