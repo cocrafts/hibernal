@@ -10,7 +10,7 @@ export const RAID_XP_CAP: uint32 = 500;
 export const DEFENSE_WIN_XP: uint32 = 60;
 export const DEFENSE_LOSS_XP: uint32 = 20;
 export const LATE_LEVEL: int32 = 10;
-export const LATE_LEVEL_XP_PER_CUBE: uint32 = 16;
+export const LATE_LEVEL_XP_PER_CUBE: uint32 = 7;
 
 export function xpToReach(level: int32): uint32 {
 	const steps = (Math.max(level, 1) - 1) as uint32;
