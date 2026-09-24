@@ -49,6 +49,7 @@ FEEL_FIELDS = (
     "mints",
     "mintSpent",
     "gearBonusSum",
+    "robbedAgain",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])

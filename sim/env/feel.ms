@@ -73,9 +73,10 @@ export enum FeelCounter {
 	Mints,
 	MintSpent,
 	GearBonusSum,
+	RobbedAgain,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.GearBonusSum as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.RobbedAgain as int32) + 1;
 
 export enum Milestone {
 	EarlyLevel,
@@ -233,6 +234,9 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	const victim = moment.env * feel.pets + blockStart(moment.index) + (defender.slot as int32);
 	feel.tally(key, FeelCounter.AttacksWon, 1);
 	feel.tally(victim, FeelCounter.Robbed, 1);
+	const last = grudges[victim];
+	const again = last.epoch != 0 && world.epoch <= last.epoch + REVENGE_EPOCHS;
+	if (again && last.robber == attacker.blockSlot()) { feel.tally(victim, FeelCounter.RobbedAgain, 1); }
 	grudges[victim] = { robber: attacker.blockSlot(), epoch: world.epoch };
 	const struck = world.pets[blockStart(moment.index) + (defender.slot as int32)];
 	const bitten = (defender.hearts as int32) - (struck.hearts as int32);
