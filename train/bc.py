@@ -7,9 +7,12 @@ import torch
 from hibernalTrain import checkpoint
 from hibernalTrain.env import HEADS, HibernalEnv
 from hibernalTrain.model import PetPolicy
+from hibernalTrain.rollout import holdActions
+
+STUDENT_SLOT = 0
 
 
-def collectTeacher(env):
+def collect(env, play=None):
     samples = [{"observations": [], "legal": [], "actions": []} for _ in HEADS]
     episode = env.episode
     while env.episode == episode:
@@ -19,8 +22,24 @@ def collectTeacher(env):
         samples[head]["observations"].append(observations[choice].astype(np.int8))
         samples[head]["legal"].append(legal[choice].astype(bool))
         samples[head]["actions"].append(actions[choice].astype(np.int64))
-        env.step(actions)
+        env.step(actions if play is None else play(env, head, legal))
     return [{key: np.concatenate(parts) for key, parts in bucket.items()} for bucket in samples]
+
+
+def studentPlay(env, head, legal):
+    logits = env.policyLogits(STUDENT_SLOT)
+    best = np.where(legal.astype(bool), logits, np.iinfo(np.int32).min).argmax(axis=1)
+    return np.where(legal.any(axis=1), best, holdActions(env, head)).astype(np.int32)
+
+
+def collectStudent(seed, envCount, policy, engineVersion):
+    env = HibernalEnv(seed=seed, envCount=envCount)
+    env.loadPolicy(STUDENT_SLOT, policy.toBytes(engineVersion))
+    return collect(env, studentPlay)
+
+
+def merged(first, second):
+    return [{key: np.concatenate([mine[key], theirs[key]]) for key in mine} for mine, theirs in zip(first, second)]
 
 
 def accuracy(policy, head, data, batch=65536):
@@ -71,24 +90,39 @@ def main():
     parser.add_argument("--learningRate", type=float, default=3e-3)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--name", default="bc")
+    parser.add_argument("--studentRounds", type=int, default=2)
     arguments = parser.parse_args()
     torch.manual_seed(arguments.seed)
     started = time.perf_counter()
     env = HibernalEnv(seed=arguments.seed, envCount=arguments.envs)
-    train = collectTeacher(env)
-    heldOut = collectTeacher(HibernalEnv(seed=arguments.seed + 1000, envCount=max(arguments.envs // 4, 1)))
+    train = collect(env)
+    heldOut = collect(HibernalEnv(seed=arguments.seed + 1000, envCount=max(arguments.envs // 4, 1)))
     print(f"collected in {time.perf_counter() - started:.0f}s · engine {env.engineVersion}")
+    engineVersion = env.engineVersion
     policy = PetPolicy(env.selfInputIndexes)
-    for head, name in enumerate(HEADS):
+    for studentRound in range(arguments.studentRounds + 1):
+        for head, name in enumerate(HEADS):
+            clock = time.perf_counter()
+            loss = clone(policy, head, train[head], arguments.steps, arguments.batch, arguments.learningRate)
+            trainAccuracy, _ = accuracy(policy, head, train[head])
+            heldAccuracy, heldRecall = accuracy(policy, head, heldOut[head])
+            print(
+                f"round {studentRound} {name:8s} samples {len(train[head]['actions']):8d} loss {loss:.3f} "
+                f"accuracy train {trainAccuracy:.3f} held-out {heldAccuracy:.3f} macro recall {heldRecall:.3f} "
+                f"({time.perf_counter() - clock:.0f}s)"
+            )
+        if studentRound == arguments.studentRounds:
+            break
         clock = time.perf_counter()
-        loss = clone(policy, head, train[head], arguments.steps, arguments.batch, arguments.learningRate)
-        trainAccuracy, _ = accuracy(policy, head, train[head])
-        heldAccuracy, heldRecall = accuracy(policy, head, heldOut[head])
-        print(
-            f"{name:8s} samples {len(train[head]['actions']):8d} loss {loss:.3f} "
-            f"accuracy train {trainAccuracy:.3f} held-out {heldAccuracy:.3f} macro recall {heldRecall:.3f} "
-            f"({time.perf_counter() - clock:.0f}s)"
-        )
+        visited = collectStudent(arguments.seed + 1 + studentRound, arguments.envs, policy, engineVersion)
+        for head, name in enumerate(HEADS):
+            visitedAccuracy, visitedRecall = accuracy(policy, head, visited[head])
+            print(
+                f"round {studentRound} {name:8s} states the student reached {len(visited[head]['actions']):8d} "
+                f"teacher agreement {visitedAccuracy:.3f} macro recall {visitedRecall:.3f}"
+            )
+        train = merged(train, visited)
+        print(f"student round {studentRound} collected in {time.perf_counter() - clock:.0f}s")
     checkpoint.save(arguments.name, policy, env)
     print(f"saved checkpoints/{arguments.name}.pt and .policy")
 
