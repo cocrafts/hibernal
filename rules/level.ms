@@ -9,10 +9,14 @@ export const RAID_XP_PER_HBRN: uint64 = 3;
 export const RAID_XP_CAP: uint32 = 500;
 export const DEFENSE_WIN_XP: uint32 = 60;
 export const DEFENSE_LOSS_XP: uint32 = 20;
+export const LATE_LEVEL: int32 = 10;
+export const LATE_LEVEL_XP_PER_CUBE: uint32 = 16;
 
 export function xpToReach(level: int32): uint32 {
 	const steps = (Math.max(level, 1) - 1) as uint32;
-	return LEVEL_XP_PER_STEP * steps + steps * steps * steps;
+	const lateLevels = Math.max(level - LATE_LEVEL, 0);
+	const late = lateLevels as uint32;
+	return LEVEL_XP_PER_STEP * steps + steps * steps * steps + LATE_LEVEL_XP_PER_CUBE * late * late * late;
 }
 
 export function levelForXp(xp: uint32): int32 {
@@ -48,7 +52,8 @@ test "xp curve matches the leveling table" {
 	assert xpToReach(1) == 0;
 	assert xpToReach(2) == 191;
 	assert xpToReach(10) == 2439;
-	assert xpToReach(20) == 10469;
+	assert xpToReach(11) == 2900 + LATE_LEVEL_XP_PER_CUBE;
+	assert xpToReach(20) == 10469 + LATE_LEVEL_XP_PER_CUBE * 1000;
 	assert levelForXp(0) == 1;
 	assert levelForXp(NEWBORN_XP) == 1;
 	assert levelForXp(191) == 2;
