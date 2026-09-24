@@ -12,7 +12,7 @@ import {
 	deathSplit,
 } from "./emission";
 import { Pantry } from "./pantry";
-import { Gear, allWornBy } from "./items";
+import { Gear, ItemSkill, allWornBy, hasSkill, spentSkill } from "./items";
 import { TALENT_LEVEL, Talent, TalentKind } from "./talent";
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 import {
@@ -256,6 +256,8 @@ export function tickTo(
 	let bonding = pet.bonding as int32;
 	let armed = pet.insurance == (Insurance.Armed as uint8);
 	let revivals = 0;
+	let charm = pet.gear.hasSkill(ItemSkill.Revive);
+	let charmed = false;
 	for (let day = pet.lastTickEpoch + 1; day <= epoch && hearts > 0 && !old; day++) {
 		workedEpochs += 1;
 		old = day >= pet.bornEpoch + LIFESPAN_EPOCHS;
@@ -269,6 +271,11 @@ export function tickTo(
 		);
 		hearts = fed;
 		pantry = Pantry.rationOn(day, pet.bornEpoch);
+		if (hearts <= 0 && charm) {
+			hearts = reviveHearts(pet.maxHearts as int32);
+			charm = false;
+			charmed = true;
+		}
 		if (hearts <= 0 && armed) {
 			hearts = reviveHearts(pet.maxHearts as int32);
 			armed = false;
@@ -302,7 +309,7 @@ export function tickTo(
 		scars: ((pet.scars as int32) + revivals) as uint8,
 		harvest: income - harvestBurned,
 		burrow: pet.burrow - burrowBurned,
-		gear: pet.gear.allWornBy(workedEpochs),
+		gear: (charmed ? pet.gear.spentSkill(ItemSkill.Revive) : pet.gear).allWornBy(workedEpochs),
 		rewardSnapshot: settled.rewardPerWorkPower,
 		lastTickEpoch: epoch,
 	};

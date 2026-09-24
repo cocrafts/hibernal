@@ -4,7 +4,7 @@ import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
 import { Pantry, mealHearts } from "./pantry";
 import { Tree } from "./tree";
 import { TalentKind } from "./talent";
-import { Gear } from "./items";
+import { Gear, ItemSkill, hasSkill, spentSkill } from "./items";
 
 export const BONDING_MAX: int32 = 127;
 export const BONDING_DECAY: int32 = 2;
@@ -82,7 +82,17 @@ export function reviveHearts(maxHearts: int32): int32 {
 }
 
 export function revived(this pet: Pet, global: GlobalConfig): [Pet, GlobalConfig] {
-	if (pet.alive || pet.insurance != (Insurance.Armed as uint8)) { return [pet, global]; }
+	if (pet.alive) { return [pet, global]; }
+	if (pet.gear.hasSkill(ItemSkill.Revive)) {
+		const spared: Pet = {
+			...pet,
+			alive: true,
+			hearts: reviveHearts(pet.maxHearts as int32) as uint8,
+			gear: pet.gear.spentSkill(ItemSkill.Revive),
+		};
+		return [spared, global];
+	}
+	if (pet.insurance != (Insurance.Armed as uint8)) { return [pet, global]; }
 	const burnedHarvest = pet.harvest * INSURANCE_BURN_PERCENT / 100;
 	const burnedBurrow = pet.burrow * INSURANCE_BURN_PERCENT / 100;
 	const saved: Pet = {

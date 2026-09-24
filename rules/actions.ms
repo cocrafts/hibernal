@@ -4,8 +4,27 @@ import { revived } from "./owner";
 import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord, Insurance } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
-import { Item, mintPrice, rolledGrade, rolledStat, sellPrice, weakestSlot, at, with, bonusBps } from "./items";
-import { TalentKind } from "./talent";
+import {
+	Gear,
+	GearSlot,
+	ItemSkill,
+	hasSkill,
+	bare,
+	minted,
+	Item,
+	mintPrice,
+	rolledGrade,
+	rolledStat,
+	rolledSkill,
+	sellPrice,
+	weakestSlot,
+	at,
+	with,
+	score,
+	wardedLoot,
+	damageGuardBps,
+} from "./items";
+import { TalentGrade, TalentKind } from "./talent";
 import { FOOD_BUYS_PER_DAY, Pantry, mealHearts } from "./pantry";
 import {
 	INCOMING_CAP,
@@ -187,8 +206,9 @@ export function mintItem(
 	if (pet.burrow < price) { return Result.err(EconomyError.Broke); }
 	const slot = pet.gear.weakestSlot();
 	const worn = pet.gear.at(slot);
-	const fresh = Item.minted(rolledGrade(seed), rolledStat(seed));
-	const upgrade = fresh.bonusBps() > worn.bonusBps();
+	const grade = rolledGrade(seed);
+	const fresh = Item.minted(grade, rolledStat(seed), rolledSkill(seed, grade));
+	const upgrade = fresh.score() > worn.score();
 	const sold = upgrade ? worn : fresh;
 	const spent = price - sold.sellPrice(level);
 	const geared: Pet = {
@@ -385,7 +405,7 @@ export function settleAttack(
 			defenderToday.fightsInToday as int32,
 		);
 		const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
-		const loot = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
+		const loot = defenderToday.gear.wardedLoot(Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore));
 		const [winnings, fee] = stakeSplit(loot);
 		const bites = guardedBite(
 			biteHearts(
@@ -396,7 +416,7 @@ export function settleAttack(
 				defenderToday.maxHearts as int32,
 				defenderToday.bitesInToday as int32,
 			),
-			defenderToday.stats().biteGuardBps,
+			defenderToday.stats().biteGuardBps + defenderToday.gear.damageGuardBps(),
 		);
 		const hearts = Math.max((struck.hearts as int32) - bites, 0);
 		const robbed: Pet = {
@@ -419,7 +439,7 @@ export function settleAttack(
 		});
 	}
 	const [kept, fee] = stakeSplit(stake);
-	const lost = defeatHearts(committed.maxHearts as int32);
+	const lost = guardedBite(defeatHearts(committed.maxHearts as int32), committed.gear.damageGuardBps());
 	const hearts = Math.max((committed.hearts as int32) - lost, 0);
 	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
 	const [beaten, insuredGlobal] = fallen.revived(global);
@@ -745,4 +765,41 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 		saves += 1;
 	}
 	assert saves > 0;
+}
+
+test "a revive charm spares a bitten pet without a burn, and a ward cuts the loot" {
+	const duel = duelOver(0);
+	const charmed: Pet = {
+		...duel.defender,
+		hearts: 1,
+		gear: Gear.bare().with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive)),
+	};
+	let saves = 0;
+	for (let seed: uint64 = 0; seed < 60; seed++) {
+		const result = duel.attacker.settleAttack(charmed, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		if (!result.ok) { unreachable; }
+		const after = result.value;
+		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		assert after.defender.alive;
+		assert after.defender.burrow == charmed.burrow;
+		assert !after.defender.gear.hasSkill(ItemSkill.Revive);
+		saves += 1;
+	}
+	assert saves > 0;
+	const rich = duelOver(900 * HBRN_UNIT);
+	const warded: Pet = {
+		...rich.defender,
+		gear: Gear.bare().with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery)),
+	};
+	let compared = 0;
+	for (let seed: uint64 = 0; seed < 60; seed++) {
+		const plain = rich.attacker.settleAttack(rich.defender, StakeLevel.Whole, rich.global, DUEL_EPOCH, seed);
+		const guarded = rich.attacker.settleAttack(warded, StakeLevel.Whole, rich.global, DUEL_EPOCH, seed);
+		if (!plain.ok || !guarded.ok) { unreachable; }
+		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
+		if (guarded.value.record.outcome != Outcome.AttackerWins) { continue; }
+		assert guarded.value.record.loot < plain.value.record.loot;
+		compared += 1;
+	}
+	assert compared > 0;
 }

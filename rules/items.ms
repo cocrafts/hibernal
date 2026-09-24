@@ -10,6 +10,16 @@ export const COMMON_ITEM_UNTIL_BPS: int32 = 5500;
 export const RARE_ITEM_UNTIL_BPS: int32 = 8500;
 export const EPIC_ITEM_UNTIL_BPS: int32 = 9700;
 export const LEGENDARY_ITEM_UNTIL_BPS: int32 = 9950;
+export const SKILL_SCORE_BPS: int32 = 500;
+export const ANTI_ROBBERY_CUT_BPS: int32 = 4000;
+export const DAMAGE_GUARD_BPS: int32 = 4000;
+
+export enum ItemSkill {
+	None,
+	Revive,
+	AntiRobbery,
+	DamageGuard,
+}
 
 export enum GearSlot {
 	Head,
@@ -22,6 +32,7 @@ export struct Item {
 	rarity: uint8;
 	stat: uint8;
 	wear: uint8;
+	skill: uint8;
 }
 
 export struct Gear {
@@ -32,7 +43,7 @@ export struct Gear {
 }
 
 export function none(this typeof Item): Item {
-	return { rarity: 0, stat: TalentKind.None as uint8, wear: 0 };
+	return { rarity: 0, stat: TalentKind.None as uint8, wear: 0, skill: ItemSkill.None as uint8 };
 }
 
 export function bare(this typeof Gear): Gear {
@@ -54,6 +65,24 @@ export function rolledStat(seed: uint64): TalentKind {
 	return (pick + 1) as TalentKind;
 }
 
+export function skillChanceBps(grade: TalentGrade): int32 {
+	return match (grade) {
+		TalentGrade.Common => 0,
+		TalentGrade.Rare => 0,
+		TalentGrade.Epic => 1000,
+		TalentGrade.Legendary => 4000,
+		TalentGrade.Mythic => 10000,
+	};
+}
+
+export function rolledSkill(seed: uint64, grade: TalentGrade): ItemSkill {
+	const salt: uint64 = 0x2545f4914f6cdd1d;
+	const draw = splitmix(seed ^ salt);
+	if (((draw % (BPS as uint64)) as int32) >= skillChanceBps(grade)) { return ItemSkill.None; }
+	const pick = ((draw >> 32) % 3) as int32;
+	return (pick + 1) as ItemSkill;
+}
+
 export function gradeBonusBps(grade: TalentGrade): int32 {
 	return match (grade) {
 		TalentGrade.Common => 200,
@@ -64,8 +93,13 @@ export function gradeBonusBps(grade: TalentGrade): int32 {
 	};
 }
 
-export function minted(this typeof Item, grade: TalentGrade, stat: TalentKind): Item {
-	return { rarity: ((grade as int32) + 1) as uint8, stat: stat as uint8, wear: 0 };
+export function minted(this typeof Item, grade: TalentGrade, stat: TalentKind, skill: ItemSkill): Item {
+	return { rarity: ((grade as int32) + 1) as uint8, stat: stat as uint8, wear: 0, skill: skill as uint8 };
+}
+
+export function score(this item: Item): int32 {
+	const skilled = item.skill != (ItemSkill.None as uint8);
+	return item.bonusBps() + (skilled ? SKILL_SCORE_BPS : 0);
 }
 
 export function isEmpty(this item: Item): boolean {
@@ -133,9 +167,36 @@ export function weakestSlot(this gear: Gear): GearSlot {
 	let weakest = GearSlot.Head;
 	for (let ordinal = 1; ordinal <= (GearSlot.Feet as int32); ordinal++) {
 		const slot = ordinal as GearSlot;
-		if (gear.at(slot).bonusBps() < gear.at(weakest).bonusBps()) { weakest = slot; }
+		if (gear.at(slot).score() < gear.at(weakest).score()) { weakest = slot; }
 	}
 	return weakest;
+}
+
+export function hasSkill(this gear: Gear, skill: ItemSkill): boolean {
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		if (gear.at(ordinal as GearSlot).skill == (skill as uint8)) { return true; }
+	}
+	return false;
+}
+
+export function spentSkill(this gear: Gear, skill: ItemSkill): Gear {
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		const slot = ordinal as GearSlot;
+		const item = gear.at(slot);
+		if (item.skill == (skill as uint8)) {
+			return gear.with(slot, { ...item, skill: ItemSkill.None as uint8 });
+		}
+	}
+	return gear;
+}
+
+export function wardedLoot(this gear: Gear, loot: uint64): uint64 {
+	if (!gear.hasSkill(ItemSkill.AntiRobbery)) { return loot; }
+	return loot * ((BPS - ANTI_ROBBERY_CUT_BPS) as uint64) / (BPS as uint64);
+}
+
+export function damageGuardBps(this gear: Gear): int32 {
+	return gear.hasSkill(ItemSkill.DamageGuard) ? DAMAGE_GUARD_BPS : 0;
 }
 
 export function allWornBy(this gear: Gear, days: int32): Gear {
@@ -157,7 +218,7 @@ test "items roll grades like talent, add a worn share of their bonus and sell be
 	}
 	assert common > 2000 && common < 2400;
 	assert mythic < 60;
-	const fresh = Item.minted(TalentGrade.Epic, TalentKind.Might);
+	const fresh = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
 	assert fresh.bonusBps() == 700;
 	const half = fresh.wornBy(50);
 	assert half.bonusBps() == 350;
@@ -169,14 +230,33 @@ test "items roll grades like talent, add a worn share of their bonus and sell be
 
 test "gear sums bonuses per stat and names its weakest slot" {
 	const gear = Gear.bare()
-		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might))
-		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might))
-		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit));
+		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None))
+		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None))
+		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None));
 	assert gear.statBonusBps(TalentKind.Might) == 1100;
 	assert gear.statBonusBps(TalentKind.Grit) == 200;
 	assert gear.statBonusBps(TalentKind.Forage) == 0;
 	assert gear.weakestSlot() == GearSlot.Feet;
-	const full = gear.with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Might));
+	const full = gear.with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.AntiRobbery));
 	assert full.weakestSlot() == GearSlot.Hands;
 	assert full.allWornBy(10).head.wear == 10;
+}
+
+test "strong items may carry one skill, which wards loot or guards damage once owned" {
+	let skilled = 0;
+	for (let seed: uint64 = 0; seed < 1000; seed++) {
+		assert rolledSkill(seed, TalentGrade.Common) == ItemSkill.None;
+		assert rolledSkill(seed, TalentGrade.Mythic) != ItemSkill.None;
+		if (rolledSkill(seed, TalentGrade.Legendary) != ItemSkill.None) { skilled += 1; }
+	}
+	assert skilled > 330 && skilled < 470;
+	const warded = Gear.bare().with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery));
+	assert warded.wardedLoot(1000) == 600;
+	assert Gear.bare().wardedLoot(1000) == 1000;
+	const guarded = Gear.bare().with(GearSlot.Head, Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.DamageGuard));
+	assert guarded.damageGuardBps() == DAMAGE_GUARD_BPS;
+	const reviving = Gear.bare().with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive));
+	assert reviving.hasSkill(ItemSkill.Revive);
+	assert !reviving.spentSkill(ItemSkill.Revive).hasSkill(ItemSkill.Revive);
+	assert reviving.spentSkill(ItemSkill.Revive).body.rarity == reviving.body.rarity;
 }
