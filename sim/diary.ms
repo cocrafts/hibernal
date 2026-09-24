@@ -9,6 +9,10 @@ import {
 	EconomyAction,
 	nodeKind,
 	winChanceFromTable,
+	GearSlot,
+	TalentGrade,
+	TalentKind,
+	at,
 } from "../rules/index";
 import { ACTS_PER_EPOCH, WORLD_BLOCKS, EPISODE_EPOCHS, World, blockStart } from "./world";
 import { personaKindOf, teachEconomy, teachNode, teachAttack } from "./teacher";
@@ -77,6 +81,20 @@ function ownerNotes(this world: World, index: int32, yesterday: Pet, visitsBefor
 	return notes;
 }
 
+function gearNote(before: Pet, after: Pet): string {
+	const cost = money(before.burrow - after.burrow);
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		const slot = ordinal as GearSlot;
+		const item = after.gear.at(slot);
+		if (item != before.gear.at(slot)) {
+			const grade = ((item.rarity as int32) - 1) as TalentGrade;
+			const stat = (item.stat as int32) as TalentKind;
+			return `minted ${grade.toString()} ${stat.toString()} gear for its ${slot.toString()}, net cost ${cost}`;
+		}
+	}
+	return `minted and sold back a weaker roll, net cost ${cost}`;
+}
+
 function economyStep(this world: World, index: int32, diary: Diary): World {
 	const before = world.pets[index];
 	const action = world.teachEconomy(index, world.masksFor(index));
@@ -85,6 +103,7 @@ function economyStep(this world: World, index: int32, diary: Diary): World {
 	match (action) {
 		EconomyAction.Rest => {},
 		EconomyAction.Bank => { diary.note(index, `bank ${money(before.harvest)}`); },
+		EconomyAction.Mint => { diary.note(index, gearNote(before, pet)); },
 		_ => {
 			const cost = money(before.burrow - pet.burrow);
 			diary.note(index, `${action.toString()} hearts ${before.hearts}->${pet.hearts} cost ${cost}`);
