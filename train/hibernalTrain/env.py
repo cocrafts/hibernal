@@ -41,6 +41,7 @@ class HibernalEnv:
         lib.hibernal_observe.argtypes = [ctypes.c_int32, pointer, pointer]
         lib.hibernal_teacher_actions.argtypes = [ctypes.c_int32, pointer]
         lib.hibernal_actors.argtypes = [pointer]
+        lib.hibernal_owner_kinds.argtypes = [pointer]
         lib.hibernal_step.argtypes = [ctypes.c_int32, pointer, pointer, pointer]
         lib.hibernal_stats.argtypes = [ctypes.c_int32, pointer]
         lib.hibernal_load_policy.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32]
@@ -100,6 +101,12 @@ class HibernalEnv:
         if self.lib.hibernal_actors(self.actorSlots.ctypes.data) != self.rows:
             raise RuntimeError("hibernal_actors refused")
         return self.actorSlots
+
+    def ownerKinds(self):
+        kinds = np.zeros(self.rows * 10, dtype=np.int32)
+        if self.lib.hibernal_owner_kinds(kinds.ctypes.data) != kinds.size:
+            raise RuntimeError("hibernal_owner_kinds refused")
+        return kinds
 
     def step(self, actions):
         actions = np.ascontiguousarray(actions, dtype=np.int32)

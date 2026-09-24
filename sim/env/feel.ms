@@ -63,9 +63,15 @@ export enum FeelCounter {
 	FightsInSum,
 	FightsInCapDays,
 	BornAtEnd,
+	BondingSum,
+	Revived,
+	Gifted,
+	Skr,
+	OwnerVisits,
+	OwnerRefusals,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.BornAtEnd as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.OwnerRefusals as int32) + 1;
 
 export enum Milestone {
 	EarlyLevel,
@@ -101,6 +107,7 @@ export struct Feel {
 	lifeBorns: uint64[];
 	milestones: BitSet<Milestone>[];
 	harvests: uint64[];
+	scars: int32[];
 	pets: int32;
 }
 
@@ -110,12 +117,14 @@ export function create(this typeof Feel, envCount: int32, pets: int32): Feel {
 	const lifeBorns: uint64[] = [];
 	const milestones: BitSet<Milestone>[] = [];
 	const harvests: uint64[] = [];
+	const scars: int32[] = [];
 	for (let key = 0; key < envCount * pets; key++) {
 		grudges.push({ robber: BlockSlot.First, epoch: 0 });
 		larders.push(Larder.Dead);
 		lifeBorns.push(0);
 		milestones.push(0 as BitSet<Milestone>);
 		harvests.push(0);
+		scars.push(0);
 	}
 	return {
 		counters: zeros(envCount * pets * FEEL_COUNTERS),
@@ -124,6 +133,7 @@ export function create(this typeof Feel, envCount: int32, pets: int32): Feel {
 		lifeBorns: lifeBorns,
 		milestones: milestones,
 		harvests: harvests,
+		scars: scars,
 		pets: pets,
 	};
 }
@@ -243,6 +253,7 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 		if (!pet.alive) { continue; }
 		feel.tally(key, FeelCounter.LivingEpochs, 1);
 		feel.tally(key, FeelCounter.HeartsSum, pet.hearts as int32);
+		feel.tally(key, FeelCounter.BondingSum, pet.bonding as int32);
 		const fightsIn = pet.fightsInOn(world.epoch);
 		feel.tally(key, FeelCounter.FightsInSum, fightsIn);
 		if (fightsIn >= INCOMING_CAP) { feel.tally(key, FeelCounter.FightsInCapDays, 1); }
@@ -254,10 +265,16 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 function noteMilestones(this feel: Feel, key: int32, pet: Pet, epoch: uint64): void {
 	const lifeBorns = feel.lifeBorns;
 	const milestones = feel.milestones;
+	const scars = feel.scars;
 	if (lifeBorns[key] != pet.bornEpoch + 1) {
 		lifeBorns[key] = pet.bornEpoch + 1;
 		milestones[key] = 0 as BitSet<Milestone>;
+		scars[key] = pet.scars as int32;
 		feel.tally(key, FeelCounter.Lives, 1);
+	}
+	if ((pet.scars as int32) > scars[key]) {
+		feel.tally(key, FeelCounter.Revived, (pet.scars as int32) - scars[key]);
+		scars[key] = pet.scars as int32;
 	}
 	const age = (epoch - pet.bornEpoch) as int32;
 	const level = pet.level as int32;
@@ -307,6 +324,11 @@ export function closeEpisode(this feel: Feel, env: int32, world: World): void {
 		const pet = world.pets[index];
 		grudges[key] = { robber: BlockSlot.First, epoch: 0 };
 		lifeBorns[key] = 0;
+		const ledger = world.ownerLedgers[index];
+		feel.tally(key, FeelCounter.Gifted, (pet.giftOwed / HBRN_UNIT) as int32);
+		feel.tally(key, FeelCounter.Skr, ledger.skr);
+		feel.tally(key, FeelCounter.OwnerVisits, ledger.visits);
+		feel.tally(key, FeelCounter.OwnerRefusals, ledger.refusals);
 		if (!pet.alive) { continue; }
 		feel.tally(key, FeelCounter.Living, 1);
 		feel.tally(key, FeelCounter.Wealth, ((pet.harvest + pet.burrow) / HBRN_UNIT) as int32);

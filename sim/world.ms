@@ -26,6 +26,7 @@ import {
 // C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../rules/pantry";
+import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited } from "./owner";
 
 export const WORLD_BLOCKS: int32 = 20;
 export const ACTS_PER_EPOCH: int32 = 4;
@@ -81,6 +82,8 @@ export struct World {
 	levelTwentyEpochs: uint64[];
 	grudges: Grudge[];
 	buildTargets: int32[];
+	owners: OwnerKind[];
+	ownerLedgers: OwnerLedger[];
 	global: GlobalConfig;
 	epoch: uint64;
 	round: int32;
@@ -98,10 +101,14 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const levelTwentyEpochs: uint64[] = [];
 	const grudges: Grudge[] = [];
 	const buildTargets: int32[] = [];
+	const owners: OwnerKind[] = [];
+	const ownerLedgers: OwnerLedger[] = [];
 	const turns: int32[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
 		const slot = index % BLOCK_SLOTS;
 		turns.push(index);
+		owners.push(ownerKindFor(seed, index));
+		ownerLedgers.push({ visits: 0, skr: 0, refusals: 0 });
 		grudges.push(Grudge.none());
 		buildTargets.push(PERSONA_BUILD);
 		const hatched = Pet.born(
@@ -126,6 +133,8 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		levelTwentyEpochs: levelTwentyEpochs,
 		grudges: grudges,
 		buildTargets: buildTargets,
+		owners: owners,
+		ownerLedgers: ownerLedgers,
 		global: global,
 		epoch: 0,
 		round: 0,
@@ -233,7 +242,27 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		epoch: epoch,
 		stats: { ...world.stats, heirs: heirs },
 	};
-	return begun.inRound(0);
+	return begun.ownersVisited().inRound(0);
+}
+
+export function ownersVisited(this world: World): World {
+	const pets = world.pets;
+	const ledgers = world.ownerLedgers;
+	for (let index = 0; index < pets.length; index++) {
+		if (!pets[index].alive) { continue; }
+		const habit = habitOf(world.owners[index]);
+		const draw = visitDraw(world.seed, index, world.epoch);
+		if (!habit.visits(draw)) { continue; }
+		const visit = pets[index].visited(habit, draw, world.epoch);
+		pets[index] = visit.pet;
+		const ledger = ledgers[index];
+		ledgers[index] = {
+			visits: ledger.visits + 1,
+			skr: ledger.skr + visit.skr,
+			refusals: ledger.refusals + (visit.refused ? 1 : 0),
+		};
+	}
+	return world;
 }
 
 export function inRound(this world: World, round: int32): World {

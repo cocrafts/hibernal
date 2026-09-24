@@ -113,6 +113,20 @@ function ffiActors(actorBuffer: unknown): int32 {
 	return batch.rows();
 }
 
+@exportName("hibernal_owner_kinds")
+function ffiOwnerKinds(kindBuffer: unknown): int32 {
+	const pets = batch.blocks * BLOCK_SLOTS;
+	const kinds = zeros(batch.worlds.length * pets);
+	for (let env = 0; env < batch.worlds.length; env++) {
+		for (let index = 0; index < pets; index++) {
+			kinds[env * pets + index] = batch.worlds[env].owners[index] as int32;
+		}
+	}
+	if (kinds.length == 0) { return FFI_REFUSED; }
+	hibernalCopyOut(kindBuffer, kinds[0], kinds.length);
+	return kinds.length;
+}
+
 @exportName("hibernal_step")
 function ffiStep(
 	head: int32,

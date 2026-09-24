@@ -40,6 +40,12 @@ FEEL_FIELDS = (
     "fightsInSum",
     "fightsInCapDays",
     "bornAtEnd",
+    "bondingSum",
+    "revived",
+    "gifted",
+    "skr",
+    "ownerVisits",
+    "ownerRefusals",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])
