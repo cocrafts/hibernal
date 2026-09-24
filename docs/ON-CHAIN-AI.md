@@ -196,6 +196,8 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 
 **One policy path** (`rules/policy.ms`, `train/hibernalTrain/model.py`). Layers are `int8` weights, `int32` biases and a shift; hidden activations clamp to 0..127; the blob is 3,839 bytes (16-byte header with magic, format, engine version) and reads through `Span<uint8>` with caller-owned scratch, no allocation. Shapes as §4: economy 32 → 32 → 5, node (8 self + 16 candidate) → 32 → 1, attack (12 self + 12 candidate) → 32 → 16 → 4 with hold as an eleventh candidate; which self features each head gathers is read from the library (`hibernal_self_input`), not retyped in Python. The PyTorch forward is the same arithmetic with straight-through gradients (weights rounded to 1/128, activations floored to 1/128), so the network that trains is the network that ships: 124,702 legal logits compared over an episode with weights scaled ×3 to force clamping, 0 differ. Evaluation (`train/evaluate.py`) only loads the blob and lets the env play it.
 
+- Current shape (engine `14428871617754506317`, 2026-09-25): 40 self features (the 32 above with hunger tomorrow replaced by pantry hearts, plus Relentless and Berserker flags, bonding, gear bonus, weakest item bonus, mints afforded, hunger share of max hearts, food buys left); economy head 40 → 32 → 9 (Rest, Bank, Buy×3, Eat×3, Mint), decoded through the portion-size fold (`foldPortionSizes`); node and attack heads unchanged; blob 4,463 bytes, `POLICY_FORMAT` 2.
+
 **Behavior cloning** (`train/bc.py`, 16 worlds = 1.5M economy, 51k node, 40k attack decisions with more than one legal action, 4,000 steps per head, 3 min):
 
 | Head | Held-out accuracy | Macro recall |
