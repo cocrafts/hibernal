@@ -2,14 +2,14 @@ import { STAKE_LEVELS, EconomyAction } from "./actions";
 import { Food } from "./emission";
 
 export const POLICY_MAGIC: int32 = 0x4e524248;
-export const POLICY_FORMAT: int32 = 1;
+export const POLICY_FORMAT: int32 = 2;
 export const POLICY_HEADER_BYTES: int32 = 16;
-export const POLICY_WIDTH: int32 = 32;
+export const POLICY_WIDTH: int32 = 40;
 export const ACTIVATION_MAX: int32 = 127;
 
-export const ECONOMY_INPUTS: int32 = 32;
+export const ECONOMY_INPUTS: int32 = 40;
 export const ECONOMY_HIDDEN: int32 = 32;
-export const ECONOMY_OUTPUTS: int32 = 8;
+export const ECONOMY_OUTPUTS: int32 = 9;
 export const NODE_INPUTS: int32 = 30;
 export const NODE_HIDDEN: int32 = 32;
 export const ATTACK_INPUTS: int32 = 25;
@@ -157,10 +157,10 @@ function foldFamily(logits: Span<int32>, legal: BitSet<EconomyAction>, smallest:
 test "the policy fits one account and the heads follow each other" {
 	assert layerBytes(32, 32) == 1 + 1024 + 128;
 	assert economyOffset() == 16;
-	assert nodeOffset() == 16 + 1153 + 289;
+	assert nodeOffset() == 16 + 1409 + 325;
 	assert attackOffset() == nodeOffset() + 1089 + 37;
 	assert policyBytes() == attackOffset() + 929 + 577 + 81;
-	assert policyBytes() == 4171;
+	assert policyBytes() == 4463;
 	assert policyBytes() <= 10240;
 }
 
@@ -197,7 +197,7 @@ test "a policy is refused on size, magic, format and engine" {
 	bytes[3] = 0x4e;
 	const unversioned = checkPolicy(bytes, 7);
 	if (!unversioned.ok) { assert unversioned.error == PolicyError.WrongFormat; }
-	bytes[4] = 1;
+	bytes[4] = POLICY_FORMAT as uint8;
 	const stale = checkPolicy(bytes, 7);
 	if (!stale.ok) { assert stale.error == PolicyError.WrongEngine; }
 	bytes[8] = 7;

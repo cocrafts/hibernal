@@ -19,13 +19,20 @@ import {
 	NodeKind,
 	log2Times32,
 	winChanceFromTable,
+	FOOD_BUYS_PER_DAY,
+	mintPrice,
+	totalBonusBps,
+	weakestSlot,
+	at,
+	bonusBps,
+	hungerPerDay,
 } from "../../rules/index";
 import { has, touches, built, regionOf } from "../../rules/tree";
 import { ACTS_PER_EPOCH, World, blockStart } from "../world";
 import { personaKindOf } from "../teacher";
 
 export const FEATURE_ONE: int32 = 127;
-export const ECONOMY_ACTIONS: int32 = (EconomyAction.EatLarge as int32) + 1;
+export const ECONOMY_ACTIONS: int32 = (EconomyAction.Mint as int32) + 1;
 export const NODE_ACTIONS: int32 = ALLOCATE_HOLD + 1;
 export const ATTACK_ACTIONS: int32 = ATTACK_HOLD + 1;
 
@@ -68,6 +75,14 @@ export enum SelfFeature {
 	PantryHearts,
 	RichestHarvest,
 	Threat,
+	ModRelentless,
+	ModBerserker,
+	Bonding,
+	GearBonus,
+	WeakestItemBonus,
+	MintsAfforded,
+	HungerShare,
+	BuysLeft,
 }
 
 export enum NodeFeature {
@@ -111,7 +126,7 @@ export enum TargetFeature {
 	Grudge,
 }
 
-export const SELF_FEATURES: int32 = (SelfFeature.Threat as int32) + 1;
+export const SELF_FEATURES: int32 = (SelfFeature.BuysLeft as int32) + 1;
 export const NODE_FEATURES: int32 = (NodeFeature.BiteGuard as int32) + 1;
 export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
@@ -232,6 +247,18 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	}
 	put(features, selfSlot(offset, SelfFeature.RichestHarvest), richest);
 	put(features, selfSlot(offset, SelfFeature.Threat), threat * FEATURE_ONE / BPS);
+	put(features, selfSlot(offset, SelfFeature.ModRelentless), flag(stats.mods.has(Mod.Relentless)));
+	put(features, selfSlot(offset, SelfFeature.ModBerserker), flag(stats.mods.has(Mod.Berserker)));
+	put(features, selfSlot(offset, SelfFeature.Bonding), pet.bonding as int32);
+	put(features, selfSlot(offset, SelfFeature.GearBonus), pet.gear.totalBonusBps() / 40);
+	const weakest = pet.gear.at(pet.gear.weakestSlot());
+	put(features, selfSlot(offset, SelfFeature.WeakestItemBonus), weakest.bonusBps() / 11);
+	const mintsAfforded = Math.min(pet.burrow / mintPrice(level), 31 as uint64) as int32;
+	put(features, selfSlot(offset, SelfFeature.MintsAfforded), mintsAfforded * 4);
+	const hungerShare = stats.hungerPerDay() * FEATURE_ONE / Math.max(pet.maxHearts as int32, 1);
+	put(features, selfSlot(offset, SelfFeature.HungerShare), hungerShare);
+	const buysLeft = FOOD_BUYS_PER_DAY - (pet.foodBoughtToday as int32);
+	put(features, selfSlot(offset, SelfFeature.BuysLeft), buysLeft * 40);
 }
 
 function opensWith(this tree: Tree, id: int32): int32 {
@@ -397,11 +424,11 @@ test "money features are quarter octaves of a thousandth of a token" {
 }
 
 test "sizes follow the three heads" {
-	assert SELF_FEATURES == 32;
-	assert observationSize(Head.Economy) == 32;
-	assert observationSize(Head.Node) == 32 + 65 * 22;
-	assert observationSize(Head.Attack) == 32 + 11 * 13;
-	assert actionCount(Head.Economy) == 8;
+	assert SELF_FEATURES == 40;
+	assert observationSize(Head.Economy) == 40;
+	assert observationSize(Head.Node) == 40 + 65 * 22;
+	assert observationSize(Head.Attack) == 40 + 11 * 13;
+	assert actionCount(Head.Economy) == 9;
 	assert actionCount(Head.Node) == 65;
 	assert actionCount(Head.Attack) == 41;
 }
