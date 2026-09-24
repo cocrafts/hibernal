@@ -1,4 +1,5 @@
-import { STAKE_LEVELS } from "./actions";
+import { STAKE_LEVELS, EconomyAction } from "./actions";
+import { Food } from "./emission";
 
 export const POLICY_MAGIC: int32 = 0x4e524248;
 export const POLICY_FORMAT: int32 = 1;
@@ -132,6 +133,27 @@ export function attackLogits(
 	const _end = dense(policy, third, narrow, ATTACK_NARROW, logits, ATTACK_OUTPUTS, false);
 }
 
+export function foldPortionSizes(logits: Span<int32>, legal: BitSet<EconomyAction>): void {
+	foldFamily(logits, legal, EconomyAction.BuySmall);
+	foldFamily(logits, legal, EconomyAction.EatSmall);
+}
+
+function foldFamily(logits: Span<int32>, legal: BitSet<EconomyAction>, smallest: EconomyAction): void {
+	let carried = 0;
+	let carrying = false;
+	for (let size = Food.Large as int32; size >= 0; size--) {
+		const action = ((smallest as int32) + size) as EconomyAction;
+		const logit = logits[action as int32];
+		if (!legal.has(action)) {
+			carried = carrying ? Math.max(carried, logit) : logit;
+			carrying = true;
+			continue;
+		}
+		if (carrying) { logits[action as int32] = Math.max(logit, carried); }
+		carrying = false;
+	}
+}
+
 test "the policy fits one account and the heads follow each other" {
 	assert layerBytes(32, 32) == 1 + 1024 + 128;
 	assert economyOffset() == 16;
@@ -185,4 +207,23 @@ test "a policy is refused on size, magic, format and engine" {
 	const short: uint8[] = [1, 2, 3];
 	const tiny = checkPolicy(short, 7);
 	if (!tiny.ok) { assert tiny.error == PolicyError.WrongSize; }
+}
+
+test "a portion size out of reach passes its logit to the nearest smaller legal size" {
+	const logits: int32[] = [10, 5, -40, -30, 90, 7, 60, 20];
+	const legal = (0 as BitSet<EconomyAction>)
+		.incl(EconomyAction.Rest)
+		.incl(EconomyAction.BuySmall)
+		.incl(EconomyAction.EatSmall)
+		.incl(EconomyAction.EatLarge);
+	foldPortionSizes(logits, legal);
+	assert logits[EconomyAction.BuySmall as int32] == 90;
+	assert logits[EconomyAction.EatSmall as int32] == 60;
+	assert logits[EconomyAction.EatLarge as int32] == 20;
+	assert logits[EconomyAction.Rest as int32] == 10;
+	assert logits[EconomyAction.Bank as int32] == 5;
+	const broke: int32[] = [10, 5, -40, -30, 90, 7, 60, 20];
+	foldPortionSizes(broke, (0 as BitSet<EconomyAction>).incl(EconomyAction.Rest));
+	assert broke[EconomyAction.Rest as int32] == 10;
+	assert broke[EconomyAction.BuySmall as int32] == -40;
 }
