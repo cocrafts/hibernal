@@ -31,7 +31,15 @@ import {
 // C emits PantryEq for `Pet ==` only where Pantry is imported (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../rules/pantry";
-import { ACTS_PER_EPOCH, ActionSet, Masks, World, blockStart } from "./world";
+import {
+	ACTS_PER_EPOCH,
+	NO_KEYSTONE,
+	PERSONA_BUILD,
+	ActionSet,
+	Masks,
+	World,
+	blockStart,
+} from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
 export const REVENGE_WIN_CHANCE_BPS: int32 = 4000;
@@ -89,10 +97,16 @@ export function keystoneOf(kind: PersonaKind): int32 {
 }
 
 function targetCluster(start: Region, keystone: int32): int32 {
+	if (keystone == NO_KEYSTONE) { return CLUSTERS; }
 	const [first, second] = keystoneBorder(keystone);
 	if (start == first) { return CLUSTERS - 1; }
 	if (start == second) { return CLUSTERS - 2; }
 	return CLUSTERS;
+}
+
+export function buildTargetOf(this world: World, index: int32): int32 {
+	const target = world.buildTargets[index];
+	return target == PERSONA_BUILD ? keystoneOf(personaKindOf(index)) : target;
 }
 
 export function nodeRank(id: int32, start: Region, keystone: int32): int32 {
@@ -110,7 +124,14 @@ export function nodeRank(id: int32, start: Region, keystone: int32): int32 {
 
 export function teachNode(this world: World, index: int32, masks: Masks): int32 {
 	const pet = world.pets[index];
-	const keystone = keystoneOf(personaKindOf(index));
+	const keystone = world.buildTargetOf(index);
+	const reachable = keystone != NO_KEYSTONE &&
+		keystoneTouches(keystone, pet.startRegion()) &&
+		!pet.tree.has(keystone) &&
+		pet.tree.touches(keystone);
+	if (reachable) {
+		return masks.nodes.allowsNode(keystone) ? keystone : ALLOCATE_HOLD;
+	}
 	let chosen = ALLOCATE_HOLD;
 	let best = NEVER_RANK;
 	for (let id = 0; id < TREE_NODES; id++) {

@@ -31,6 +31,8 @@ export const ACTS_PER_EPOCH: int32 = 4;
 export const EPISODE_EPOCHS: int32 = 120;
 export const INITIAL_CLAIM_DAYS: int32 = 30;
 export const GRUDGE_EPOCHS: uint64 = 3;
+export const PERSONA_BUILD: int32 = -2;
+export const NO_KEYSTONE: int32 = -1;
 
 export struct Grudge {
 	robber: BlockSlot;
@@ -77,6 +79,7 @@ export struct World {
 	levelTenEpochs: uint64[];
 	levelTwentyEpochs: uint64[];
 	grudges: Grudge[];
+	buildTargets: int32[];
 	global: GlobalConfig;
 	epoch: uint64;
 	round: int32;
@@ -92,9 +95,11 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const levelTenEpochs: uint64[] = [];
 	const levelTwentyEpochs: uint64[] = [];
 	const grudges: Grudge[] = [];
+	const buildTargets: int32[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
 		const slot = index % BLOCK_SLOTS;
 		grudges.push(Grudge.none());
+		buildTargets.push(PERSONA_BUILD);
 		const hatched = Pet.born(
 			(index / BLOCK_SLOTS) as uint32,
 			slot as BlockSlot,
@@ -116,6 +121,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		levelTenEpochs: levelTenEpochs,
 		levelTwentyEpochs: levelTwentyEpochs,
 		grudges: grudges,
+		buildTargets: buildTargets,
 		global: global,
 		epoch: 0,
 		round: 0,
