@@ -1,5 +1,5 @@
 import { BPS } from "./units";
-import { BASE_STAT, LEVEL_STAT_GROWTH, Mod, Region, Stats, aged } from "./stats";
+import { BASE_STAT, LEVEL_STAT_GROWTH, REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
 import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
 import {
@@ -156,7 +156,7 @@ export function born(
 		scars: 0,
 		lineageGeneration: 0,
 	};
-	return { pet: pet, global: settled.withWorkPower(0, stats.workPower()) };
+	return { pet: pet, global: settled.withWorkPower(0, stats.rewardWeight()) };
 }
 
 export function vigorBps(age: uint64): int32 {
@@ -183,7 +183,7 @@ export function revealTalent(
 	if ((pet.level as int32) < TALENT_LEVEL) { return Result.err(TalentError.TooYoung); }
 	if (pet.talentKind != (TalentKind.None as uint8)) { return Result.err(TalentError.Revealed); }
 	const talent = Talent.rolled(randomness);
-	const before = pet.stats().workPower();
+	const before = pet.stats().rewardWeight();
 	const stats = Stats.built(pet.tree, pet.level as int32, talent).aged(pet.vigor());
 	const revealed: Pet = {
 		...pet,
@@ -195,7 +195,7 @@ export function revealTalent(
 	};
 	return Result.ok({
 		pet: revealed,
-		global: global.withWorkPower(before, revealed.stats().workPower()),
+		global: global.withWorkPower(before, revealed.stats().rewardWeight()),
 	});
 }
 
@@ -229,7 +229,8 @@ export function tickTo(
 	if (epoch < pet.lastTickEpoch) { return Result.err(TickError.Behind); }
 	const settled = global.settle(epoch);
 	const workPower = pet.stats().workPower();
-	const pending = pendingReward(workPower, settled.rewardPerWorkPower, pet.rewardSnapshot);
+	const weight = pet.stats().rewardWeight();
+	const pending = pendingReward(weight, settled.rewardPerWorkPower, pet.rewardSnapshot);
 	const growing = epoch < pet.growthMultiplierExpiry;
 	const multiplierBps = growing ? pet.growthMultiplierBps as int32 : 0;
 	const stats = pet.stats();
@@ -273,7 +274,7 @@ export function tickTo(
 	};
 	return Result.ok({
 		pet: fed.onFightDay(epoch),
-		global: settled.withWorkPower(workPower, alive ? faded.workPower() : 0),
+		global: settled.withWorkPower(weight, alive ? faded.rewardWeight() : 0),
 	});
 }
 
@@ -351,7 +352,7 @@ test "a newborn starts at its region with one point and joins the work power" {
 	assert worker.pet.xp == NEWBORN_XP;
 	assert worker.pet.startRegion() == Region.Worker;
 	assert worker.pet.tree.has(Region.Worker as int32);
-	assert worker.global.totalWorkPower == 34;
+	assert worker.global.totalWorkPower == (34 + REWARD_WEIGHT_OFFSET) * (34 + REWARD_WEIGHT_OFFSET);
 	assert worker.global.rewardEpoch == 4;
 	assert worker.pet.rewardSnapshot == worker.global.rewardPerWorkPower;
 }
@@ -481,7 +482,7 @@ test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 		.aged(KNEE_VIGOR_BPS);
 	assert (fading.pet.forage as int32) == knee.forage;
 	assert fading.pet.forage < prime.pet.forage;
-	assert fading.global.totalWorkPower == knee.workPower();
+	assert fading.global.totalWorkPower == knee.rewardWeight();
 	const last = fading.pet.fedDailyTo(fading.global, LIFESPAN_EPOCHS - 1);
 	assert last.pet.alive;
 	const gone = last.pet.tickedTo(last.global, LIFESPAN_EPOCHS);
@@ -520,7 +521,7 @@ test "a talent shows at level ten once, scales the growth of its stat and moves 
 	const growth = ((pet.level as int32) - 1) * LEVEL_STAT_GROWTH;
 	assert (pet.forage as int32) == 80 + growth * talent.multiplierBps / BPS;
 	assert pet.might == grown.pet.might;
-	const added = pet.stats().workPower() - grown.pet.stats().workPower();
+	const added = pet.stats().rewardWeight() - grown.pet.stats().rewardWeight();
 	assert shown.value.global.totalWorkPower == grown.global.totalWorkPower + added;
 	const again = pet.revealTalent(shown.value.global, seed);
 	assert !again.ok;

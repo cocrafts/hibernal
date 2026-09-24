@@ -7,6 +7,7 @@ export const START_BONUS: int32 = 30;
 export const BASE_MAX_HEARTS: int32 = 10;
 export const LEVEL_STAT_GROWTH: int32 = 5;
 export const LEVELS_PER_HEART: int32 = 2;
+export const REWARD_WEIGHT_OFFSET: uint64 = 40;
 
 export enum Region {
 	Worker,
@@ -86,6 +87,11 @@ export function workPower(this stats: Stats): uint64 {
 	return (10 + stats.forage * 3 / 10) as uint64;
 }
 
+export function rewardWeight(this stats: Stats): uint64 {
+	const shifted = stats.workPower() + REWARD_WEIGHT_OFFSET;
+	return shifted * shifted;
+}
+
 function faded(value: int32, vigorBps: int32): int32 {
 	return BASE_STAT + (value - BASE_STAT) * vigorBps / BPS;
 }
@@ -147,6 +153,7 @@ test "workPower base is 25 at forage 50" {
 	const worker: Stats = { ...base, forage: base.forage + START_BONUS };
 	assert base.workPower() == 25;
 	assert worker.workPower() == 34;
+	assert worker.rewardWeight() == (34 + REWARD_WEIGHT_OFFSET) * (34 + REWARD_WEIGHT_OFFSET);
 	assert Stats.base().asCombatant(3).hearts == 3;
 	assert Combatant.plain(80, 60, 5).speed == BASE_SPEED;
 }

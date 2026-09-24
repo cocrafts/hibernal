@@ -441,11 +441,11 @@ test "a world starts full, alive and settled" {
 	const world = World.create(2, 1);
 	assert world.pets.length == 20;
 	assert world.living() == 20;
-	let workPower: uint64 = 0;
+	let weight: uint64 = 0;
 	for (let index = 0; index < world.pets.length; index++) {
-		workPower += world.pets[index].stats().workPower();
+		weight += world.pets[index].stats().rewardWeight();
 	}
-	assert world.global.totalWorkPower == workPower;
+	assert world.global.totalWorkPower == weight;
 	assert world.pets[13].blockId == 1;
 	assert world.pets[13].slot == 3;
 	assert world.pets[13].startRegion() == Region.Worker;

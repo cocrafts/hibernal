@@ -1,5 +1,5 @@
 import { BPS, HBRN_UNIT } from "./units";
-import { Mod, Region, Stats, aged } from "./stats";
+import { REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
 import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
@@ -232,7 +232,7 @@ export function allocateNode(
 	};
 	return Result.ok({
 		pet: grown,
-		global: global.withWorkPower(pet.stats().workPower(), grown.stats().workPower()),
+		global: global.withWorkPower(pet.stats().rewardWeight(), grown.stats().rewardWeight()),
 	});
 }
 
@@ -379,7 +379,7 @@ export function settleAttack(
 		return Result.ok({
 			attacker: raider.gainXp(raidXp(loot)),
 			defender: remains.gainXp(DEFENSE_LOSS_XP),
-			global: remains.alive ? paid : paid.withWorkPower(remains.stats().workPower(), 0),
+			global: remains.alive ? paid : paid.withWorkPower(remains.stats().rewardWeight(), 0),
 			record: { ...record, loot: loot },
 		});
 	}
@@ -392,7 +392,7 @@ export function settleAttack(
 	return Result.ok({
 		attacker: beaten,
 		defender: holder.gainXp(DEFENSE_WIN_XP),
-		global: beaten.alive ? paid : paid.withWorkPower(beaten.stats().workPower(), 0),
+		global: beaten.alive ? paid : paid.withWorkPower(beaten.stats().rewardWeight(), 0),
 		record: record,
 	});
 }
@@ -552,7 +552,7 @@ test "allocation needs a settled pet and points, and moves the work power" {
 	if (grown.ok) {
 		assert grown.value.pet.forage == 88;
 		assert grown.value.pet.pointsUnspent == 0;
-		assert grown.value.global.totalWorkPower == 36;
+		assert grown.value.global.totalWorkPower == (36 + REWARD_WEIGHT_OFFSET) * (36 + REWARD_WEIGHT_OFFSET);
 		const noPoints = grown.value.pet.allocateNode(5, grown.value.global);
 		assert !noPoints.ok;
 		if (!noPoints.ok) { assert noPoints.error == AllocationError.NoPoints; }
