@@ -16,6 +16,21 @@ ECONOMY, NODE, ATTACK = 0, 1, 2
 NODE_CANDIDATES, NODE_FEATURES = 65, 22
 TARGET_CANDIDATES, TARGET_FEATURES = 11, 13
 STAKE_LEVELS = 4
+BUY_SMALL, EAT_SMALL, PORTION_SIZES = 2, 5, 3
+
+
+def foldPortionSizes(logits, legal):
+    folded = logits.clone()
+    for smallest in (BUY_SMALL, EAT_SMALL):
+        carried = logits[:, smallest]
+        carrying = torch.zeros_like(legal[:, smallest])
+        for action in range(smallest + PORTION_SIZES - 1, smallest - 1, -1):
+            here = legal[:, action]
+            value = logits[:, action]
+            folded[:, action] = torch.where(here & carrying, torch.maximum(value, carried), value)
+            carried = torch.where(carrying, torch.maximum(carried, value), value)
+            carrying = ~here
+    return folded
 
 
 def straightThrough(value, quantized):
@@ -89,7 +104,10 @@ class PetPolicy(nn.Module):
         return torch.round(self.logits(head, observations) * ACTIVATION_ONE).to(torch.int32)
 
     def maskedLogits(self, head, observations, legal):
-        return self.logits(head, observations).masked_fill(~legal, -1e9)
+        logits = self.logits(head, observations)
+        if head == ECONOMY:
+            logits = foldPortionSizes(logits, legal)
+        return logits.masked_fill(~legal, -1e9)
 
     def value(self, observations):
         inputs = observations[:, :SELF_FEATURES].to(torch.float32) / ACTIVATION_ONE

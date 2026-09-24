@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from hibernalTrain.env import HEADS, HibernalEnv
-from hibernalTrain.model import PetPolicy
+from hibernalTrain.model import ECONOMY, PetPolicy, foldPortionSizes
 
 torch.manual_seed(3)
 env = HibernalEnv(seed=11, envCount=2, epochs=20)
@@ -22,9 +22,12 @@ mismatched = [0, 0, 0]
 while env.episode == 0:
     head, observations, legal = env.observe()
     if env.epoch % 3 == 0:
-        ours = policy.integerLogits(head, torch.from_numpy(observations)).numpy()
-        theirs = env.policyLogits(0)
         allowed = legal == 1
+        ours = policy.integerLogits(head, torch.from_numpy(observations))
+        if head == ECONOMY:
+            ours = foldPortionSizes(ours, torch.from_numpy(allowed))
+        ours = ours.numpy()
+        theirs = env.policyLogits(0)
         compared[head] += int(allowed.sum())
         mismatched[head] += int((ours[allowed] != theirs[allowed]).sum())
     env.step(env.teacherActions())
