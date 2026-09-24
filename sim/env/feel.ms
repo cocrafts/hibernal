@@ -16,6 +16,7 @@ import {
 	stakeShareBps,
 	winChanceFromTable,
 	agedOut,
+	totalBonusBps,
 } from "../../rules/index";
 import { World, WorldStats, blockStart } from "../world";
 import { personaKindOf } from "../teacher";
@@ -69,9 +70,12 @@ export enum FeelCounter {
 	Skr,
 	OwnerVisits,
 	OwnerRefusals,
+	Mints,
+	MintSpent,
+	GearBonusSum,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.OwnerRefusals as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.GearBonusSum as int32) + 1;
 
 export enum Milestone {
 	EarlyLevel,
@@ -176,7 +180,11 @@ export function momentOf(
 	};
 }
 
-function noteEconomy(this feel: Feel, key: int32, actor: Pet, after: Pet): void {
+function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, after: Pet): void {
+	if (action == (EconomyAction.Mint as int32) && after.burrow < actor.burrow) {
+		feel.tally(key, FeelCounter.Mints, 1);
+		feel.tally(key, FeelCounter.MintSpent, ((actor.burrow - after.burrow) / HBRN_UNIT) as int32);
+	}
 	if (after.pantry.stored() > actor.pantry.stored()) {
 		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
 		feel.tally(key, FeelCounter.FoodSpent, spent);
@@ -237,7 +245,9 @@ export function note(this feel: Feel, moment: Moment, world: World): void {
 	const key = moment.env * feel.pets + moment.index;
 	if (!moment.actor.alive) { return; }
 	match (moment.head) {
-		Head.Economy => { feel.noteEconomy(key, moment.actor, world.pets[moment.index]); },
+		Head.Economy => {
+			feel.noteEconomy(key, moment.action, moment.actor, world.pets[moment.index]);
+		},
 		Head.Node => {},
 		Head.Attack => { feel.noteAttack(key, moment, world); },
 	}
@@ -254,6 +264,7 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 		feel.tally(key, FeelCounter.LivingEpochs, 1);
 		feel.tally(key, FeelCounter.HeartsSum, pet.hearts as int32);
 		feel.tally(key, FeelCounter.BondingSum, pet.bonding as int32);
+		feel.tally(key, FeelCounter.GearBonusSum, pet.gear.totalBonusBps());
 		const fightsIn = pet.fightsInOn(world.epoch);
 		feel.tally(key, FeelCounter.FightsInSum, fightsIn);
 		if (fightsIn >= INCOMING_CAP) { feel.tally(key, FeelCounter.FightsInCapDays, 1); }

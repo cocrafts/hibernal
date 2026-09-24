@@ -125,6 +125,9 @@ def scorecard(counters, stats, epochs):
     regionWealth = [np.median(field(counters[regions == region], "wealth")[living[regions == region]]) for region in range(3)]
     rows += [
         ("wealth median, highest / lowest start", ratio(max(regionWealth), min(regionWealth)), 1.0, 1.5, "SIM F2"),
+        ("item mints per life", ratio(field(counters, "mints").sum(), lives), None, None, "BRIEF 3.12"),
+        ("item spend, % of income", 100 * ratio(field(counters, "mintSpent").sum(), earned.sum()), None, None, "BRIEF 3.12"),
+        ("gear bonus, mean bps per pet-day", ratio(field(counters, "gearBonusSum").sum(), livingDays), None, None, "BRIEF 3.12"),
         ("loot lost, % of income", 100 * ratio(field(counters, "lootLost").sum(), earned.sum()), None, None, "SIM C6"),
         ("attacks under 40% odds, %", 100 * ratio(field(counters, "recklessAttacks").sum(), attacks), None, 1.0, "SIM C1"),
         ("attacks per pet per day", ratio(attacks, livingDays), None, None, "SIM C"),
