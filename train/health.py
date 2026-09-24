@@ -134,7 +134,7 @@ def scorecard(counters, stats, epochs):
         ("incoming fights per pet per day", ratio(field(counters, "fightsInSum").sum(), livingDays), None, None, "SIM C2"),
         ("pet-days at the incoming cap, %", 100 * ratio(field(counters, "fightsInCapDays").sum(), livingDays), None, None, "SIM C2"),
         ("vengeful revenge within 3 days, %", 100 * ratio(field(counters[vengeful], "avenged").sum(), field(counters[vengeful], "robbed").sum()), None, None, "SIM D1"),
-        ("persona told from one log, balanced", float(np.mean(personaRecall(counters, personas))), 0.9, None, "SIM D2"),
+        ("persona told from one log with revenge, balanced", float(np.mean(personaRecall(counters, personas, True))), 0.9, None, "SIM D2"),
     ]
     return rows
 

@@ -94,6 +94,8 @@ def personaFeatures(counters, revenge=False):
         field["mealHeartsSum"] / meals,
         field["banks"],
         field["heartsSum"] / np.maximum(field["livingEpochs"], 1.0),
+        field["mints"] / np.maximum(field["livingEpochs"], 1.0),
+        field["mintSpent"] / np.maximum(field["livingEpochs"], 1.0),
     ]
     averaged = [(1, field["attacks"]), (2, field["attacks"]), (3, field["attacks"]), (5, field["meals"])]
     if revenge:
