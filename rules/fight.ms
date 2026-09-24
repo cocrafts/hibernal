@@ -39,6 +39,7 @@ export const MIN_BITE_STAKE: uint64 = 5000000;
 export const PACIFIST_LOOT_CUT_BPS: int32 = 7000;
 export const THICK_HIDE_LOOT_CUT_BPS: int32 = 5000;
 export const THICK_HIDE_FIGHTS: int32 = 3;
+export const CANNIBAL_WALLET_BPS: int32 = 5000;
 
 export enum Outcome {
 	DefenderWins,

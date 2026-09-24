@@ -1,12 +1,13 @@
 import { BPS, HBRN_UNIT } from "./units";
-import { Region, Stats, aged } from "./stats";
-import { TREE_NODES, AllocationError, Tree, nodeCost } from "./tree";
+import { Mod, Region, Stats, aged } from "./stats";
+import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
 import { FOOD_BUYS_PER_DAY, Pantry, mealHearts } from "./pantry";
 import {
 	INCOMING_CAP,
 	MIN_BITE_STAKE,
+	CANNIBAL_WALLET_BPS,
 	AttackError,
 	Outcome,
 	maxStake,
@@ -371,12 +372,14 @@ export function settleAttack(
 			harvest: struck.harvest - loot,
 			bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
 		};
-		const raider: Pet = { ...committed, burrow: committed.burrow + stake + winnings };
+		const cannibal = attackerToday.stats().mods.has(Mod.Cannibal);
+		const [remains, devoured] = robbed.devouredBy(cannibal);
+		const raider: Pet = { ...committed, burrow: committed.burrow + stake + winnings + devoured };
 		const paid = global.withProtocolFee(fee);
 		return Result.ok({
 			attacker: raider.gainXp(raidXp(loot)),
-			defender: robbed.gainXp(DEFENSE_LOSS_XP),
-			global: robbed.alive ? paid : paid.withWorkPower(robbed.stats().workPower(), 0),
+			defender: remains.gainXp(DEFENSE_LOSS_XP),
+			global: remains.alive ? paid : paid.withWorkPower(remains.stats().workPower(), 0),
 			record: { ...record, loot: loot },
 		});
 	}
@@ -392,6 +395,18 @@ export function settleAttack(
 		global: beaten.alive ? paid : paid.withWorkPower(beaten.stats().workPower(), 0),
 		record: record,
 	});
+}
+
+function devouredBy(this victim: Pet, cannibal: boolean): [Pet, uint64] {
+	if (!cannibal || victim.alive) { return [victim, 0]; }
+	const share = (victim.harvest + victim.burrow) * (CANNIBAL_WALLET_BPS as uint64) / (BPS as uint64);
+	const fromHarvest = Math.min(share, victim.harvest);
+	const remains: Pet = {
+		...victim,
+		harvest: victim.harvest - fromHarvest,
+		burrow: victim.burrow - (share - fromHarvest),
+	};
+	return [remains, share];
 }
 
 const DUEL_EPOCH: uint64 = 4;
@@ -649,4 +664,28 @@ test "a winning attacker bites an empty harvest" {
 		}
 	}
 	assert bitten > 0;
+}
+
+test "a cannibal whose bite kills takes half of what the victim left" {
+	const duel = duelOver(0);
+	const cannibal: Pet = { ...duel.attacker, tree: { bits: (1 as uint64) << (KEYSTONE_CANNIBAL as uint64) } };
+	const frail: Pet = { ...duel.defender, hearts: 1 };
+	let kills = 0;
+	for (let seed: uint64 = 0; seed < 60; seed++) {
+		const result = cannibal.settleAttack(frail, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		if (!result.ok) { unreachable; }
+		const after = result.value;
+		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		assert !after.defender.alive;
+		assert after.defender.burrow == frail.burrow / 2;
+		assert after.attacker.burrow == cannibal.burrow + frail.burrow / 2;
+		kills += 1;
+	}
+	assert kills > 0;
+	for (let seed: uint64 = 0; seed < 60; seed++) {
+		const plain = duel.attacker.settleAttack(frail, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		if (!plain.ok) { unreachable; }
+		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
+		assert plain.value.defender.burrow == frail.burrow;
+	}
 }
