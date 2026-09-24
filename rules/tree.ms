@@ -18,10 +18,10 @@ export const KEYSTONE_BULWARK: int32 = 63;
 export const SMALL_NODE_BPS: int32 = 1000;
 export const NOTABLE_NODE_BPS: int32 = 2500;
 export const ATTACK_SMALL_MIGHT_BPS: int32 = 500;
-export const TYCOON_FORAGE_BPS: int32 = 15000;
+export const TYCOON_FORAGE_BPS: int32 = 13000;
 export const TYCOON_HEARTS_BPS: int32 = 7000;
 export const BULWARK_HEARTS_BPS: int32 = 20000;
-export const BULWARK_MIGHT_BPS: int32 = 5000;
+export const BULWARK_MIGHT_BPS: int32 = 7000;
 export const BULWARK_FOOD_BPS: int32 = 10000;
 
 export enum NodeKind {
@@ -539,7 +539,7 @@ test "small nodes add ten percent, notables a quarter and a rule, keystones mult
 		KEYSTONE_BULWARK,
 	]));
 	assert hearty.maxHearts == BASE_MAX_HEARTS * (BPS + SMALL_NODE_BPS) / BPS * 2;
-	assert hearty.might == BASE_STAT / 2;
+	assert hearty.might == BASE_STAT * BULWARK_MIGHT_BPS / BPS;
 	assert hearty.grit == (BASE_STAT + START_BONUS) * (BPS + 2 * SMALL_NODE_BPS) / BPS;
 	assert hearty.foodBps == BULWARK_FOOD_BPS;
 }
