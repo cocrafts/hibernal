@@ -16,9 +16,14 @@ import {
 	PersonaKind,
 	EconomyAction,
 	StakeLevel,
+	CLUSTERS,
+	NodeRole,
 	regionOf,
+	roleOf,
+	clusterOf,
+	keystoneBorder,
+	keystoneTouches,
 	nodeKind,
-	adjacent,
 	attackChoice,
 	splitmix,
 	winChanceFromTable,
@@ -30,6 +35,7 @@ import { ACTS_PER_EPOCH, ActionSet, Masks, World, blockStart } from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
 export const REVENGE_WIN_CHANCE_BPS: int32 = 4000;
+export const NEVER_RANK: int32 = 1000;
 
 export function personaKindOf(index: int32): PersonaKind {
 	return (((index % BLOCK_SLOTS) / 3) % 3) as PersonaKind;
@@ -73,9 +79,6 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	return EconomyAction.Rest;
 }
 
-export function regionOfNode(id: int32): Region {
-	return nodeKind(id) == NodeKind.Keystone ? (id - KEYSTONE_PACIFIST) as Region : regionOf(id);
-}
 
 export function keystoneOf(kind: PersonaKind): int32 {
 	return match (kind) {
@@ -85,14 +88,38 @@ export function keystoneOf(kind: PersonaKind): int32 {
 	};
 }
 
+function targetCluster(start: Region, keystone: int32): int32 {
+	const [first, second] = keystoneBorder(keystone);
+	if (start == first) { return CLUSTERS - 1; }
+	if (start == second) { return CLUSTERS - 2; }
+	return CLUSTERS;
+}
+
+export function nodeRank(id: int32, start: Region, keystone: int32): int32 {
+	if (nodeKind(id) == NodeKind.Keystone) {
+		return id == keystone && keystoneTouches(id, start) ? 2 : NEVER_RANK;
+	}
+	const home = regionOf(id);
+	if (!home.ok) { return 20; }
+	if (home.value != start) { return 30; }
+	const role = roleOf(id);
+	if (role == NodeRole.Entry || role == NodeRole.Fork || role == NodeRole.Start) { return 0; }
+	const cluster = clusterOf(id);
+	return cluster == targetCluster(start, keystone) ? 1 : 3 + cluster;
+}
+
 export function teachNode(this world: World, index: int32, masks: Masks): int32 {
 	const pet = world.pets[index];
 	const keystone = keystoneOf(personaKindOf(index));
-	if (masks.nodes.allowsNode(keystone)) { return keystone; }
 	let chosen = ALLOCATE_HOLD;
+	let best = NEVER_RANK;
 	for (let id = 0; id < TREE_NODES; id++) {
-		if (!masks.nodes.allowsNode(id) || nodeKind(id) == NodeKind.Keystone) { continue; }
-		if (chosen == ALLOCATE_HOLD || regionOfNode(id) == pet.startRegion()) { chosen = id; }
+		if (!masks.nodes.allowsNode(id)) { continue; }
+		const rank = nodeRank(id, pet.startRegion(), keystone);
+		if (rank < best) {
+			best = rank;
+			chosen = id;
+		}
 	}
 	return chosen;
 }
@@ -204,7 +231,8 @@ test "on day one the teacher banks, takes a node of its region and holds its att
 	const masks = world.masksFor(1);
 	const actions = world.teach(1, masks);
 	assert actions.node != ALLOCATE_HOLD;
-	assert regionOfNode(actions.node) == world.pets[1].startRegion();
+	const home = regionOf(actions.node);
+	assert home.ok && home.value == world.pets[1].startRegion();
 	assert actions.attack == ATTACK_HOLD;
 	assert actions.economy == EconomyAction.Bank;
 }
@@ -263,9 +291,8 @@ test "the teacher takes only its persona's keystone" {
 	for (let index = 0; index < BLOCK_SLOTS; index++) {
 		const pet = world.pets[index];
 		const mine = keystoneOf(personaKindOf(index));
-		const gate = 3 + (pet.startRegion() as int32) * 6 + 4;
-		assert pet.tree.has(mine) == adjacent(mine, gate);
-		for (let keystone = KEYSTONE_PACIFIST; keystone <= KEYSTONE_CANNIBAL; keystone++) {
+		assert pet.tree.has(mine) == keystoneTouches(mine, pet.startRegion());
+		for (let keystone = KEYSTONE_GLASS_CANNON; keystone < TREE_NODES; keystone++) {
 			if (keystone != mine) { assert !pet.tree.has(keystone); }
 		}
 	}

@@ -1,5 +1,5 @@
 import { BPS } from "./units";
-import { BASE_STAT, LEVEL_STAT_GROWTH, Region, Stats, aged } from "./stats";
+import { BASE_STAT, LEVEL_STAT_GROWTH, Mod, Region, Stats, aged } from "./stats";
 import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
 import {
@@ -28,6 +28,7 @@ export const MIGHT_APPETITE_BPS: int32 = 50;
 export const FORAGE_APPETITE_BPS: int32 = 30;
 export const GRIT_APPETITE_BPS: int32 = 40;
 export const MIN_APPETITE_BPS: int32 = 5000;
+export const BERSERKER_APPETITE_BPS: int32 = 2500;
 
 export enum TalentError {
 	Dead,
@@ -119,7 +120,7 @@ export function born(
 	const settled = global.settle(epoch);
 	const tree = Tree.empty().withNode(region as int32);
 	const level = levelForXp(NEWBORN_XP);
-	const stats = Stats.fromTree(tree).grown(level, Talent.unrevealed());
+	const stats = Stats.built(tree, level, Talent.unrevealed());
 	const pet: Pet = {
 		blockId: blockId,
 		slot: (slot as int32) as uint8,
@@ -183,7 +184,7 @@ export function revealTalent(
 	if (pet.talentKind != (TalentKind.None as uint8)) { return Result.err(TalentError.Revealed); }
 	const talent = Talent.rolled(randomness);
 	const before = pet.stats().workPower();
-	const stats = Stats.fromTree(pet.tree).grown(pet.level as int32, talent).aged(pet.vigor());
+	const stats = Stats.built(pet.tree, pet.level as int32, talent).aged(pet.vigor());
 	const revealed: Pet = {
 		...pet,
 		talentKind: talent.kind as uint8,
@@ -206,7 +207,8 @@ export function appetiteBps(this stats: Stats): int32 {
 	const appetite = BPS +
 		(stats.might - BASE_STAT) * MIGHT_APPETITE_BPS +
 		(stats.forage - BASE_STAT) * FORAGE_APPETITE_BPS -
-		(stats.grit - BASE_STAT) * GRIT_APPETITE_BPS;
+		(stats.grit - BASE_STAT) * GRIT_APPETITE_BPS +
+		(stats.mods.has(Mod.Berserker) ? BERSERKER_APPETITE_BPS : 0);
 	return Math.max(appetite, MIN_APPETITE_BPS);
 }
 
@@ -230,7 +232,8 @@ export function tickTo(
 	const pending = pendingReward(workPower, settled.rewardPerWorkPower, pet.rewardSnapshot);
 	const growing = epoch < pet.growthMultiplierExpiry;
 	const multiplierBps = growing ? pet.growthMultiplierBps as int32 : 0;
-	const hunger = pet.stats().hungerPerDay();
+	const stats = pet.stats();
+	const hunger = stats.hungerPerDay();
 	let hearts = pet.hearts as int32;
 	let pantry = pet.pantry;
 	let workedEpochs = 0;
@@ -243,15 +246,16 @@ export function tickTo(
 			hearts - hunger,
 			pet.minHearts as int32,
 			pet.maxHearts as int32,
+			stats.foodBps,
 		);
 		hearts = fed;
 		pantry = Pantry.rationOn(day, pet.bornEpoch);
 	}
 	const newDay = epoch > pet.lastTickEpoch;
 	const alive = hearts > 0 && !old;
-	const risen = pet.gainXp(workXp(workPower, workedEpochs));
-	const faded = Stats.fromTree(pet.tree)
-		.grown(risen.level as int32, pet.talent())
+	const earned = workXp(workPower, workedEpochs);
+	const risen = pet.gainXp(earned * ((BPS + stats.experienceBps) as uint32) / (BPS as uint32));
+	const faded = Stats.built(pet.tree, risen.level as int32, pet.talent())
 		.aged(vigorBps(epoch - pet.bornEpoch));
 	const fed: Pet = {
 		...risen,
@@ -468,13 +472,12 @@ test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
 	const prime = newborn.pet.fedDailyTo(newborn.global, DECLINE_START_EPOCHS);
 	const primeLevel = prime.pet.level as int32;
-	const primeStats = Stats.fromTree(prime.pet.tree).grown(primeLevel, prime.pet.talent());
+	const primeStats = Stats.built(prime.pet.tree, primeLevel, prime.pet.talent());
 	assert (prime.pet.forage as int32) == primeStats.forage;
 	assert prime.pet.forage > 80;
 	const fading = prime.pet.fedDailyTo(prime.global, DECLINE_KNEE_EPOCHS);
 	assert fading.pet.alive;
-	const knee = Stats.fromTree(fading.pet.tree)
-		.grown(fading.pet.level as int32, fading.pet.talent())
+	const knee = Stats.built(fading.pet.tree, fading.pet.level as int32, fading.pet.talent())
 		.aged(KNEE_VIGOR_BPS);
 	assert (fading.pet.forage as int32) == knee.forage;
 	assert fading.pet.forage < prime.pet.forage;

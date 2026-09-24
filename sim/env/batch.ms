@@ -15,7 +15,15 @@ import {
 import { Pantry } from "../../rules/pantry";
 import { ACTS_PER_EPOCH, Masks, World, WorldStats } from "../world";
 import { personaKindOf, playEpisode } from "../teacher";
-import { Head, observationSize, actionCount, observeInto, legalInto, zeros } from "./observe";
+import {
+	Head,
+	observationSize,
+	actionCount,
+	largestActionCount,
+	observeInto,
+	legalInto,
+	zeros,
+} from "./observe";
 import { Scratch, logitsInto, bestLegal } from "./actor";
 import {
 	Feel,
@@ -204,8 +212,8 @@ export function create(
 		policies: policies,
 		scratch: Scratch.create(),
 		rowObservation: zeros(observationSize(Head.Node)),
-		rowLegal: zeros(actionCount(Head.Attack)),
-		rowLogits: zeros(actionCount(Head.Attack)),
+		rowLegal: zeros(largestActionCount()),
+		rowLogits: zeros(largestActionCount()),
 		seed: seed,
 		blocks: blocks,
 		epochs: epochs,
@@ -667,7 +675,7 @@ test "teacher-controlled slots play the same episode as teacher actions fed from
 	const rewards = zeros(inside.rows());
 	const dones = zeros(inside.rows());
 	const observations = zeros(inside.rows() * observationSize(Head.Node));
-	const legal = zeros(inside.rows() * actionCount(Head.Attack));
+	const legal = zeros(inside.rows() * largestActionCount());
 	while (inside.cursor.epoch < 6) {
 		inside.observe(observations, legal);
 		assert legal[0] == 0 && observations[0] == 0;

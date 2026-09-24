@@ -4,7 +4,7 @@
 import { WORLD_BLOCKS, EPISODE_EPOCHS } from "../world";
 import { engineVersion } from "../digests";
 import { PersonaKind, checkPolicy } from "../../rules/index";
-import { Head, observationSize, actionCount, zeros } from "./observe";
+import { Head, observationSize, actionCount, largestActionCount, zeros } from "./observe";
 import { selfInputs, selfInput } from "./actor";
 import { POLICY_SLOTS, Batch, RewardTerm, withTerm } from "./batch";
 
@@ -45,11 +45,11 @@ function ffiReset(seed: uint64, envCount: int32, blocks: int32, epochs: int32): 
 	batch = Batch.create(seed, envCount, blocks, epochs);
 	const rows = batch.rows();
 	observations = zeros(rows * largestObservation());
-	legal = zeros(rows * actionCount(Head.Attack));
+	legal = zeros(rows * largestActionCount());
 	actions = zeros(rows);
 	rewards = zeros(rows);
 	dones = zeros(rows);
-	logits = zeros(rows * actionCount(Head.Attack));
+	logits = zeros(rows * largestActionCount());
 	return rows;
 }
 

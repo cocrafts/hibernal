@@ -18,11 +18,21 @@ function fightHolds(): boolean {
 }
 
 function treeHolds(): boolean {
-	const path = Tree.empty().withNode(1).withNode(9).withNode(11).withNode(13);
+	const path = Tree.empty()
+		.withNode(1)
+		.withNode(22)
+		.withNode(23)
+		.withNode(32)
+		.withNode(33)
+		.withNode(34)
+		.withNode(35);
 	const grown = path.allocate(KEYSTONE_GLASS_CANNON, Region.Fighter);
 	if (!grown.ok) { return false; }
 	const derived = Stats.fromTree(grown.value);
-	return derived.might == 90 && derived.maxHearts == 2 && derived.mods.has(Mod.GlassCannon);
+	return derived.might == 96 &&
+		derived.maxHearts == 10 &&
+		derived.lootBps == 5500 &&
+		derived.mods.has(Mod.GlassCannon);
 }
 
 function emissionHolds(): boolean {

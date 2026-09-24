@@ -20,9 +20,9 @@ import {
 	log2Times32,
 	winChanceFromTable,
 } from "../../rules/index";
-import { has, touches } from "../../rules/tree";
+import { has, touches, built, regionOf } from "../../rules/tree";
 import { ACTS_PER_EPOCH, World, blockStart } from "../world";
-import { personaKindOf, regionOfNode } from "../teacher";
+import { personaKindOf } from "../teacher";
 
 export const FEATURE_ONE: int32 = 127;
 export const ECONOMY_ACTIONS: int32 = (EconomyAction.EatLarge as int32) + 1;
@@ -87,6 +87,12 @@ export enum NodeFeature {
 	GainsPacifist,
 	GainsGlassCannon,
 	GainsCannibal,
+	GainsRelentless,
+	GainsBerserker,
+	Food,
+	Experience,
+	Loot,
+	BiteGuard,
 }
 
 export enum TargetFeature {
@@ -106,7 +112,7 @@ export enum TargetFeature {
 }
 
 export const SELF_FEATURES: int32 = (SelfFeature.Threat as int32) + 1;
-export const NODE_FEATURES: int32 = (NodeFeature.GainsCannibal as int32) + 1;
+export const NODE_FEATURES: int32 = (NodeFeature.BiteGuard as int32) + 1;
 export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
 export const TARGET_CANDIDATES: int32 = BLOCK_SLOTS + 1;
@@ -125,6 +131,11 @@ export function actionCount(head: Head): int32 {
 		Head.Node => NODE_ACTIONS,
 		Head.Attack => ATTACK_ACTIONS,
 	};
+}
+
+export function largestActionCount(): int32 {
+	const widest = Math.max(actionCount(Head.Node), actionCount(Head.Attack));
+	return Math.max(actionCount(Head.Economy), widest);
 }
 
 export function moneyFeature(amount: uint64): int32 {
@@ -234,14 +245,16 @@ function opensWith(this tree: Tree, id: int32): int32 {
 function writeNodes(this world: World, index: int32, features: int32[], offset: int32): void {
 	const pet = world.pets[index];
 	const legal = pet.legalNodes(world.global);
-	const before = Stats.fromTree(pet.tree);
+	const level = pet.level as int32;
+	const before = Stats.built(pet.tree, level, pet.talent());
 	for (let id = 0; id < TREE_NODES; id++) {
 		if (!legal.allowsNode(id)) { continue; }
 		const row = offset + id * NODE_FEATURES;
-		const after = Stats.fromTree(pet.tree.withNode(id));
+		const after = Stats.built(pet.tree.withNode(id), level, pet.talent());
 		const gained = after.mods.difference(before.mods);
 		const kind = nodeKind(id);
-		const ownRegion = regionOfNode(id) == pet.startRegion();
+		const home = regionOf(id);
+		const ownRegion = home.ok && home.value == pet.startRegion();
 		put(features, nodeSlot(row, NodeFeature.OwnRegion), flag(ownRegion));
 		put(features, nodeSlot(row, NodeFeature.Opens), pet.tree.opensWith(id) * 40);
 		put(features, nodeSlot(row, NodeFeature.Notable), flag(kind == NodeKind.Notable));
@@ -252,13 +265,19 @@ function writeNodes(this world: World, index: int32, features: int32[], offset: 
 		put(features, nodeSlot(row, NodeFeature.Grit), (after.grit - before.grit) * 6);
 		const heartsGained = after.maxHearts - before.maxHearts;
 		put(features, nodeSlot(row, NodeFeature.MaxHearts), heartsGained * 30);
-		for (let ordinal = 0; ordinal <= (Mod.Cannibal as int32); ordinal++) {
+		for (let ordinal = 0; ordinal <= (Mod.Berserker as int32); ordinal++) {
 			put(
 				features,
 				nodeSlot(row, NodeFeature.GainsOvertime) + ordinal,
 				flag(gained.has(ordinal as Mod)),
 			);
 		}
+		put(features, nodeSlot(row, NodeFeature.Food), (after.foodBps - before.foodBps) / 50);
+		const experience = after.experienceBps - before.experienceBps;
+		put(features, nodeSlot(row, NodeFeature.Experience), experience / 50);
+		put(features, nodeSlot(row, NodeFeature.Loot), (after.lootBps - before.lootBps) / 50);
+		const guard = after.biteGuardBps - before.biteGuardBps;
+		put(features, nodeSlot(row, NodeFeature.BiteGuard), guard / 50);
 	}
 	put(features, nodeSlot(offset + ALLOCATE_HOLD * NODE_FEATURES, NodeFeature.Hold), FEATURE_ONE);
 }
@@ -380,10 +399,10 @@ test "money features are quarter octaves of a thousandth of a token" {
 test "sizes follow the three heads" {
 	assert SELF_FEATURES == 32;
 	assert observationSize(Head.Economy) == 32;
-	assert observationSize(Head.Node) == 32 + 25 * 16;
+	assert observationSize(Head.Node) == 32 + 65 * 22;
 	assert observationSize(Head.Attack) == 32 + 11 * 13;
 	assert actionCount(Head.Economy) == 8;
-	assert actionCount(Head.Node) == 25;
+	assert actionCount(Head.Node) == 65;
 	assert actionCount(Head.Attack) == 41;
 }
 
@@ -404,7 +423,7 @@ test "a newborn sees itself, its legal nodes and no attackable target" {
 	assert features[3 + (SelfFeature.Threat as int32)] == 0;
 	assert features[2] == 0;
 	world.observeInto(4, Head.Node, features, 0);
-	const legal = zeros(actionCount(Head.Attack));
+	const legal = zeros(actionCount(Head.Node));
 	world.legalInto(4, Head.Node, legal, 0);
 	for (let id = 0; id < NODE_CANDIDATES; id++) {
 		const row = SELF_FEATURES + id * NODE_FEATURES;

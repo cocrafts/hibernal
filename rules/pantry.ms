@@ -1,3 +1,4 @@
+import { BPS } from "./units";
 import { Food, foodHearts, isShielded } from "./emission";
 
 export const FOOD_BUYS_PER_DAY: int32 = 2;
@@ -52,18 +53,23 @@ export function adding(this pantry: Pantry, food: Food, count: int32): Pantry {
 	};
 }
 
+export function mealHearts(food: Food, foodBps: int32): int32 {
+	return foodHearts(food) * (BPS + foodBps) / BPS;
+}
+
 export function nightMeals(
 	this pantry: Pantry,
 	hearts: int32,
 	floor: int32,
 	maxHearts: int32,
+	foodBps: int32,
 ): [int32, Pantry] {
 	let fed = hearts;
 	let left = pantry;
 	while (fed < floor) {
 		const meal = left.smallest();
 		if (!meal.ok) { break; }
-		fed = Math.min(fed + foodHearts(meal.value), maxHearts);
+		fed = Math.min(fed + mealHearts(meal.value, foodBps), maxHearts);
 		left = left.adding(meal.value, -1);
 	}
 	return [fed, left];
@@ -105,14 +111,15 @@ test "a pantry picks its smallest and largest portion" {
 
 test "at night a pet under its floor eats its smallest portions until it is back over it" {
 	const pantry = Pantry.unstocked().adding(Food.Small, 2).adding(Food.Large, 1);
-	const [fed, left] = pantry.nightMeals(-1, 4, 20);
+	const [fed, left] = pantry.nightMeals(-1, 4, 20, 0);
 	assert fed == 5;
 	assert left.portions(Food.Small) == 0;
 	assert left.portions(Food.Large) == 1;
-	const [calm, kept] = pantry.nightMeals(6, 4, 20);
+	const [calm, kept] = pantry.nightMeals(6, 4, 20, 0);
 	assert calm == 6;
 	assert kept == pantry;
-	const [starving, _nothing] = Pantry.unstocked().nightMeals(-2, 4, 20);
+	const [starving, _nothing] = Pantry.unstocked().nightMeals(-2, 4, 20, 0);
+	assert mealHearts(Food.Large, 2500) == 12;
 	assert starving == -2;
 }
 

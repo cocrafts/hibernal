@@ -1,9 +1,9 @@
 import { BPS, HBRN_UNIT } from "./units";
 import { Region, Stats, aged } from "./stats";
-import { TREE_NODES, AllocationError, nodeCost } from "./tree";
+import { TREE_NODES, AllocationError, Tree, nodeCost } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord } from "./layout";
-import { Food, Split, foodCost, foodHearts, stakeSplit } from "./emission";
-import { FOOD_BUYS_PER_DAY, Pantry } from "./pantry";
+import { Food, Split, foodCost, stakeSplit } from "./emission";
+import { FOOD_BUYS_PER_DAY, Pantry, mealHearts } from "./pantry";
 import {
 	INCOMING_CAP,
 	MIN_BITE_STAKE,
@@ -12,6 +12,7 @@ import {
 	maxStake,
 	biteHearts,
 	defeatHearts,
+	guardedBite,
 } from "./fight";
 import { DEFENSE_WIN_XP, DEFENSE_LOSS_XP, raidXp, gainXp } from "./level";
 import {
@@ -58,6 +59,7 @@ export enum EconomyError {
 
 export struct NodeMask {
 	bits: uint64;
+	hold: boolean;
 }
 
 export struct AttackMask {
@@ -89,15 +91,17 @@ function bitOf(id: int32): uint64 {
 }
 
 export function nodeHoldMask(): NodeMask {
-	return { bits: bitOf(ALLOCATE_HOLD) };
+	return { bits: 0, hold: true };
 }
 
 export function allowsNode(this mask: NodeMask, id: int32): boolean {
+	if (id == ALLOCATE_HOLD) { return mask.hold; }
 	return (mask.bits & bitOf(id)) != 0;
 }
 
 export function allowingNode(this mask: NodeMask, id: int32): NodeMask {
-	return { bits: mask.bits | bitOf(id) };
+	if (id == ALLOCATE_HOLD) { return { ...mask, hold: true }; }
+	return { ...mask, bits: mask.bits | bitOf(id) };
 }
 
 export function attackHoldMask(): AttackMask {
@@ -159,7 +163,8 @@ export function eat(
 	if (!pet.alive) { return Result.err(EconomyError.Dead); }
 	if (pet.hearts >= pet.maxHearts) { return Result.err(EconomyError.Full); }
 	if (pet.pantry.portions(food) == 0) { return Result.err(EconomyError.NoFood); }
-	const hearts = Math.min((pet.hearts as int32) + foodHearts(food), pet.maxHearts as int32);
+	const restored = mealHearts(food, pet.stats().foodBps);
+	const hearts = Math.min((pet.hearts as int32) + restored, pet.maxHearts as int32);
 	return Result.ok({
 		pet: { ...pet, hearts: hearts as uint8, pantry: pet.pantry.adding(food, -1) },
 		global: global,
@@ -193,19 +198,27 @@ export function legalEconomy(this pet: Pet, global: GlobalConfig): BitSet<Econom
 	return legal;
 }
 
+export function grownTree(
+	this pet: Pet,
+	id: int32,
+	global: GlobalConfig,
+): Result<Tree, AllocationError> {
+	if (!pet.alive) { return Result.err(AllocationError.Dead); }
+	const settled = pet.lastTickEpoch == global.rewardEpoch &&
+		pet.rewardSnapshot == global.rewardPerWorkPower;
+	if (!settled) { return Result.err(AllocationError.Unsettled); }
+	if ((pet.pointsUnspent as int32) < nodeCost(id)) { return Result.err(AllocationError.NoPoints); }
+	return pet.tree.allocate(id, pet.startRegion());
+}
+
 export function allocateNode(
 	this pet: Pet,
 	id: int32,
 	global: GlobalConfig,
 ): Result<PetAndGlobal, AllocationError> {
-	if (!pet.alive) { return Result.err(AllocationError.Dead); }
-	const settled = pet.lastTickEpoch == global.rewardEpoch &&
-		pet.rewardSnapshot == global.rewardPerWorkPower;
-	if (!settled) { return Result.err(AllocationError.Unsettled); }
+	const tree = try pet.grownTree(id, global);
 	const cost = nodeCost(id);
-	if ((pet.pointsUnspent as int32) < cost) { return Result.err(AllocationError.NoPoints); }
-	const tree = try pet.tree.allocate(id, pet.startRegion());
-	const derived = Stats.fromTree(tree).grown(pet.level as int32, pet.talent()).aged(pet.vigor());
+	const derived = Stats.built(tree, pet.level as int32, pet.talent()).aged(pet.vigor());
 	const grown: Pet = {
 		...pet,
 		tree: tree,
@@ -223,10 +236,10 @@ export function allocateNode(
 }
 
 export function legalNodes(this pet: Pet, global: GlobalConfig): NodeMask {
-	if (!pet.alive) { return { bits: 0 }; }
+	if (!pet.alive) { return { bits: 0, hold: false }; }
 	let mask = nodeHoldMask();
 	for (let id = 0; id < TREE_NODES; id++) {
-		if (pet.allocateNode(id, global).ok) { mask = mask.allowingNode(id); }
+		if (pet.grownTree(id, global).ok) { mask = mask.allowingNode(id); }
 	}
 	return mask;
 }
@@ -331,19 +344,24 @@ export function settleAttack(
 	};
 	if (result.outcome == Outcome.AttackerWins) {
 		const harvestBefore = defenderToday.harvest;
-		const loot = defenderCombatant.lootFor(
+		const baseLoot = defenderCombatant.lootFor(
 			stake,
 			harvestBefore,
 			defenderToday.fightsInToday as int32,
 		);
+		const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
+		const loot = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
 		const [winnings, fee] = stakeSplit(loot);
-		const bites = biteHearts(
-			stake,
-			loot,
-			attackerToday.stats().power(),
-			defenderToday.stats().power(),
-			defenderToday.maxHearts as int32,
-			defenderToday.bitesInToday as int32,
+		const bites = guardedBite(
+			biteHearts(
+				stake,
+				loot,
+				attackerToday.stats().power(),
+				defenderToday.stats().power(),
+				defenderToday.maxHearts as int32,
+				defenderToday.bitesInToday as int32,
+			),
+			defenderToday.stats().biteGuardBps,
 		);
 		const hearts = Math.max((struck.hearts as int32) - bites, 0);
 		const robbed: Pet = {
@@ -437,7 +455,7 @@ test "action ids and masks" {
 	assert !attacks.allowsAttack(BlockSlot.Third, StakeLevel.Whole);
 	assert !attacks.allowsChoice(ATTACK_HOLD);
 	assert attackHoldMask().allowsChoice(ATTACK_HOLD);
-	const noNodes: NodeMask = { bits: 0 };
+	const noNodes: NodeMask = { bits: 0, hold: false };
 	const nodes = noNodes.allowingNode(TREE_NODES - 1);
 	assert nodes.allowsNode(TREE_NODES - 1);
 	assert !nodes.allowsNode(0);
@@ -506,25 +524,26 @@ test "the economy mask is exactly the actions that apply" {
 test "allocation needs a settled pet and points, and moves the work power" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
 	const nodes = newborn.pet.legalNodes(newborn.global);
-	assert nodes.allowsNode(3);
+	assert !nodes.allowsNode(3);
 	assert nodes.allowsNode(4);
 	assert nodes.allowsNode(ALLOCATE_HOLD);
 	assert !nodes.allowsNode(5);
 	assert !nodes.allowsNode(0);
 	const dead: Pet = { ...newborn.pet, alive: false };
-	assert dead.legalNodes(newborn.global).bits == 0;
-	const grown = newborn.pet.allocateNode(3, newborn.global);
+	const deadMask = dead.legalNodes(newborn.global);
+	assert deadMask.bits == 0 && !deadMask.hold;
+	const grown = newborn.pet.allocateNode(4, newborn.global);
 	assert grown.ok;
 	if (grown.ok) {
-		assert grown.value.pet.forage == 90;
+		assert grown.value.pet.forage == 88;
 		assert grown.value.pet.pointsUnspent == 0;
-		assert grown.value.global.totalWorkPower == 37;
-		const noPoints = grown.value.pet.allocateNode(4, grown.value.global);
+		assert grown.value.global.totalWorkPower == 36;
+		const noPoints = grown.value.pet.allocateNode(5, grown.value.global);
 		assert !noPoints.ok;
 		if (!noPoints.ok) { assert noPoints.error == AllocationError.NoPoints; }
-		assert grown.value.pet.legalNodes(grown.value.global).bits == nodeHoldMask().bits;
+		assert grown.value.pet.legalNodes(grown.value.global) == nodeHoldMask();
 	}
-	const unsettled = newborn.pet.allocateNode(3, newborn.global.settle(1));
+	const unsettled = newborn.pet.allocateNode(4, newborn.global.settle(1));
 	assert !unsettled.ok;
 	if (!unsettled.ok) { assert unsettled.error == AllocationError.Unsettled; }
 }

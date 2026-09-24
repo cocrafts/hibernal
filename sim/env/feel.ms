@@ -177,7 +177,8 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	feel.tally(victim, FeelCounter.Robbed, 1);
 	grudges[victim] = { robber: attacker.blockSlot(), epoch: world.epoch };
 	const struck = world.pets[blockStart(moment.index) + (defender.slot as int32)];
-	feel.tally(victim, FeelCounter.HeartsBitten, (defender.hearts as int32) - (struck.hearts as int32));
+	const bitten = (defender.hearts as int32) - (struck.hearts as int32);
+	feel.tally(victim, FeelCounter.HeartsBitten, bitten);
 	if (!struck.alive) { feel.tally(victim, FeelCounter.Bitten, 1); }
 }
 

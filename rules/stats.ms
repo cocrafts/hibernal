@@ -4,9 +4,7 @@ import { Talent, TalentKind } from "./talent";
 export const BASE_STAT: int32 = 50;
 export const BASE_SPEED: int32 = 50;
 export const START_BONUS: int32 = 30;
-export const NODE_BONUS: int32 = 10;
 export const BASE_MAX_HEARTS: int32 = 10;
-export const HEART_NODE_BONUS: int32 = 2;
 export const LEVEL_STAT_GROWTH: int32 = 5;
 export const LEVELS_PER_HEART: int32 = 2;
 
@@ -23,6 +21,8 @@ export enum Mod {
 	Pacifist,
 	GlassCannon,
 	Cannibal,
+	Relentless,
+	Berserker,
 }
 
 export struct Stats {
@@ -35,6 +35,10 @@ export struct Stats {
 	lifesteal: int32;
 	bleed: int32;
 	maxHearts: int32;
+	foodBps: int32;
+	experienceBps: int32;
+	lootBps: int32;
+	biteGuardBps: int32;
 	mods: BitSet<Mod>;
 }
 
@@ -70,6 +74,10 @@ export function base(this typeof Stats): Stats {
 		lifesteal: 0,
 		bleed: 0,
 		maxHearts: BASE_MAX_HEARTS,
+		foodBps: 0,
+		experienceBps: 0,
+		lootBps: 0,
+		biteGuardBps: 0,
 		mods: noMods(),
 	};
 }
@@ -111,9 +119,14 @@ export function power(this stats: Stats): int32 {
 	return stats.forage + stats.might + stats.grit;
 }
 
+export function berserkBps(this stats: Stats, hearts: int32): int32 {
+	if (!stats.mods.has(Mod.Berserker) || stats.maxHearts <= 0) { return 0; }
+	return Math.max(stats.maxHearts - hearts, 0) * BPS / stats.maxHearts;
+}
+
 export function asCombatant(this stats: Stats, hearts: int32): Combatant {
 	return {
-		might: stats.might,
+		might: stats.might * (BPS + stats.berserkBps(hearts)) / BPS,
 		grit: stats.grit,
 		speed: stats.speed,
 		armor: stats.armor,
@@ -145,6 +158,14 @@ test "age fades what the tree gave and keeps the base" {
 	assert old.might == 70;
 	assert old.grit == 50;
 	assert grown.aged(BPS).forage == 150 && grown.aged(BPS).might == 90;
+}
+
+test "a berserker hits harder the fewer hearts it has left" {
+	const berserker: Stats = { ...Stats.base(), maxHearts: 20, mods: noMods().incl(Mod.Berserker) };
+	assert berserker.asCombatant(20).might == BASE_STAT;
+	assert berserker.asCombatant(10).might == BASE_STAT * 3 / 2;
+	assert berserker.asCombatant(0).might == BASE_STAT * 2;
+	assert Stats.base().asCombatant(1).might == BASE_STAT;
 }
 
 test "mods round-trip through a mask" {

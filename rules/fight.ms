@@ -295,7 +295,8 @@ export function fight(this attacker: Combatant, defender: Combatant, seed: uint6
 }
 
 export function attacksPerEpoch(this attacker: Combatant): int32 {
-	return 1 + attacker.might / ATTACK_MIGHT_DIVISOR;
+	const relentless = attacker.mods.has(Mod.Relentless) ? 1 : 0;
+	return 1 + relentless + attacker.might / ATTACK_MIGHT_DIVISOR;
 }
 
 export function attacksLeft(
@@ -354,6 +355,11 @@ export function biteHearts(
 	);
 	const bite = shareOfHearts(defenderMaxHearts, (BITE_BPS as int64) * clamped / (BPS as int64));
 	return Math.min(bite, shareOfHearts(defenderMaxHearts, BITE_CAP_BPS as int64));
+}
+
+export function guardedBite(hearts: int32, guardBps: int32): int32 {
+	if (hearts <= 0) { return 0; }
+	return Math.max(hearts * Math.max(BPS - guardBps, 0) / BPS, 1);
 }
 
 export function defeatHearts(maxHearts: int32): int32 {
@@ -417,6 +423,9 @@ test "a robber that takes back its stake leaves the hearts alone, one that does 
 	assert biteHearts(100, 0, 40, 10, 40, 0) == 8;
 	assert biteHearts(100, 0, 1, 10, 40, 0) == 2;
 	assert biteHearts(100, 0, 20, 10, 40, BITES_CAP) == 0;
+	assert guardedBite(8, 5500) == 3;
+	assert guardedBite(1, 9000) == 1;
+	assert guardedBite(0, 0) == 0;
 	assert defeatHearts(10) == 1;
 	assert defeatHearts(35) == 4;
 }

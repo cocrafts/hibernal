@@ -1,5 +1,5 @@
 import { Region, Stats, Combatant } from "./stats";
-import { Tree } from "./tree";
+import { Tree, built } from "./tree";
 import { Outcome } from "./fight";
 import { isShielded } from "./emission";
 import { Pantry } from "./pantry";
@@ -89,7 +89,7 @@ export struct FightRecord {
 
 export function stats(this pet: Pet): Stats {
 	return {
-		...Stats.fromTree(pet.tree),
+		...Stats.built(pet.tree, pet.level as int32, pet.talent()),
 		forage: pet.forage as int32,
 		might: pet.might as int32,
 		grit: pet.grit as int32,
