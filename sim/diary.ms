@@ -128,7 +128,7 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const defender = world.pets[target];
 	const robber = world.robberOf(index);
 	const revenge = robber.ok && (robber.value as int32) == slot ? " revenge" : "";
-	const odds = attacker.combatant().winChanceFromTable(defender.combatant()) / 100;
+	const odds = attacker.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(attacker)) / 100;
 	const stake = attacker.stakeFor(defender, level, world.epoch);
 	const staked = stake.ok ? money(stake.value) : "?";
 	const won = world.stats.wins;

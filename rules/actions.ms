@@ -30,6 +30,8 @@ import {
 	INCOMING_CAP,
 	MIN_BITE_STAKE,
 	CANNIBAL_WALLET_BPS,
+	RAGE_STEP_BPS,
+	RAGE_MAX,
 	AttackError,
 	Outcome,
 	maxStake,
@@ -372,8 +374,8 @@ export function settleAttack(
 	const stake = try attacker.stakeFor(defender, level, epoch);
 	const attackerToday = attacker.onFightDay(epoch);
 	const defenderToday = defender.onFightDay(epoch);
-	const attackerCombatant = attackerToday.combatant();
-	const defenderCombatant = defenderToday.combatant();
+	const attackerCombatant = attackerToday.combatantFacing(defenderToday);
+	const defenderCombatant = defenderToday.combatantFacing(attackerToday);
 	const result = attackerCombatant.fight(defenderCombatant, seed);
 	const committed: Pet = {
 		...attackerToday,
@@ -419,17 +421,20 @@ export function settleAttack(
 			defenderToday.stats().biteGuardBps + defenderToday.gear.damageGuardBps(),
 		);
 		const hearts = Math.max((struck.hearts as int32) - bites, 0);
-		const robbed: Pet = {
+		const struckDown: Pet = {
 			...struck,
 			alive: hearts > 0,
 			hearts: hearts as uint8,
 			harvest: struck.harvest - loot,
 			bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
 		};
+		const hurt = loot > 0 || bites > 0;
+		const robbed = hurt ? struckDown.robbedBy(attackerToday, epoch) : struckDown;
 		const [survivor, insuredGlobal] = robbed.revived(global);
 		const cannibal = attackerToday.stats().mods.has(Mod.Cannibal);
 		const [remains, devoured] = survivor.devouredBy(cannibal);
-		const raider: Pet = { ...committed, burrow: committed.burrow + stake + winnings + devoured };
+		const paidOut: Pet = { ...committed, burrow: committed.burrow + stake + winnings + devoured };
+		const raider = paidOut.calmedAgainst(defenderToday);
 		const paid = insuredGlobal.withProtocolFee(fee);
 		return Result.ok({
 			attacker: raider.gainXp(raidXp(loot)),
@@ -438,12 +443,13 @@ export function settleAttack(
 			record: { ...record, loot: loot },
 		});
 	}
-	const [kept, fee] = stakeSplit(stake);
+	const [keptStake, fee] = stakeSplit(stake);
 	const lost = guardedBite(defeatHearts(committed.maxHearts as int32), committed.gear.damageGuardBps());
 	const hearts = Math.max((committed.hearts as int32) - lost, 0);
 	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
 	const [beaten, insuredGlobal] = fallen.revived(global);
-	const holder: Pet = { ...struck, burrow: struck.burrow + kept };
+	const kept: Pet = { ...struck, burrow: struck.burrow + keptStake };
+	const holder = kept.calmedAgainst(attackerToday);
 	const paid = insuredGlobal.withProtocolFee(fee);
 	return Result.ok({
 		attacker: beaten,
@@ -802,4 +808,23 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 		compared += 1;
 	}
 	assert compared > 0;
+}
+
+test "rage builds against a repeat robber, strengthens only that fight and ends with a win" {
+	const duel = duelOver(0);
+	const robber = duel.attacker;
+	const other: Pet = { ...duel.attacker, slot: 7 };
+	const victim = duel.defender.robbedBy(robber, 10);
+	assert victim.rage == 1 && victim.grudgeSlot == robber.slot;
+	const angrier = victim.robbedBy(robber, 11).robbedBy(robber, 12).robbedBy(robber, 13);
+	assert (angrier.rage as int32) == RAGE_MAX;
+	assert angrier.rageAt(15) == angrier.rage;
+	assert angrier.rageAt(16) == 0;
+	assert angrier.robbedBy(other, 13).rage == 1;
+	const calm = duel.defender.combatant();
+	const raged = angrier.combatantFacing(robber);
+	assert raged.might == calm.might * (BPS + RAGE_MAX * RAGE_STEP_BPS) / BPS;
+	assert angrier.combatantFacing(other).might == calm.might;
+	assert angrier.calmedAgainst(robber).rage == 0;
+	assert angrier.calmedAgainst(other).rage == angrier.rage;
 }

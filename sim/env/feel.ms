@@ -203,7 +203,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	const attacker = moment.actor;
 	const defender = moment.defender;
 	const level = (moment.action % STAKE_LEVELS) as StakeLevel;
-	const winChance = attacker.combatant().winChanceFromTable(defender.combatant());
+	const winChance = attacker.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(attacker));
 	const persona = Persona.of(personaKindOf(moment.index));
 	feel.tally(key, FeelCounter.Attacks, 1);
 	feel.tally(key, FeelCounter.WinChanceSum, winChance);

@@ -1,7 +1,7 @@
 import { BPS } from "./units";
 import { Region, Stats, Combatant } from "./stats";
 import { Tree, built } from "./tree";
-import { Outcome } from "./fight";
+import { Outcome, RAGE_STEP_BPS, RAGE_MAX, RAGE_DAYS } from "./fight";
 import { isShielded } from "./emission";
 import { Pantry } from "./pantry";
 import { Talent, TalentKind } from "./talent";
@@ -69,6 +69,9 @@ export struct Pet {
 	ownerFedToday: uint8;
 	giftOwed: uint64;
 	gear: Gear;
+	grudgeSlot: uint8;
+	rage: uint8;
+	rageEpoch: uint64;
 }
 
 export struct GlobalConfig {
@@ -118,6 +121,29 @@ export function talent(this pet: Pet): Talent {
 
 export function combatant(this pet: Pet): Combatant {
 	return pet.stats().asCombatant(pet.hearts as int32);
+}
+
+export function combatantFacing(this pet: Pet, opponent: Pet): Combatant {
+	const base = pet.combatant();
+	if (pet.rage == 0 || pet.grudgeSlot != opponent.slot) { return base; }
+	const bps = BPS + (pet.rage as int32) * RAGE_STEP_BPS;
+	return { ...base, might: base.might * bps / BPS, grit: base.grit * bps / BPS };
+}
+
+export function robbedBy(this pet: Pet, robber: Pet, epoch: uint64): Pet {
+	if (pet.rage > 0 && pet.grudgeSlot == robber.slot) {
+		return { ...pet, rage: Math.min((pet.rage as int32) + 1, RAGE_MAX) as uint8, rageEpoch: epoch };
+	}
+	return { ...pet, grudgeSlot: robber.slot, rage: 1, rageEpoch: epoch };
+}
+
+export function rageAt(this pet: Pet, epoch: uint64): uint8 {
+	return epoch >= pet.rageEpoch + RAGE_DAYS ? 0 : pet.rage;
+}
+
+export function calmedAgainst(this pet: Pet, foe: Pet): Pet {
+	if (pet.grudgeSlot != foe.slot) { return pet; }
+	return { ...pet, rage: 0 };
 }
 
 export function startRegion(this pet: Pet): Region {

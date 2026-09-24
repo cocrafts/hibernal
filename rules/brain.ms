@@ -122,8 +122,8 @@ export function scoreTarget(
 	seed: uint64,
 ): Result<int64, Skip> {
 	if (defender.shieldedAt(epoch)) { return Result.err(Skip.Shielded); }
-	const attackerCombatant = attacker.combatant();
-	const defenderCombatant = defender.combatant();
+	const attackerCombatant = attacker.combatantFacing(defender);
+	const defenderCombatant = defender.combatantFacing(attacker);
 	const remainingAttacks = attackerCombatant.attacksLeft(attacker.fightsOutOn(epoch));
 	if (!remainingAttacks.ok) { return Result.err(Skip.CannotAttack); }
 	if (defender.harvest == 0) { return Result.err(Skip.EmptyHarvest); }
@@ -176,6 +176,9 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		ownerFedToday: 0,
 		giftOwed: 0,
 		gear: Gear.bare(),
+		grudgeSlot: 0,
+		rage: 0,
+		rageEpoch: 0,
 		pantry: Pantry.unstocked(),
 		foodBoughtToday: 0,
 		talentKind: 0,

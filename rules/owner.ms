@@ -254,5 +254,8 @@ function testPet(): Pet {
 		ownerFedToday: 0,
 		giftOwed: 0,
 		gear: Gear.bare(),
+		grudgeSlot: 0,
+		rage: 0,
+		rageEpoch: 0,
 	};
 }

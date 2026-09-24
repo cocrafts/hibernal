@@ -242,7 +242,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 			richest = Math.max(richest, moneyFeature(mate.harvest));
 		}
 		if (mate.attackable(pet, world.epoch).ok) {
-			threat = Math.max(threat, mate.combatant().winChanceFromTable(fighter));
+			threat = Math.max(threat, mate.combatantFacing(pet).winChanceFromTable(pet.combatantFacing(mate)));
 		}
 	}
 	put(features, selfSlot(offset, SelfFeature.RichestHarvest), richest);
@@ -336,8 +336,8 @@ function writeTargets(this world: World, index: int32, features: int32[], offset
 		);
 		const stakeCap = pet.attackable(target, world.epoch);
 		if (!stakeCap.ok) { continue; }
-		const defender = target.combatant();
-		const winChance = fighter.winChanceFromTable(defender);
+		const defender = target.combatantFacing(pet);
+		const winChance = pet.combatantFacing(target).winChanceFromTable(defender);
 		put(features, targetSlot(row, TargetFeature.WinChance), winChance * FEATURE_ONE / BPS);
 		for (let ordinal = 0; ordinal < STAKE_LEVELS; ordinal++) {
 			const stake = pet.stakeAt(stakeCap.value, ordinal as StakeLevel);

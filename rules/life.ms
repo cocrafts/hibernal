@@ -169,6 +169,9 @@ export function born(
 		ownerFedToday: 0,
 		giftOwed: 0,
 		gear: Gear.bare(),
+		grudgeSlot: 0,
+		rage: 0,
+		rageEpoch: 0,
 	};
 	return { pet: pet, global: settled.withWorkPower(0, stats.rewardWeight()) };
 }
@@ -257,6 +260,7 @@ export function tickTo(
 	let armed = pet.insurance == (Insurance.Armed as uint8);
 	let revivals = 0;
 	let charm = pet.gear.hasSkill(ItemSkill.Revive);
+
 	let charmed = false;
 	for (let day = pet.lastTickEpoch + 1; day <= epoch && hearts > 0 && !old; day++) {
 		workedEpochs += 1;
@@ -305,6 +309,7 @@ export function tickTo(
 		talksToday: newDay ? 0 : pet.talksToday,
 		ownerFedToday: newDay ? 0 : pet.ownerFedToday,
 		bonding: bonding as int8,
+		rage: pet.rageAt(epoch),
 		insurance: saved ? Insurance.Used as uint8 : pet.insurance,
 		scars: ((pet.scars as int32) + revivals) as uint8,
 		harvest: income - harvestBurned,

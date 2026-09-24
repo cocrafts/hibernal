@@ -40,6 +40,9 @@ export const PACIFIST_LOOT_CUT_BPS: int32 = 7000;
 export const THICK_HIDE_LOOT_CUT_BPS: int32 = 5000;
 export const THICK_HIDE_FIGHTS: int32 = 3;
 export const CANNIBAL_WALLET_BPS: int32 = 5000;
+export const RAGE_STEP_BPS: int32 = 1000;
+export const RAGE_MAX: int32 = 3;
+export const RAGE_DAYS: uint64 = 3;
 
 export enum Outcome {
 	DefenderWins,
