@@ -6,11 +6,14 @@ import {
 	NODE_INPUTS,
 	ATTACK_INPUTS,
 	ATTACK_OUTPUTS,
+	EconomyAction,
 	economyLogits,
+	foldPortionSizes,
 	nodeScore,
 	attackLogits,
 } from "../../rules/index";
 import {
+	ECONOMY_ACTIONS,
 	Head,
 	SelfFeature,
 	SELF_FEATURES,
@@ -105,6 +108,14 @@ function gather(
 	}
 }
 
+function economyMask(legal: int32[], legalOffset: int32): BitSet<EconomyAction> {
+	let mask = 0 as BitSet<EconomyAction>;
+	for (let ordinal = 0; ordinal < ECONOMY_ACTIONS; ordinal++) {
+		if (legal[legalOffset + ordinal] == 1) { mask = mask.incl(ordinal as EconomyAction); }
+	}
+	return mask;
+}
+
 export function logitsInto(
 	this scratch: Scratch,
 	policy: uint8[],
@@ -121,6 +132,7 @@ export function logitsInto(
 	if (head == Head.Economy) {
 		scratch.gather(head, observations, offset, 0, 0);
 		economyLogits(policy, scratch.input, scratch.hidden, scratch.logits);
+		foldPortionSizes(scratch.logits, economyMask(legal, legalOffset));
 		for (let action = 0; action < actionCount(head); action++) {
 			logits[logitsOffset + action] = scratch.logits[action];
 		}
