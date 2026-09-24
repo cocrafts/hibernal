@@ -22,6 +22,7 @@ export const TYCOON_FORAGE_BPS: int32 = 15000;
 export const TYCOON_HEARTS_BPS: int32 = 7000;
 export const BULWARK_HEARTS_BPS: int32 = 20000;
 export const BULWARK_MIGHT_BPS: int32 = 5000;
+export const BULWARK_FOOD_BPS: int32 = 10000;
 
 export enum NodeKind {
 	Start,
@@ -408,6 +409,7 @@ export function built(this typeof Stats, tree: Tree, level: int32, talent: Talen
 				...stats,
 				maxHearts: scaledBy(stats.maxHearts, BULWARK_HEARTS_BPS),
 				might: scaledBy(stats.might, BULWARK_MIGHT_BPS),
+				foodBps: stats.foodBps + BULWARK_FOOD_BPS,
 			};
 		}
 	}
@@ -539,4 +541,5 @@ test "small nodes add ten percent, notables a quarter and a rule, keystones mult
 	assert hearty.maxHearts == BASE_MAX_HEARTS * (BPS + SMALL_NODE_BPS) / BPS * 2;
 	assert hearty.might == BASE_STAT / 2;
 	assert hearty.grit == (BASE_STAT + START_BONUS) * (BPS + 2 * SMALL_NODE_BPS) / BPS;
+	assert hearty.foodBps == BULWARK_FOOD_BPS;
 }
