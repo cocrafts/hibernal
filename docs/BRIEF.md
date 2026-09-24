@@ -173,7 +173,7 @@ Estimated size ~290 bytes → rent ≈ 0.0029 SOL `[estimate]`.
 | Gift to the owner (D36) | from burrow, capped per epoch, never below the pet's food needs; hackathon: credited to `gift_owed` |
 | Insurance revive | 50% of wallet burned |
 
-Levels cost no $HBRN (D6); `rules/emission.ms: levelCost` is retired. Food cost `[strawman]`: `food_cost(tier) = {8, 15, 21} × (1 + level/20)`. Tune against §6 invariants.
+Levels cost no $HBRN (D6); `rules/emission.ms: levelCost` is retired. Food cost: `food_cost(tier) = {168, 315, 490} × (20 + level) / 20` `$HBRN` (`rules/emission.ms: foodCost`), set so a level-20 pet's food bill is ~60% of its work income (invariant 2): teacher world 59%, by start Worker 37%, Fighter 108% (it lives on loot), Survivor 61%; 1.7 early deaths per 100 lives, all starved with nothing left to buy with (`docs/SIM.md` A6).
 
 ### 3.5 SKR layer (owner's money) — **100% to treasury**, **owner signature required**
 | Item | Effect | Constraint |
