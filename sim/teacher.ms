@@ -71,6 +71,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	const hearts = pet.hearts as int32;
 	const meal = persona.pickMeal(hearts, pet.maxHearts as int32, pet.pantry);
 	if (meal.ok && masks.economy.has(eatAction(meal.value))) { return eatAction(meal.value); }
+	if (masks.economy.has(EconomyAction.Bank)) { return EconomyAction.Bank; }
 	const purchase = persona.pickPurchase(
 		hearts,
 		pet.maxHearts as int32,
@@ -81,9 +82,6 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
 		return buyAction(purchase.value);
 	}
-	const lastRound = world.round == ACTS_PER_EPOCH - 1;
-	const heavy = pet.harvest * 4 > pet.burrow;
-	if (masks.economy.has(EconomyAction.Bank) && (lastRound || heavy)) { return EconomyAction.Bank; }
 	return EconomyAction.Rest;
 }
 
