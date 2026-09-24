@@ -4,11 +4,11 @@ import { Dice } from "./rng";
 
 export const INCOMING_CAP: int32 = 3;
 export const BITES_CAP: int32 = 1;
-export const BITE_BPS: int32 = 1000;
+export const BITE_HEARTS: int32 = 2;
 export const BITE_CAP_BPS: int32 = 2000;
 export const BITE_RATIO_MIN_BPS: int32 = 5000;
 export const BITE_RATIO_MAX_BPS: int32 = 20000;
-export const DEFEAT_BPS: int32 = 1000;
+export const DEFEAT_HEARTS: int32 = 2;
 export const FIGHT_HP_BASE: int32 = 800;
 export const FIGHT_HP_PER_GRIT: int32 = 7;
 export const DAMAGE: int32 = 3;
@@ -354,7 +354,8 @@ export function biteHearts(
 		Math.min(ratioBps, BITE_RATIO_MAX_BPS as int64),
 		BITE_RATIO_MIN_BPS as int64,
 	);
-	const bite = shareOfHearts(defenderMaxHearts, (BITE_BPS as int64) * clamped / (BPS as int64));
+	const scale = BPS as int64;
+	const bite = Math.max((((BITE_HEARTS as int64) * clamped + scale - 1) / scale) as int32, 1);
 	return Math.min(bite, shareOfHearts(defenderMaxHearts, BITE_CAP_BPS as int64));
 }
 
@@ -364,7 +365,7 @@ export function guardedBite(hearts: int32, guardBps: int32): int32 {
 }
 
 export function defeatHearts(maxHearts: int32): int32 {
-	return shareOfHearts(maxHearts, DEFEAT_BPS as int64);
+	return Math.min(DEFEAT_HEARTS, shareOfHearts(maxHearts, BITE_CAP_BPS as int64));
 }
 
 test "fight is deterministic per seed" {
@@ -418,17 +419,19 @@ test "stake bounds and attack budget" {
 
 test "a robber that takes back its stake leaves the hearts alone, one that does not bites" {
 	assert biteHearts(100, 100, 30, 10, 10, 0) == 0;
-	assert biteHearts(100, 99, 10, 10, 10, 0) == 1;
-	assert biteHearts(100, 0, 10, 10, 40, 0) == 4;
-	assert biteHearts(100, 0, 15, 10, 40, 0) == 6;
-	assert biteHearts(100, 0, 40, 10, 40, 0) == 8;
-	assert biteHearts(100, 0, 1, 10, 40, 0) == 2;
+	assert biteHearts(100, 99, 10, 10, 10, 0) == 2;
+	assert biteHearts(100, 0, 10, 10, 40, 0) == 2;
+	assert biteHearts(100, 0, 15, 10, 40, 0) == 3;
+	assert biteHearts(100, 0, 40, 10, 40, 0) == 4;
+	assert biteHearts(100, 0, 40, 10, 10, 0) == 2;
+	assert biteHearts(100, 0, 1, 10, 40, 0) == 1;
 	assert biteHearts(100, 0, 20, 10, 40, BITES_CAP) == 0;
 	assert guardedBite(8, 5500) == 3;
 	assert guardedBite(1, 9000) == 1;
 	assert guardedBite(0, 0) == 0;
-	assert defeatHearts(10) == 1;
-	assert defeatHearts(35) == 4;
+	assert defeatHearts(10) == 2;
+	assert defeatHearts(35) == 2;
+	assert defeatHearts(5) == 1;
 }
 
 function firstHitSeed(attacker: Combatant, defender: Combatant): uint64 {
