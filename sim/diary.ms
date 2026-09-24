@@ -61,6 +61,22 @@ function morning(this pet: Pet, yesterday: Pet, day: int32): string {
 	return line;
 }
 
+function ownerNotes(this world: World, index: int32, yesterday: Pet, visitsBefore: int32): string {
+	const pet = world.pets[index];
+	if (!pet.alive) { return ""; }
+	let notes = "";
+	if (world.ownerLedgers[index].visits > visitsBefore) {
+		notes = notes + ` | owner visited, bonding ${pet.bonding as int32}`;
+	}
+	if (pet.giftOwed > yesterday.giftOwed) {
+		notes = notes + ` | gifted ${money(pet.giftOwed - yesterday.giftOwed)} to its owner`;
+	}
+	if (pet.bornEpoch == yesterday.bornEpoch && pet.scars > yesterday.scars) {
+		notes = notes + " | insurance brought it back";
+	}
+	return notes;
+}
+
 function economyStep(this world: World, index: int32, diary: Diary): World {
 	const before = world.pets[index];
 	const action = world.teachEconomy(index, world.masksFor(index));
@@ -125,11 +141,17 @@ function main(): int32 {
 	const pages: string[] = [];
 	for (let day = 1; day <= EPISODE_EPOCHS; day++) {
 		const yesterday: Pet[] = [];
-		for (const index of diary.pets) { yesterday.push(world.pets[index]); }
+		const visitsBefore: int32[] = [];
+		for (const index of diary.pets) {
+			yesterday.push(world.pets[index]);
+			visitsBefore.push(world.ownerLedgers[index].visits);
+		}
 		world = world.beginEpoch(day as uint64);
 		const lines = diary.lines;
 		for (let row = 0; row < diary.pets.length; row++) {
-			lines[row] = world.pets[diary.pets[row]].morning(yesterday[row], day);
+			const index = diary.pets[row];
+			lines[row] = world.pets[index].morning(yesterday[row], day) +
+				world.ownerNotes(index, yesterday[row], visitsBefore[row]);
 		}
 		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
 			world = world.inRound(round);
@@ -143,7 +165,7 @@ function main(): int32 {
 	for (let row = 0; row < diary.pets.length; row++) {
 		const index = diary.pets[row];
 		const pet = world.pets[index];
-		console.log(`== ${nameOf(index)}, start ${pet.startRegion().toString()}, seed ${DIARY_SEED}`);
+		console.log(`== ${nameOf(index)}, start ${pet.startRegion().toString()}, owner ${world.owners[index].toString()}, seed ${DIARY_SEED}`);
 		for (let day = 0; day < EPISODE_EPOCHS; day++) {
 			console.log(pages[day * diary.pets.length + row]);
 		}
