@@ -26,6 +26,20 @@ FEEL_FIELDS = (
     "agedOut",
     "heartsBitten",
     "heartsLostAttacking",
+    "lives",
+    "diedAttacking",
+    "earlyLevelLives",
+    "earlyLevelAgeSum",
+    "capLevelLives",
+    "capLevelAgeSum",
+    "earned",
+    "earnedAtCap",
+    "foodSpent",
+    "foodSpentAtCap",
+    "lootLost",
+    "fightsInSum",
+    "fightsInCapDays",
+    "bornAtEnd",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])

@@ -3,6 +3,8 @@ import {
 	STAKE_LEVELS,
 	BPS,
 	HBRN_UNIT,
+	INCOMING_CAP,
+	LEVEL_CAP,
 	BlockSlot,
 	Food,
 	Pet,
@@ -21,6 +23,7 @@ import { Head, zeros } from "./observe";
 
 export const RECKLESS_WIN_CHANCE_BPS: int32 = 4000;
 export const REVENGE_EPOCHS: uint64 = 3;
+export const EARLY_LEVEL: int32 = 10;
 
 export enum FeelCounter {
 	Attacks,
@@ -46,9 +49,28 @@ export enum FeelCounter {
 	AgedOut,
 	HeartsBitten,
 	HeartsLostAttacking,
+	Lives,
+	DiedAttacking,
+	EarlyLevelLives,
+	EarlyLevelAgeSum,
+	CapLevelLives,
+	CapLevelAgeSum,
+	Earned,
+	EarnedAtCap,
+	FoodSpent,
+	FoodSpentAtCap,
+	LootLost,
+	FightsInSum,
+	FightsInCapDays,
+	BornAtEnd,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.HeartsLostAttacking as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.BornAtEnd as int32) + 1;
+
+export enum Milestone {
+	EarlyLevel,
+	CapLevel,
+}
 
 export enum Larder {
 	Dead,
@@ -76,20 +98,32 @@ export struct Feel {
 	counters: int32[];
 	grudges: Grudge[];
 	larders: Larder[];
+	lifeBorns: uint64[];
+	milestones: BitSet<Milestone>[];
+	harvests: uint64[];
 	pets: int32;
 }
 
 export function create(this typeof Feel, envCount: int32, pets: int32): Feel {
 	const grudges: Grudge[] = [];
 	const larders: Larder[] = [];
+	const lifeBorns: uint64[] = [];
+	const milestones: BitSet<Milestone>[] = [];
+	const harvests: uint64[] = [];
 	for (let key = 0; key < envCount * pets; key++) {
 		grudges.push({ robber: BlockSlot.First, epoch: 0 });
 		larders.push(Larder.Dead);
+		lifeBorns.push(0);
+		milestones.push(0 as BitSet<Milestone>);
+		harvests.push(0);
 	}
 	return {
 		counters: zeros(envCount * pets * FEEL_COUNTERS),
 		grudges: grudges,
 		larders: larders,
+		lifeBorns: lifeBorns,
+		milestones: milestones,
+		harvests: harvests,
 		pets: pets,
 	};
 }
@@ -133,6 +167,11 @@ export function momentOf(
 }
 
 function noteEconomy(this feel: Feel, key: int32, actor: Pet, after: Pet): void {
+	if (after.pantry.stored() > actor.pantry.stored()) {
+		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
+		feel.tally(key, FeelCounter.FoodSpent, spent);
+		if ((actor.level as int32) >= LEVEL_CAP) { feel.tally(key, FeelCounter.FoodSpentAtCap, spent); }
+	}
 	if (after.hearts > actor.hearts) {
 		feel.tally(key, FeelCounter.Meals, 1);
 		feel.tally(key, FeelCounter.MealHeartsSum, actor.hearts as int32);
@@ -170,6 +209,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 		const beaten = world.pets[moment.index];
 		const lost = (attacker.hearts as int32) - (beaten.hearts as int32);
 		feel.tally(key, FeelCounter.HeartsLostAttacking, lost);
+		if (!beaten.alive) { feel.tally(key, FeelCounter.DiedAttacking, 1); }
 		return;
 	}
 	const victim = moment.env * feel.pets + blockStart(moment.index) + (defender.slot as int32);
@@ -178,6 +218,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	grudges[victim] = { robber: attacker.blockSlot(), epoch: world.epoch };
 	const struck = world.pets[blockStart(moment.index) + (defender.slot as int32)];
 	const bitten = (defender.hearts as int32) - (struck.hearts as int32);
+	feel.tally(victim, FeelCounter.LootLost, ((defender.harvest - struck.harvest) / HBRN_UNIT) as int32);
 	feel.tally(victim, FeelCounter.HeartsBitten, bitten);
 	if (!struck.alive) { feel.tally(victim, FeelCounter.Bitten, 1); }
 }
@@ -194,12 +235,41 @@ export function note(this feel: Feel, moment: Moment, world: World): void {
 
 export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 	const larders = feel.larders;
+	const harvests = feel.harvests;
 	for (let index = 0; index < feel.pets; index++) {
 		const key = env * feel.pets + index;
-		larders[key] = world.pets[index].larderOf();
-		if (!world.pets[index].alive) { continue; }
+		const pet = world.pets[index];
+		larders[key] = pet.larderOf();
+		if (!pet.alive) { continue; }
 		feel.tally(key, FeelCounter.LivingEpochs, 1);
-		feel.tally(key, FeelCounter.HeartsSum, world.pets[index].hearts as int32);
+		feel.tally(key, FeelCounter.HeartsSum, pet.hearts as int32);
+		const fightsIn = pet.fightsInOn(world.epoch);
+		feel.tally(key, FeelCounter.FightsInSum, fightsIn);
+		if (fightsIn >= INCOMING_CAP) { feel.tally(key, FeelCounter.FightsInCapDays, 1); }
+		feel.noteMilestones(key, pet, world.epoch);
+		harvests[key] = pet.harvest;
+	}
+}
+
+function noteMilestones(this feel: Feel, key: int32, pet: Pet, epoch: uint64): void {
+	const lifeBorns = feel.lifeBorns;
+	const milestones = feel.milestones;
+	if (lifeBorns[key] != pet.bornEpoch + 1) {
+		lifeBorns[key] = pet.bornEpoch + 1;
+		milestones[key] = 0 as BitSet<Milestone>;
+		feel.tally(key, FeelCounter.Lives, 1);
+	}
+	const age = (epoch - pet.bornEpoch) as int32;
+	const level = pet.level as int32;
+	if (level >= EARLY_LEVEL && !milestones[key].has(Milestone.EarlyLevel)) {
+		milestones[key] = milestones[key].incl(Milestone.EarlyLevel);
+		feel.tally(key, FeelCounter.EarlyLevelLives, 1);
+		feel.tally(key, FeelCounter.EarlyLevelAgeSum, age);
+	}
+	if (level >= LEVEL_CAP && !milestones[key].has(Milestone.CapLevel)) {
+		milestones[key] = milestones[key].incl(Milestone.CapLevel);
+		feel.tally(key, FeelCounter.CapLevelLives, 1);
+		feel.tally(key, FeelCounter.CapLevelAgeSum, age);
 	}
 }
 
@@ -210,6 +280,11 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 		const pet = world.pets[index];
 		if (pet.alive && pet.bornEpoch == world.epoch) {
 			grudges[key] = { robber: BlockSlot.First, epoch: 0 };
+		}
+		if (pet.alive && feel.lifeBorns[key] == pet.bornEpoch + 1 && pet.harvest >= feel.harvests[key]) {
+			const earned = ((pet.harvest - feel.harvests[key]) / HBRN_UNIT) as int32;
+			feel.tally(key, FeelCounter.Earned, earned);
+			if ((pet.level as int32) >= LEVEL_CAP) { feel.tally(key, FeelCounter.EarnedAtCap, earned); }
 		}
 		const larder = feel.larders[key];
 		if (pet.alive || larder == Larder.Dead) { continue; }
@@ -225,14 +300,17 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 
 export function closeEpisode(this feel: Feel, env: int32, world: World): void {
 	const grudges = feel.grudges;
+	const lifeBorns = feel.lifeBorns;
 	feel.closeEpoch(env, world);
 	for (let index = 0; index < feel.pets; index++) {
 		const key = env * feel.pets + index;
 		const pet = world.pets[index];
 		grudges[key] = { robber: BlockSlot.First, epoch: 0 };
+		lifeBorns[key] = 0;
 		if (!pet.alive) { continue; }
 		feel.tally(key, FeelCounter.Living, 1);
 		feel.tally(key, FeelCounter.Wealth, ((pet.harvest + pet.burrow) / HBRN_UNIT) as int32);
+		feel.tally(key, FeelCounter.BornAtEnd, pet.bornEpoch as int32);
 	}
 }
 
@@ -354,4 +432,43 @@ test "hearts lost to a bite and to a lost attack are counted on the pet that los
 	feel.note(loss, world.fought(10, false));
 	assert feel.tallied(6, FeelCounter.HeartsLostAttacking) == 1;
 	assert feel.tallied(4, FeelCounter.HeartsBitten) == 0;
+}
+
+test "a life counts once, with the age at which it first reached level ten" {
+	const world = World.create(1, 3).beginEpoch(1);
+	const pets = world.pets;
+	const feel = Feel.create(1, BLOCK_SLOTS);
+	feel.closeEpoch(0, world);
+	assert feel.tallied(0, FeelCounter.Lives) == 1;
+	pets[0] = { ...pets[0], level: 12 };
+	const later: World = { ...world, epoch: 8 };
+	feel.closeEpoch(0, later);
+	feel.closeEpoch(0, later);
+	assert feel.tallied(0, FeelCounter.Lives) == 1;
+	assert feel.tallied(0, FeelCounter.EarlyLevelLives) == 1;
+	assert feel.tallied(0, FeelCounter.EarlyLevelAgeSum) == (8 - (pets[0].bornEpoch as int32));
+	assert feel.tallied(0, FeelCounter.CapLevelLives) == 0;
+}
+
+test "income is what reaches the harvest between one close and the next open" {
+	const world = World.create(1, 3).beginEpoch(1);
+	const pets = world.pets;
+	pets[1] = { ...pets[1], harvest: 10 * HBRN_UNIT };
+	const feel = Feel.create(1, BLOCK_SLOTS);
+	feel.closeEpoch(0, world);
+	pets[1] = { ...pets[1], harvest: 25 * HBRN_UNIT };
+	feel.openEpoch(0, world);
+	assert feel.tallied(1, FeelCounter.Earned) == 15;
+	assert feel.tallied(1, FeelCounter.EarnedAtCap) == 0;
+}
+
+test "a portion bought counts its price as food spent" {
+	const world = World.create(1, 3).beginEpoch(1);
+	const pets = world.pets;
+	pets[2] = { ...pets[2], burrow: 500 * HBRN_UNIT };
+	const moment = world.momentOf(0, 2, Head.Economy, EconomyAction.BuyLarge as int32);
+	const feel = Feel.create(1, BLOCK_SLOTS);
+	feel.note(moment, world.applyEconomy(2, EconomyAction.BuyLarge));
+	const price = (foodCost(Food.Large, pets[2].level as int32) / HBRN_UNIT) as int32;
+	assert feel.tallied(2, FeelCounter.FoodSpent) == price;
 }
