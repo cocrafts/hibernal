@@ -29,6 +29,11 @@ import {
 	winChanceFromTable,
 	BPS,
 	mintPrice,
+	foodReserve,
+	hungerPerDay,
+	foodCost,
+	hungry,
+	stored,
 	at,
 	weakestSlot,
 	isEmpty,
@@ -79,6 +84,13 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	const meal = persona.pickMeal(hearts, pet.maxHearts as int32, pet.pantry);
 	if (meal.ok && masks.economy.has(eatAction(meal.value))) { return eatAction(meal.value); }
 	if (masks.economy.has(EconomyAction.Bank)) { return EconomyAction.Bank; }
+	const level = pet.level as int32;
+	const starving = persona.hungry(hearts, pet.maxHearts as int32) && pet.pantry.stored() == 0;
+	const shortOfLarge = pet.burrow < foodCost(Food.Large, level);
+	const turnLeft = world.round < ACTS_PER_EPOCH - 1;
+	if (starving && shortOfLarge && turnLeft && masks.economy.has(EconomyAction.SellItem)) {
+		return EconomyAction.SellItem;
+	}
 	const purchase = persona.pickPurchase(
 		hearts,
 		pet.maxHearts as int32,
@@ -90,9 +102,11 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 		return buyAction(purchase.value);
 	}
 	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
+	const price = mintPrice(level);
+	const fed = pet.burrow >= price + foodReserve(level, pet.stats().hungerPerDay());
 	const weakest = pet.gear.at(pet.gear.weakestSlot());
 	const due = weakest.isEmpty() || (weakest.wear as int32) >= ITEM_REPLACE_WEAR;
-	if (due && masks.economy.has(EconomyAction.Mint) && mintPrice(pet.level as int32) <= spare) {
+	if (due && fed && price <= spare && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
 	}
 	return EconomyAction.Rest;
