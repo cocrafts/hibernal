@@ -31,6 +31,8 @@ import {
 	listPrice,
 	listingGain,
 	nightMeals,
+	foodReserve,
+	GIFT_RESERVE_DAYS,
 	adding,
 	unstocked,
 	Pantry,
@@ -103,6 +105,7 @@ export enum SelfFeature {
 	MarketGain,
 	MarketPrice,
 	DawnHearts,
+	FoodDays,
 }
 
 export enum NodeFeature {
@@ -146,7 +149,7 @@ export enum TargetFeature {
 	Grudge,
 }
 
-export const SELF_FEATURES: int32 = (SelfFeature.DawnHearts as int32) + 1;
+export const SELF_FEATURES: int32 = (SelfFeature.FoodDays as int32) + 1;
 export const NODE_FEATURES: int32 = (NodeFeature.BiteGuard as int32) + 1;
 export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
@@ -300,6 +303,9 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	const floor = pet.minHearts as int32;
 	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, stats.foodBps);
 	put(features, selfSlot(offset, SelfFeature.DawnHearts), dawn * 8);
+	const perDay = Math.max(foodReserve(level, hunger) / GIFT_RESERVE_DAYS, 1 as uint64);
+	const foodDays = Math.min(pet.burrow / perDay, 31 as uint64) as int32;
+	put(features, selfSlot(offset, SelfFeature.FoodDays), foodDays * 4);
 }
 
 function opensWith(this tree: Tree, id: int32): int32 {
@@ -467,10 +473,10 @@ test "money features are quarter octaves of a thousandth of a token" {
 }
 
 test "sizes follow the three heads" {
-	assert SELF_FEATURES == 45;
-	assert observationSize(Head.Economy) == 45;
-	assert observationSize(Head.Node) == 45 + 65 * 22;
-	assert observationSize(Head.Attack) == 45 + 11 * 13;
+	assert SELF_FEATURES == 46;
+	assert observationSize(Head.Economy) == 46;
+	assert observationSize(Head.Node) == 46 + 65 * 22;
+	assert observationSize(Head.Attack) == 46 + 11 * 13;
 	assert actionCount(Head.Economy) == 12;
 	assert actionCount(Head.Node) == 65;
 	assert actionCount(Head.Attack) == 41;
@@ -488,6 +494,13 @@ test "a pet sees the hearts it will wake up with, pantry meals included" {
 	pets[4] = { ...pets[4], pantry: Pantry.unstocked().adding(Food.Large, 1) };
 	world.observeInto(4, Head.Economy, features, 0);
 	assert features[SelfFeature.DawnHearts as int32] > 0;
+	pets[4] = { ...pets[4], burrow: 0 };
+	world.observeInto(4, Head.Economy, features, 0);
+	assert features[SelfFeature.FoodDays as int32] == 0;
+	const perDay = foodReserve(pets[4].level as int32, hunger) / GIFT_RESERVE_DAYS;
+	pets[4] = { ...pets[4], burrow: perDay * 5 };
+	world.observeInto(4, Head.Economy, features, 0);
+	assert features[SelfFeature.FoodDays as int32] == 5 * 4;
 }
 
 test "a newborn sees itself, its legal nodes and no attackable target" {

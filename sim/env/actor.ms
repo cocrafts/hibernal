@@ -193,7 +193,7 @@ export function bestLegal(
 }
 
 test "each head gathers its own inputs" {
-	assert selfInputs(Head.Economy) == 45;
+	assert selfInputs(Head.Economy) == 46;
 	assert NODE_SELF_INPUTS == 8;
 	assert ATTACK_SELF_INPUTS == 12;
 	assert selfInput(Head.Economy, 5) == SelfFeature.Level;

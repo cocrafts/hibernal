@@ -2,12 +2,12 @@ import { STAKE_LEVELS, EconomyAction } from "./actions";
 import { Food } from "./emission";
 
 export const POLICY_MAGIC: int32 = 0x4e524248;
-export const POLICY_FORMAT: int32 = 5;
+export const POLICY_FORMAT: int32 = 6;
 export const POLICY_HEADER_BYTES: int32 = 16;
-export const POLICY_WIDTH: int32 = 45;
+export const POLICY_WIDTH: int32 = 46;
 export const ACTIVATION_MAX: int32 = 127;
 
-export const ECONOMY_INPUTS: int32 = 45;
+export const ECONOMY_INPUTS: int32 = 46;
 export const ECONOMY_HIDDEN: int32 = 32;
 export const ECONOMY_OUTPUTS: int32 = 12;
 export const NODE_INPUTS: int32 = 30;
@@ -178,10 +178,10 @@ function foldFamily(
 test "the policy fits one account and the heads follow each other" {
 	assert layerBytes(32, 32) == 1 + 1024 + 128;
 	assert economyOffset() == 16;
-	assert nodeOffset() == 16 + 1569 + 433;
+	assert nodeOffset() == 16 + 1601 + 433;
 	assert attackOffset() == nodeOffset() + 1089 + 37;
 	assert policyBytes() == attackOffset() + 929 + 577 + 81;
-	assert policyBytes() == 4731;
+	assert policyBytes() == 4763;
 	assert policyBytes() <= 10240;
 }
 
