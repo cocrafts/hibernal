@@ -267,7 +267,7 @@ Goal: the world looks alive from day one, and one or two early players cannot ta
   Full Mythic gear on one stat is +52%, which is ×2.3 income through `workPower²` (§9).
 - **Mint**: pay `$HBRN` (price rising with level), rarity and affixes drawn from VRF in the ER. Part of the price is burned, part goes to the pot `[split Open]`.
 - **Sell back to the system**: a formula price, e.g. 50% of mint price reduced by wear; the difference is burned. Because the price is a formula, wash trading between one owner's pets cannot move it.
-- **Pet-to-pet market**: list, buy, cancel inside the ER at zero transaction fee; a fee (e.g. 5%) goes to the pot.
+- **Pet-to-pet market**: list, buy, cancel inside the ER at zero transaction fee; a fee (e.g. 5%) goes to the pot. In the sim: one market per block at a formula price, one listing per pet, buyback after 3 days (`BRIEF.md` §3.12, `rules/market.ms`).
 - **Wear**: items lose value and bonus with use, so gear keeps being bought and rich pets do not compound forever.
 - **Storage** `[Proposed]`: equipped items packed into `Pet` (4 slots × 8 bytes: slot, rarity, affix, value, wear); unequipped and listed items as item accounts delegated to the ER. Whether accounts can be created inside the ER is Unknown (`SOLANA.md` §7).
 - **Lineage**: heirloom slots (§7) carry chosen items to the heir; the 30% inheritance tax could apply to item value.
