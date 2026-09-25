@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from hibernalTrain.env import HEADS, HibernalEnv
-from hibernalTrain.model import ECONOMY, PetPolicy, foldPortionSizes
+from hibernalTrain.model import ECONOMY, HEARTS_FEATURE, PetPolicy, foldEatIntoBuy, foldPortionSizes
 
 torch.manual_seed(3)
 env = HibernalEnv(seed=11, envCount=2, epochs=20)
@@ -25,7 +25,8 @@ while env.episode == 0:
         allowed = legal == 1
         ours = policy.integerLogits(head, torch.from_numpy(observations))
         if head == ECONOMY:
-            ours = foldPortionSizes(ours, torch.from_numpy(allowed))
+            full = torch.from_numpy(observations[:, HEARTS_FEATURE] >= 127)
+            ours = foldPortionSizes(foldEatIntoBuy(ours, torch.from_numpy(allowed), full), torch.from_numpy(allowed))
         ours = ours.numpy()
         theirs = env.policyLogits(0)
         compared[head] += int(allowed.sum())

@@ -9,11 +9,13 @@ import {
 	EconomyAction,
 	economyLogits,
 	foldPortionSizes,
+	foldEatIntoBuy,
 	nodeScore,
 	attackLogits,
 } from "../../rules/index";
 import {
 	ECONOMY_ACTIONS,
+	FEATURE_ONE,
 	Head,
 	SelfFeature,
 	SELF_FEATURES,
@@ -132,7 +134,10 @@ export function logitsInto(
 	if (head == Head.Economy) {
 		scratch.gather(head, observations, offset, 0, 0);
 		economyLogits(policy, scratch.input, scratch.hidden, scratch.logits);
-		foldPortionSizes(scratch.logits, economyMask(legal, legalOffset));
+		const mask = economyMask(legal, legalOffset);
+		const full = observations[offset + (SelfFeature.Hearts as int32)] >= FEATURE_ONE;
+		foldEatIntoBuy(scratch.logits, mask, full);
+		foldPortionSizes(scratch.logits, mask);
 		for (let action = 0; action < actionCount(head); action++) {
 			logits[logitsOffset + action] = scratch.logits[action];
 		}

@@ -133,6 +133,23 @@ export function attackLogits(
 	const _end = dense(policy, third, narrow, ATTACK_NARROW, logits, ATTACK_OUTPUTS, false);
 }
 
+export function foldEatIntoBuy(
+	logits: Span<int32>,
+	legal: BitSet<EconomyAction>,
+	full: boolean,
+): void {
+	if (full) { return; }
+	for (let size = 0; size <= (Food.Large as int32); size++) {
+		const eat = ((EconomyAction.EatSmall as int32) + size) as EconomyAction;
+		if (legal.has(eat)) { return; }
+	}
+	for (let size = 0; size <= (Food.Large as int32); size++) {
+		const eat = (EconomyAction.EatSmall as int32) + size;
+		const buy = (EconomyAction.BuySmall as int32) + size;
+		logits[buy] = Math.max(logits[buy], logits[eat]);
+	}
+}
+
 export function foldPortionSizes(logits: Span<int32>, legal: BitSet<EconomyAction>): void {
 	foldFamily(logits, legal, EconomyAction.BuySmall);
 	foldFamily(logits, legal, EconomyAction.EatSmall);
@@ -230,4 +247,23 @@ test "a portion size out of reach passes its logit to the nearest smaller legal 
 	foldPortionSizes(broke, (0 as BitSet<EconomyAction>).incl(EconomyAction.Rest));
 	assert broke[EconomyAction.Rest as int32] == 10;
 	assert broke[EconomyAction.BuySmall as int32] == -40;
+}
+
+test "a pet that wants to eat from an empty pantry buys that portion instead" {
+	const logits: int32[] = [10, 5, -40, -30, 20, 7, 60, 90, 0, 0];
+	const hungry = (0 as BitSet<EconomyAction>)
+		.incl(EconomyAction.Rest)
+		.incl(EconomyAction.BuySmall)
+		.incl(EconomyAction.BuyMedium);
+	foldEatIntoBuy(logits, hungry, false);
+	assert logits[EconomyAction.BuyMedium as int32] == 60;
+	assert logits[EconomyAction.BuyLarge as int32] == 90;
+	foldPortionSizes(logits, hungry);
+	assert logits[EconomyAction.BuyMedium as int32] == 90;
+	const sated: int32[] = [10, 5, -40, -30, 20, 7, 60, 90, 0, 0];
+	foldEatIntoBuy(sated, hungry, true);
+	assert sated[EconomyAction.BuyLarge as int32] == 20;
+	const stocked: int32[] = [10, 5, -40, -30, 20, 7, 60, 90, 0, 0];
+	foldEatIntoBuy(stocked, hungry.incl(EconomyAction.EatSmall), false);
+	assert stocked[EconomyAction.BuyLarge as int32] == 20;
 }

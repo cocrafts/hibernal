@@ -17,6 +17,17 @@ NODE_CANDIDATES, NODE_FEATURES = 65, 22
 TARGET_CANDIDATES, TARGET_FEATURES = 11, 13
 STAKE_LEVELS = 4
 BUY_SMALL, EAT_SMALL, PORTION_SIZES = 2, 5, 3
+HEARTS_FEATURE = 0
+
+
+def foldEatIntoBuy(logits, legal, full):
+    folded = logits.clone()
+    eats = legal[:, EAT_SMALL:EAT_SMALL + PORTION_SIZES].any(dim=1)
+    fold = ~eats & ~full
+    for size in range(PORTION_SIZES):
+        buy, eat = BUY_SMALL + size, EAT_SMALL + size
+        folded[:, buy] = torch.where(fold, torch.maximum(logits[:, buy], logits[:, eat]), logits[:, buy])
+    return folded
 
 
 def foldPortionSizes(logits, legal):
@@ -106,7 +117,8 @@ class PetPolicy(nn.Module):
     def maskedLogits(self, head, observations, legal):
         logits = self.logits(head, observations)
         if head == ECONOMY:
-            logits = foldPortionSizes(logits, legal)
+            full = observations[:, HEARTS_FEATURE] >= ACTIVATION_MAX
+            logits = foldPortionSizes(foldEatIntoBuy(logits, legal, full), legal)
         return logits.masked_fill(~legal, -1e9)
 
     def value(self, observations):
