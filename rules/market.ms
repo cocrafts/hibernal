@@ -7,6 +7,7 @@ import {
 	GearSlot,
 	Item,
 	ItemSkill,
+	ITEM_BONUS_PERCENT,
 	minted,
 	mintPrice,
 	sellPrice,
@@ -21,7 +22,7 @@ import { PetAndGlobal, withWorkPower, born, genesis } from "./life";
 
 export const MARKET_FEE_BPS: int32 = 500;
 export const LISTING_DAYS: uint64 = 3;
-export const FAIR_SCORE_BPS: int32 = 360;
+export const FAIR_SCORE_BPS: int32 = 360 * ITEM_BONUS_PERCENT / 100;
 
 export struct Listing {
 	item: Item;

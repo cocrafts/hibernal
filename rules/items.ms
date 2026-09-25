@@ -13,6 +13,7 @@ export const LEGENDARY_ITEM_UNTIL_BPS: int32 = 9950;
 export const SKILL_SCORE_BPS: int32 = 500;
 export const ANTI_ROBBERY_CUT_BPS: int32 = 4000;
 export const DAMAGE_GUARD_BPS: int32 = 4000;
+export const ITEM_BONUS_PERCENT: int32 = 100;
 
 export enum ItemSkill {
 	None,
@@ -84,13 +85,14 @@ export function rolledSkill(seed: uint64, grade: TalentGrade): ItemSkill {
 }
 
 export function gradeBonusBps(grade: TalentGrade): int32 {
-	return match (grade) {
+	const bonus = match (grade) {
 		TalentGrade.Common => 200,
 		TalentGrade.Rare => 400,
 		TalentGrade.Epic => 700,
 		TalentGrade.Legendary => 1000,
 		TalentGrade.Mythic => 1300,
 	};
+	return bonus * ITEM_BONUS_PERCENT / 100;
 }
 
 export function minted(
