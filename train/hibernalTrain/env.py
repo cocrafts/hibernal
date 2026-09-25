@@ -8,7 +8,7 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 LIBRARY = REPO / "out" / "env" / ("libhibernal.dylib" if sys.platform == "darwin" else "libhibernal.so")
 HEADS = ("economy", "node", "attack")
-SELF_FEATURES = 44
+SELF_FEATURES = 45
 FEATURE_ONE = 127
 DONE_RUNNING, DONE_DIED, DONE_TRUNCATED = 0, 1, 2
 CONTROL_LEARNER, CONTROL_TEACHER = -2, -1

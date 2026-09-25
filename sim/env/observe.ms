@@ -30,6 +30,10 @@ import {
 	spareSlot,
 	listPrice,
 	listingGain,
+	nightMeals,
+	adding,
+	unstocked,
+	Pantry,
 } from "../../rules/index";
 import { has, touches, built, regionOf } from "../../rules/tree";
 import {
@@ -98,6 +102,7 @@ export enum SelfFeature {
 	Listed,
 	MarketGain,
 	MarketPrice,
+	DawnHearts,
 }
 
 export enum NodeFeature {
@@ -141,7 +146,7 @@ export enum TargetFeature {
 	Grudge,
 }
 
-export const SELF_FEATURES: int32 = (SelfFeature.MarketPrice as int32) + 1;
+export const SELF_FEATURES: int32 = (SelfFeature.DawnHearts as int32) + 1;
 export const NODE_FEATURES: int32 = (NodeFeature.BiteGuard as int32) + 1;
 export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
@@ -290,6 +295,10 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 		put(features, selfSlot(offset, SelfFeature.MarketGain), pet.listingGain(listing) / 11);
 		put(features, selfSlot(offset, SelfFeature.MarketPrice), moneyFeature(listing.price));
 	}
+	const hungry = (pet.hearts as int32) - stats.hungerPerDay();
+	const floor = pet.minHearts as int32;
+	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, stats.foodBps);
+	put(features, selfSlot(offset, SelfFeature.DawnHearts), dawn * 8);
 }
 
 function opensWith(this tree: Tree, id: int32): int32 {
@@ -457,13 +466,27 @@ test "money features are quarter octaves of a thousandth of a token" {
 }
 
 test "sizes follow the three heads" {
-	assert SELF_FEATURES == 44;
-	assert observationSize(Head.Economy) == 44;
-	assert observationSize(Head.Node) == 44 + 65 * 22;
-	assert observationSize(Head.Attack) == 44 + 11 * 13;
+	assert SELF_FEATURES == 45;
+	assert observationSize(Head.Economy) == 45;
+	assert observationSize(Head.Node) == 45 + 65 * 22;
+	assert observationSize(Head.Attack) == 45 + 11 * 13;
 	assert actionCount(Head.Economy) == 12;
 	assert actionCount(Head.Node) == 65;
 	assert actionCount(Head.Attack) == 41;
+}
+
+test "a pet sees the hearts it will wake up with, pantry meals included" {
+	const world = World.create(1, 6).beginEpoch(1);
+	const pets = world.pets;
+	const pet = pets[4];
+	const hunger = pet.stats().hungerPerDay();
+	pets[4] = { ...pet, hearts: hunger as uint8, pantry: Pantry.unstocked() };
+	const features = zeros(observationSize(Head.Economy));
+	world.observeInto(4, Head.Economy, features, 0);
+	assert features[SelfFeature.DawnHearts as int32] == 0;
+	pets[4] = { ...pets[4], pantry: Pantry.unstocked().adding(Food.Large, 1) };
+	world.observeInto(4, Head.Economy, features, 0);
+	assert features[SelfFeature.DawnHearts as int32] > 0;
 }
 
 test "a newborn sees itself, its legal nodes and no attackable target" {
