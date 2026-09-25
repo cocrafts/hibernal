@@ -277,7 +277,7 @@ Three seeds (5, 6, 7) from the same clone, 30 rollouts, lr 1e-3, 4 passes, `--al
 
 Not in package 5: a persona signal that separates Greedy from Vengeful, hearts held above the floor, long self-play, sampling on chain (§8.4), the social head, CU in LiteSVM.
 
-### Package 5b: a world that lives and dies — Measured
+### Package 5b: a world that lives and dies — Measured, superseded by 5c
 
 `rules/` gained lifespan, decline and the heir package (`BRIEF.md` §3.7) and Glass Cannon keeps its hearts (§3.9). In `sim/`: each persona's teacher takes only its own keystone (`sim/teacher.ms`), the grudge moved into `World.robberOf` with the thirteenth target feature above (so it did merge, in the Vengeful teacher's quarter-stake strike back), and `World.staggered` claims the 200 first pets over days 1–30. Engine `13955993101127523059`.
 
@@ -343,6 +343,34 @@ uv run python ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 
 - Food is not a pressure: nobody starves in any run, and pets hold 4–6 hearts on a floor of 2.
 
 Not measured here: the reward-variant and pool rows of package 5 on this engine, runs longer than 30 rollouts, self-play.
+
+### Package 5c: the game-design world — Measured
+
+The rules now carry the game-design lane of `docs/SIM.md` (2026-09-24 and 25): pantry, quota and bites by stake, hearts that scale with max hearts, level growth and talent, tree v2, drawn turn order, D34 weight `(work_power + 40)²` with the reward floor, food ×7, late-level XP, the owner layer (bonding, owner food, growth, insurance, gifts), items with mint, wear, skills and `SellItem` (D35), wild pets on empty slots (D37), rage against a repeat robber, absolute bites. The numbers and the reasons for each knob live in `docs/SIM.md`; the rules as built in `BRIEF.md`. The policy blob is format 3, 4,499 bytes: 40 self features, economy head 40 → 32 → 10.
+
+Training additions, each measured on this lane:
+
+- `bc.py --studentRounds 2`: the clone plays whole episodes and the teacher labels what it reaches (package 4 note above).
+- Decode folds in `rules/policy.ms`, applied the same way by the env, by PyTorch and later by `act`: an out-of-reach portion size folds into the next smaller one (`foldPortionSizes`), and an eat wish on an empty pantry of a pet that is not full folds into buying that portion (`foldEatIntoBuy`). Without the second fold PPO left a rich, hungry pet resting now and then — its top logit was the illegal eat — and 2 of 3 seeds starved one pet with money (engine `12482136861935123128`, 8 worlds). The fold only works when it is trained: applied at decode to those policies it removed the case but pets bought food whenever their eat logit led, spent 80% of income on food and starved 106–166 pets.
+- `ppo.py --imitation w` (off by default): adds `w` × cross-entropy to the teacher's economy label on the states PPO reaches. At `w` = 0.5 without the eat fold it also reached 0 starved with money, but PPO fell to −27 / −8 / +12% against the teacher in mixed worlds and 2.1–4.0 early deaths per 100 lives.
+
+Measured on engine `12482136861935123128`, commit `a516f20` (`~/metacraft/hibernal-train/step15`): `bc.py --envs 8 --steps 4000 --studentRounds 2`, then `ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7; `evaluate.py` (16 worlds, 4 per group) and `health.py` (8 worlds, every slot one controller):
+
+| | Teacher | Clone | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with food or money (evaluate, all groups; health) | 0; 0 | 0; 0 | 0 / 0 / 0; 0 / 0 / 0 |
+| Early deaths per 100 lives (health) | 1.5 | 1.3 | 2.3 / 1.8 / 2.0 |
+| Own-world wealth, `$HBRN` per pet | 24,511 | 24,279 | 35,470 / 35,425 / 35,415 |
+| Mixed world against the teacher | +1.9% (seat noise) | −0.5% | +18.2 / +25.2 / +26.8% |
+| Fights per pet | 55.6 | 55.5 | 59.3 / 58.3 / 69.0 |
+| Food bill at level 20, % of work income | 56 | 57 | 33 / 33 / 32 |
+| Item mints per life, % of income on items | 4.6, 9.7% | 3.9, 8.2% | 2.4 / 2.5 / 2.0, 4–5% |
+| Start-region wealth, richest over poorest | 3.2 | 2.5 | 2.6 / 1.6 / 2.4 |
+| Persona told from one log, with revenge | 0.86 | 0.91 | 0.63 / 0.67 / 0.61 |
+
+- The learned pets eat far more cheaply than the teacher (a third of income against a half) and still die a little more often, mostly pets whose owner never visits (4.6–5.0 early deaths per 100 lives against 0 for devoted owners).
+- Persona recall falls further under PPO than in 5b (0.61–0.67); the reward does not ask for it (`docs/SIM.md` D2).
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
