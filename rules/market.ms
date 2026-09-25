@@ -8,6 +8,7 @@ import {
 	Item,
 	ItemSkill,
 	ITEM_BONUS_PERCENT,
+	gradeBonusBps,
 	minted,
 	mintPrice,
 	sellPrice,
@@ -192,7 +193,8 @@ test "a pet lists its best item off its main stat at a price that follows the it
 	if (!listed.ok) { return; }
 	assert listed.value.listing.item == might;
 	assert listed.value.pet.gear.head.isEmpty();
-	assert listed.value.listing.price == mintPrice(1) * 700 / (FAIR_SCORE_BPS as uint64);
+	const epic = gradeBonusBps(TalentGrade.Epic) as uint64;
+	assert listed.value.listing.price == mintPrice(1) * epic / (FAIR_SCORE_BPS as uint64);
 	assert listed.value.listing.listedEpoch == 9 && !listed.value.listing.expiredAt(11);
 	assert listed.value.listing.expiredAt(12);
 	const focused: Pet = { ...worker, gear: Gear.bare().with(GearSlot.Hands, forage) };
@@ -224,7 +226,7 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 		sellerBorn: 0,
 		listedEpoch: 1,
 	};
-	assert worker.listingGain(listing) == 700;
+	assert worker.listingGain(listing) == gradeBonusBps(TalentGrade.Epic);
 	const bought = worker.boughtListing(listing, 2, newborn.global);
 	assert bought.ok;
 	if (!bought.ok) { return; }

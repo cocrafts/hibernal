@@ -2,10 +2,10 @@ import { BPS, HBRN_UNIT } from "./units";
 import { splitmix } from "./rng";
 import { TalentGrade, TalentKind } from "./talent";
 
-export const MINT_BASE_PRICE: uint64 = 600;
+export const MINT_BASE_PRICE: uint64 = 300;
 export const SELL_BACK_PERCENT: uint64 = 50;
 export const ITEM_WEAR_PER_DAY: int32 = 1;
-export const ITEM_WEAR_MAX: int32 = 100;
+export const ITEM_WEAR_MAX: int32 = 200;
 export const COMMON_ITEM_UNTIL_BPS: int32 = 5500;
 export const RARE_ITEM_UNTIL_BPS: int32 = 8500;
 export const EPIC_ITEM_UNTIL_BPS: int32 = 9700;
@@ -13,7 +13,7 @@ export const LEGENDARY_ITEM_UNTIL_BPS: int32 = 9950;
 export const SKILL_SCORE_BPS: int32 = 500;
 export const ANTI_ROBBERY_CUT_BPS: int32 = 4000;
 export const DAMAGE_GUARD_BPS: int32 = 4000;
-export const ITEM_BONUS_PERCENT: int32 = 100;
+export const ITEM_BONUS_PERCENT: int32 = 200;
 
 export enum ItemSkill {
 	None,
@@ -279,10 +279,11 @@ test "items roll grades like talent, add a worn share of their bonus and sell be
 	assert common > 2000 && common < 2400;
 	assert mythic < 60;
 	const fresh = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
-	assert fresh.bonusBps() == 700;
-	const half = fresh.wornBy(50);
-	assert half.bonusBps() == 350;
-	assert fresh.wornBy(500).wear == 100;
+	const epic = gradeBonusBps(TalentGrade.Epic);
+	assert fresh.bonusBps() == epic;
+	const half = fresh.wornBy(ITEM_WEAR_MAX / 2);
+	assert half.bonusBps() == epic / 2;
+	assert (fresh.wornBy(ITEM_WEAR_MAX * 5).wear as int32) == ITEM_WEAR_MAX;
 	assert fresh.sellPrice(20) == mintPrice(20) / 2;
 	assert half.sellPrice(20) == mintPrice(20) / 4;
 	assert Item.none().bonusBps() == 0;
@@ -293,8 +294,9 @@ test "gear sums bonuses per stat and names its weakest slot" {
 		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None))
 		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None))
 		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None));
-	assert gear.statBonusBps(TalentKind.Might) == 1100;
-	assert gear.statBonusBps(TalentKind.Grit) == 200;
+	const might = gradeBonusBps(TalentGrade.Rare) + gradeBonusBps(TalentGrade.Epic);
+	assert gear.statBonusBps(TalentKind.Might) == might;
+	assert gear.statBonusBps(TalentKind.Grit) == gradeBonusBps(TalentGrade.Common);
 	assert gear.statBonusBps(TalentKind.Forage) == 0;
 	assert gear.weakestSlot() == GearSlot.Feet;
 	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.AntiRobbery);
