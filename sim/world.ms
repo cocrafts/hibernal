@@ -777,7 +777,7 @@ test "a dead pet has empty masks and is buried once" {
 
 test "a listed item sells to a pet that wants it, and an unsold one is bought back" {
 	let world = World.create(1, 6).beginEpoch(1);
-	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
+	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1);
 	world.pets[0] = { ...world.pets[0], gear: Gear.bare().with(GearSlot.Head, might) };
 	assert world.economyMaskFor(0).has(EconomyAction.ListItem);
 	world = world.applyEconomy(0, EconomyAction.ListItem);
@@ -806,7 +806,7 @@ test "a listed item sells to a pet that wants it, and an unsold one is bought ba
 	assert world.market.length == 1;
 	world = world.endEpoch().beginEpoch(1 + LISTING_DAYS);
 	assert world.market.length == 0;
-	assert world.pets[0].burrow == listedBurrow + might.sellPrice(world.pets[0].level as int32);
+	assert world.pets[0].burrow == listedBurrow + might.sellPrice();
 }
 
 test "an heir takes the slot after the grace period" {

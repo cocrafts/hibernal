@@ -286,7 +286,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	put(features, selfSlot(offset, SelfFeature.BuysLeft), buysLeft * 40);
 	const spare = pet.gear.spareSlot(pet.focusStat());
 	if (spare.ok) {
-		const price = pet.gear.at(spare.value).listPrice(level);
+		const price = pet.gear.at(spare.value).listPrice();
 		put(features, selfSlot(offset, SelfFeature.SpareItemPrice), moneyFeature(price));
 	}
 	put(features, selfSlot(offset, SelfFeature.Listed), flag(world.hasListing(index)));

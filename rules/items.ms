@@ -34,6 +34,7 @@ export struct Item {
 	stat: uint8;
 	wear: uint8;
 	skill: uint8;
+	level: uint8;
 }
 
 export struct Gear {
@@ -44,7 +45,7 @@ export struct Gear {
 }
 
 export function none(this typeof Item): Item {
-	return { rarity: 0, stat: TalentKind.None as uint8, wear: 0, skill: ItemSkill.None as uint8 };
+	return { rarity: 0, stat: TalentKind.None as uint8, wear: 0, skill: ItemSkill.None as uint8, level: 0 };
 }
 
 export function bare(this typeof Gear): Gear {
@@ -100,12 +101,14 @@ export function minted(
 	grade: TalentGrade,
 	stat: TalentKind,
 	skill: ItemSkill,
+	level: int32,
 ): Item {
 	return {
 		rarity: ((grade as int32) + 1) as uint8,
 		stat: stat as uint8,
 		wear: 0,
 		skill: skill as uint8,
+		level: level as uint8,
 	};
 }
 
@@ -134,10 +137,11 @@ export function mintPrice(level: int32): uint64 {
 	return MINT_BASE_PRICE * HBRN_UNIT * ((20 + level) as uint64) / 20;
 }
 
-export function sellPrice(this item: Item, level: int32): uint64 {
+export function sellPrice(this item: Item): uint64 {
 	if (item.isEmpty()) { return 0; }
 	const left = (ITEM_WEAR_MAX - (item.wear as int32)) as uint64;
-	return mintPrice(level) * SELL_BACK_PERCENT / 100 * left / (ITEM_WEAR_MAX as uint64);
+	const price = mintPrice(item.level as int32);
+	return price * SELL_BACK_PERCENT / 100 * left / (ITEM_WEAR_MAX as uint64);
 }
 
 export function at(this gear: Gear, slot: GearSlot): Item {
@@ -212,22 +216,22 @@ export function itemCount(this gear: Gear): int32 {
 	return count;
 }
 
-export function heirlooms(this gear: Gear, kept: int32, level: int32): [Gear, uint64] {
+export function heirlooms(this gear: Gear, kept: int32): [Gear, uint64] {
 	let left = gear;
 	let proceeds: uint64 = 0;
 	for (let count = gear.itemCount(); count > kept; count--) {
 		const weakest = left.weakestItemSlot();
 		if (!weakest.ok) { break; }
-		proceeds += left.at(weakest.value).sellPrice(level);
+		proceeds += left.at(weakest.value).sellPrice();
 		left = left.with(weakest.value, Item.none());
 	}
 	return [left, proceeds];
 }
 
-export function resaleValue(this gear: Gear, level: int32): uint64 {
+export function resaleValue(this gear: Gear): uint64 {
 	let value: uint64 = 0;
 	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
-		value += gear.at(ordinal as GearSlot).sellPrice(level);
+		value += gear.at(ordinal as GearSlot).sellPrice();
 	}
 	return value;
 }
@@ -278,28 +282,30 @@ test "items roll grades like talent, add a worn share of their bonus and sell be
 	}
 	assert common > 2000 && common < 2400;
 	assert mythic < 60;
-	const fresh = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
+	const fresh = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 20);
 	const epic = gradeBonusBps(TalentGrade.Epic);
 	assert fresh.bonusBps() == epic;
 	const half = fresh.wornBy(ITEM_WEAR_MAX / 2);
 	assert half.bonusBps() == epic / 2;
 	assert (fresh.wornBy(ITEM_WEAR_MAX * 5).wear as int32) == ITEM_WEAR_MAX;
-	assert fresh.sellPrice(20) == mintPrice(20) / 2;
-	assert half.sellPrice(20) == mintPrice(20) / 4;
+	assert fresh.sellPrice() == mintPrice(20) / 2;
+	assert half.sellPrice() == mintPrice(20) / 4;
+	const early: Item = { ...fresh, level: 1 };
+	assert early.sellPrice() == mintPrice(1) / 2;
 	assert Item.none().bonusBps() == 0;
 }
 
 test "gear sums bonuses per stat and names its weakest slot" {
 	const gear = Gear.bare()
-		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None))
-		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None))
-		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None));
+		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None, 20))
+		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 20))
+		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None, 20));
 	const might = gradeBonusBps(TalentGrade.Rare) + gradeBonusBps(TalentGrade.Epic);
 	assert gear.statBonusBps(TalentKind.Might) == might;
 	assert gear.statBonusBps(TalentKind.Grit) == gradeBonusBps(TalentGrade.Common);
 	assert gear.statBonusBps(TalentKind.Forage) == 0;
 	assert gear.weakestSlot() == GearSlot.Feet;
-	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.AntiRobbery);
+	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.AntiRobbery, 20);
 	const full = gear.with(GearSlot.Feet, mythic);
 	assert full.weakestSlot() == GearSlot.Hands;
 	assert full.allWornBy(10).head.wear == 10;
@@ -307,15 +313,15 @@ test "gear sums bonuses per stat and names its weakest slot" {
 
 test "an heir keeps the best items and the estate sells the rest back" {
 	const gear = Gear.bare()
-		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None))
-		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None))
-		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None));
+		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None, 20))
+		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 20))
+		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None, 20));
 	assert gear.itemCount() == 3;
-	const [kept, proceeds] = gear.heirlooms(2, 20);
+	const [kept, proceeds] = gear.heirlooms(2);
 	assert kept.itemCount() == 2;
 	assert kept.hands.isEmpty() && !kept.body.isEmpty() && !kept.head.isEmpty();
-	assert proceeds == gear.hands.sellPrice(20);
-	const [same, nothing] = gear.heirlooms(4, 20);
+	assert proceeds == gear.hands.sellPrice();
+	const [same, nothing] = gear.heirlooms(4);
 	assert same.itemCount() == 3 && nothing == 0;
 }
 
@@ -327,14 +333,14 @@ test "strong items may carry one skill, which wards loot or guards damage once o
 		if (rolledSkill(seed, TalentGrade.Legendary) != ItemSkill.None) { skilled += 1; }
 	}
 	assert skilled > 330 && skilled < 470;
-	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery);
+	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery, 20);
 	const warded = Gear.bare().with(GearSlot.Feet, ward);
 	assert warded.wardedLoot(1000) == 600;
 	assert Gear.bare().wardedLoot(1000) == 1000;
-	const guard = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.DamageGuard);
+	const guard = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.DamageGuard, 20);
 	const guarded = Gear.bare().with(GearSlot.Head, guard);
 	assert guarded.damageGuardBps() == DAMAGE_GUARD_BPS;
-	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive);
+	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive, 20);
 	const reviving = Gear.bare().with(GearSlot.Body, charm);
 	assert reviving.hasSkill(ItemSkill.Revive);
 	assert !reviving.spentSkill(ItemSkill.Revive).hasSkill(ItemSkill.Revive);

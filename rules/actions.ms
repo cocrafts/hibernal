@@ -218,10 +218,10 @@ export function mintItem(
 	const slot = pet.gear.weakestSlot();
 	const worn = pet.gear.at(slot);
 	const grade = rolledGrade(seed);
-	const fresh = Item.minted(grade, rolledStat(seed), rolledSkill(seed, grade));
+	const fresh = Item.minted(grade, rolledStat(seed), rolledSkill(seed, grade), level);
 	const upgrade = fresh.score() > worn.score();
 	const sold = upgrade ? worn : fresh;
-	const spent = price - sold.sellPrice(level);
+	const spent = price - sold.sellPrice();
 	const geared: Pet = {
 		...pet,
 		burrow: pet.burrow - spent,
@@ -240,7 +240,7 @@ export function soldItem(this pet: Pet, global: GlobalConfig): Result<PetAndGlob
 	const found = pet.gear.weakestItemSlot();
 	if (!found.ok) { return Result.err(EconomyError.NoGear); }
 	const slot = found.value;
-	const price = pet.gear.at(slot).sellPrice(pet.level as int32);
+	const price = pet.gear.at(slot).sellPrice();
 	const bare: Pet = {
 		...pet,
 		burrow: pet.burrow + price,
@@ -832,7 +832,7 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 
 test "a revive charm spares a bitten pet without a burn, and a ward cuts the loot" {
 	const duel = duelOver(0);
-	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive);
+	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive, 1);
 	const charmed: Pet = {
 		...duel.defender,
 		hearts: 1,
@@ -857,7 +857,7 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 	}
 	assert saves > 0;
 	const rich = duelOver(900 * HBRN_UNIT);
-	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery);
+	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery, 1);
 	const warded: Pet = {
 		...rich.defender,
 		gear: Gear.bare().with(GearSlot.Feet, ward),
@@ -908,8 +908,8 @@ test "rage builds against a repeat robber, strengthens only that fight and ends 
 
 test "a pet sells its weakest item for cash and cannot sell bare" {
 	const duel = duelOver(0);
-	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None);
-	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None);
+	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None, 1);
+	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None, 1);
 	const geared: Pet = {
 		...duel.defender,
 		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
@@ -919,7 +919,7 @@ test "a pet sells its weakest item for cash and cannot sell bare" {
 	if (!sold.ok) { return; }
 	assert sold.value.pet.gear.feet.isEmpty();
 	assert !sold.value.pet.gear.head.isEmpty();
-	assert sold.value.pet.burrow == geared.burrow + common.sellPrice(geared.level as int32);
+	assert sold.value.pet.burrow == geared.burrow + common.sellPrice();
 	const bare = duel.defender.soldItem(duel.global);
 	assert !bare.ok;
 	if (!bare.ok) { assert bare.error == EconomyError.NoGear; }

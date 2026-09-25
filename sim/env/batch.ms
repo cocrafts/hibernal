@@ -143,7 +143,7 @@ export function shaping(this weights: RewardWeights, moment: Moment, world: Worl
 }
 
 export function score(this pet: Pet, weights: RewardWeights): int64 {
-	const assets = pet.harvest + pet.burrow + pet.gear.resaleValue(pet.level as int32);
+	const assets = pet.harvest + pet.burrow + pet.gear.resaleValue();
 	const wealth = (assets / MILLI_PER_UNIT) as int64;
 	if (pet.agedOut()) { return wealth; }
 	if (!pet.alive) { return -weights.deathMilli; }

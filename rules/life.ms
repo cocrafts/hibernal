@@ -400,7 +400,7 @@ export function heirOf(
 	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, global);
 	const generation = (dead.lineageGeneration as int32) + 1;
 	const points = (hatched.pet.pointsUnspent as int32) + Math.min(generation, HEIR_POINTS_CAP);
-	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS, dead.level as int32);
+	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS);
 	const heir: Pet = {
 		...hatched.pet,
 		burrow: dead.burrow + proceeds,
@@ -488,7 +488,7 @@ test "hunger is a share of max hearts that might and forage raise and grit lower
 test "gear makes a pet stronger without making it hungrier" {
 	const newborn = hatch(Region.Fighter, 0, GlobalConfig.genesis(0));
 	const strong: Pet = { ...newborn.pet, might: 400, maxHearts: 40 };
-	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.None);
+	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.None, 1);
 	const armed: Pet = { ...strong, gear: Gear.bare().with(GearSlot.Head, mythic) };
 	assert armed.stats().might > strong.stats().might;
 	assert armed.stats().hungerPerDay() > armed.ownStats().hungerPerDay();
