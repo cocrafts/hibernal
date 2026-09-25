@@ -12,6 +12,21 @@ import {
 	foodCost,
 	oddsAgainst,
 	modsFromMask,
+	HEIRLOOM_SLOTS,
+	Gear,
+	GearSlot,
+	Item,
+	Talent,
+	rolledGrade,
+	rolledStat,
+	rolledSkill,
+	minted,
+	wornBy,
+	with,
+	heirlooms,
+	totalBonusBps,
+	rolled,
+	lineageNudgeBps,
 } from "../rules/index";
 import { ACTS_PER_EPOCH, World } from "./world";
 import { playEpisode } from "./teacher";
@@ -134,6 +149,26 @@ export function digestObserve(): uint64 {
 	return digest.value;
 }
 
+export function digestLineage(): uint64 {
+	let digest: Digest = { value: 6 };
+	for (let seed: uint64 = 0; seed < 400; seed++) {
+		let gear = Gear.bare();
+		for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+			const draw = splitmix(seed * 4 + (ordinal as uint64));
+			const grade = rolledGrade(draw);
+			const item = Item.minted(grade, rolledStat(draw), rolledSkill(draw, grade));
+			gear = gear.with(ordinal as GearSlot, item.wornBy((draw % 90) as int32));
+		}
+		const [kept, proceeds] = gear.heirlooms(HEIRLOOM_SLOTS, ((seed % 20) as int32) + 1);
+		const talent = Talent.rolled(seed, lineageNudgeBps((seed % 7) as int32));
+		digest = digest.absorb(proceeds ^
+			((kept.totalBonusBps() as uint64) << 32) ^
+			((talent.multiplierBps as uint64) << 48) ^
+			((talent.kind as int32) as uint64));
+	}
+	return digest.value;
+}
+
 export const ENGINE_FIGHTS: int32 = 20000;
 
 export function engineVersion(): uint64 {
@@ -145,5 +180,6 @@ export function engineVersion(): uint64 {
 		.absorb(digestOdds())
 		.absorb(digestWorld())
 		.absorb(digestObserve())
+		.absorb(digestLineage())
 		.value;
 }
