@@ -84,6 +84,7 @@ def updateHead(policy, optimizer, head, batch, advantages, arguments):
     legal = torch.from_numpy(batch["legal"])
     actions = torch.from_numpy(batch["actions"])
     before = torch.from_numpy(batch["logProbabilities"])
+    teacher = torch.from_numpy(batch["teacher"]) if "teacher" in batch else None
     gains = torch.from_numpy(advantages[batch["steps"], batch["rows"]])
     gains = (gains - gains.mean()) / (gains.std() + 1e-8)
     count = len(actions)
@@ -103,6 +104,9 @@ def updateHead(policy, optimizer, head, batch, advantages, arguments):
             surrogate = torch.min(ratio * gains[part], clipped * gains[part]).mean()
             entropy = distribution.entropy().mean()
             loss = -surrogate - arguments.entropy * entropy
+            if "teacher" in batch and arguments.imitation > 0:
+                imitated = policy.maskedLogits(head, observations[part], legal[part])
+                loss = loss + arguments.imitation * torch.nn.functional.cross_entropy(imitated, teacher[part])
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
@@ -155,6 +159,7 @@ def main():
     parser.add_argument("--pool", choices=("uniform", "prioritized"), default="uniform")
     parser.add_argument("--alternate", action="store_true")
     parser.add_argument("--threads", type=int, default=0)
+    parser.add_argument("--imitation", type=float, default=0.0)
     arguments = parser.parse_args()
     if arguments.threads > 0:
         torch.set_num_threads(arguments.threads)
@@ -173,7 +178,7 @@ def main():
     for iteration in range(arguments.iterations):
         clock = time.perf_counter()
         controllers = assignOpponents(env, pool, arguments.alternate)
-        rollout = Rollout(env).collect(policy)
+        rollout = Rollout(env, (0,) if arguments.imitation > 0 else ()).collect(policy)
         collected = time.perf_counter() - clock
         advantages, returns = rollout.advantages(arguments.discount, arguments.smoothing)
         criticLoss, explained = updateCritic(policy, criticOptimizer, rollout, returns, arguments)

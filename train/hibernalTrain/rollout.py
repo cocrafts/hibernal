@@ -12,8 +12,9 @@ def holdActions(env, head):
 
 
 class Rollout:
-    def __init__(self, env):
+    def __init__(self, env, teacherHeads=()):
         self.env = env
+        self.teacherHeads = teacherHeads
         steps = env.stepsPerEpisode
         self.selfObservations = np.zeros((steps, env.rows, SELF_FEATURES), dtype=np.int8)
         self.values = np.zeros((steps, env.rows), dtype=np.float32)
@@ -22,7 +23,7 @@ class Rollout:
         self.actors = np.zeros((steps, env.rows), dtype=np.int64)
         self.active = np.zeros((steps, env.rows), dtype=bool)
         self.choices = [
-            {"observations": [], "legal": [], "actions": [], "logProbabilities": [], "steps": [], "rows": []}
+            {"observations": [], "legal": [], "actions": [], "logProbabilities": [], "steps": [], "rows": [], "teacher": []}
             for _ in HEADS
         ]
 
@@ -51,6 +52,8 @@ class Rollout:
                     bucket["logProbabilities"].append(distribution.log_prob(sampled).numpy())
                     bucket["steps"].append(np.full(len(choosing), step, dtype=np.int32))
                     bucket["rows"].append(choosing.astype(np.int32))
+                    if head in self.teacherHeads:
+                        bucket["teacher"].append(env.teacherActions()[choosing].astype(np.int64))
                     actions[choosing] = sampled.numpy().astype(np.int32)
             forced = np.flatnonzero(legalCount == 1)
             actions[forced] = legal[forced].argmax(axis=1).astype(np.int32)
@@ -113,7 +116,7 @@ class Rollout:
         bucket = self.choices[head]
         if not bucket["actions"]:
             return None
-        return {key: np.concatenate(parts) for key, parts in bucket.items()}
+        return {key: np.concatenate(parts) for key, parts in bucket.items() if parts}
 
     def rewardPerPet(self):
         return float(self.rewards.sum() * REWARD_UNIT / 1000.0 / (self.env.rows * SLOTS))
