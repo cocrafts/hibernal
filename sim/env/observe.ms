@@ -279,7 +279,8 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	put(features, selfSlot(offset, SelfFeature.WeakestItemBonus), weakest.bonusBps() / 11);
 	const mintsAfforded = Math.min(pet.burrow / mintPrice(level), 31 as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.MintsAfforded), mintsAfforded * 4);
-	const hungerShare = stats.hungerPerDay() * FEATURE_ONE / Math.max(pet.maxHearts as int32, 1);
+	const hunger = pet.ownStats().hungerPerDay();
+	const hungerShare = hunger * FEATURE_ONE / Math.max(pet.maxHearts as int32, 1);
 	put(features, selfSlot(offset, SelfFeature.HungerShare), hungerShare);
 	const buysLeft = FOOD_BUYS_PER_DAY - (pet.foodBoughtToday as int32);
 	put(features, selfSlot(offset, SelfFeature.BuysLeft), buysLeft * 40);
@@ -295,7 +296,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 		put(features, selfSlot(offset, SelfFeature.MarketGain), pet.listingGain(listing) / 11);
 		put(features, selfSlot(offset, SelfFeature.MarketPrice), moneyFeature(listing.price));
 	}
-	const hungry = (pet.hearts as int32) - stats.hungerPerDay();
+	const hungry = (pet.hearts as int32) - hunger;
 	const floor = pet.minHearts as int32;
 	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, stats.foodBps);
 	put(features, selfSlot(offset, SelfFeature.DawnHearts), dawn * 8);
@@ -479,7 +480,7 @@ test "a pet sees the hearts it will wake up with, pantry meals included" {
 	const world = World.create(1, 6).beginEpoch(1);
 	const pets = world.pets;
 	const pet = pets[4];
-	const hunger = pet.stats().hungerPerDay();
+	const hunger = pet.ownStats().hungerPerDay();
 	pets[4] = { ...pet, hearts: hunger as uint8, pantry: Pantry.unstocked() };
 	const features = zeros(observationSize(Head.Economy));
 	world.observeInto(4, Head.Economy, features, 0);

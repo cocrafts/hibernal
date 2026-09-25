@@ -105,7 +105,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 		return buyAction(purchase.value);
 	}
 	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
-	const reserve = foodReserve(level, pet.stats().hungerPerDay());
+	const reserve = foodReserve(level, pet.ownStats().hungerPerDay());
 	const listing = world.bestListingFor(index);
 	if (listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
 		const asked = world.market[listing.value].price;
