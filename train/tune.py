@@ -12,6 +12,7 @@ from pathlib import Path
 TRAIN = Path(__file__).resolve().parent
 REPO = TRAIN.parent
 COPIES = Path("/tmp/hibernal-tune")
+BASE = COPIES / "base"
 RESULTS = REPO / "out" / "tune"
 GATE_PENALTY = 10.0
 TAIL = re.compile(r"\s*(?P<bounds>.+?)\s{2}(?P<mark>ok|OFF|info)\s")
@@ -85,11 +86,7 @@ def patched(setting, knobs):
     copy = COPIES / key
     if copy.exists():
         shutil.rmtree(copy)
-    subprocess.run(
-        ["rsync", "-a", "--exclude", ".git", "--exclude", "out", "--exclude", "train/checkpoints",
-         "--exclude", "train/.venv", f"{REPO}/", f"{copy}/"],
-        check=True,
-    )
+    subprocess.run(["rsync", "-a", f"{BASE}/", f"{copy}/"], check=True)
     for knob in knobs:
         path = copy / knob.file
         text = path.read_text()
@@ -123,6 +120,11 @@ def main():
     knobs = [Knob(spec) for spec in arguments.knob]
     weights = {name: float(value) for name, value in (item.rsplit("=", 1) for item in arguments.weight)}
     RESULTS.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["rsync", "-a", "--delete", "--exclude", ".git", "--exclude", "out", "--exclude", "train/checkpoints",
+         "--exclude", "train/.venv", f"{REPO}/", f"{BASE}/"],
+        check=True,
+    )
     table = RESULTS / f"{arguments.name}.tsv"
     measured = {}
 
