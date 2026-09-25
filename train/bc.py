@@ -62,18 +62,29 @@ def accuracy(policy, head, data, batch=65536):
     return hits / max(len(data["actions"]), 1), macro
 
 
-def clone(policy, head, data, steps, batch, learningRate):
+def labelWeights(actions, count, balance):
+    if balance == 0:
+        return None
+    seen = np.bincount(actions, minlength=count).astype(np.float64)
+    present = seen > 0
+    weights = np.zeros(count)
+    weights[present] = (seen[present].mean() / seen[present]) ** balance
+    return torch.from_numpy(weights / weights[present].mean()).to(torch.float32)
+
+
+def clone(policy, head, data, steps, batch, learningRate, balance):
     parameters = list([policy.economy, policy.node, policy.attack][head].parameters())
     optimizer = torch.optim.Adam(parameters, lr=learningRate)
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, steps)
     observations = torch.from_numpy(data["observations"])
     legal = torch.from_numpy(data["legal"])
     actions = torch.from_numpy(data["actions"])
+    weights = labelWeights(data["actions"], data["legal"].shape[1], balance)
     recent = []
     for _ in range(steps):
         part = torch.randint(0, len(actions), (batch,))
         logits = policy.maskedLogits(head, observations[part], legal[part])
-        loss = torch.nn.functional.cross_entropy(logits, actions[part])
+        loss = torch.nn.functional.cross_entropy(logits, actions[part], weight=weights)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -91,6 +102,7 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--name", default="bc")
     parser.add_argument("--studentRounds", type=int, default=2)
+    parser.add_argument("--balance", type=float, default=0.5, help="label weight (mean count / count) ** balance")
     arguments = parser.parse_args()
     torch.manual_seed(arguments.seed)
     started = time.perf_counter()
@@ -103,7 +115,9 @@ def main():
     for studentRound in range(arguments.studentRounds + 1):
         for head, name in enumerate(HEADS):
             clock = time.perf_counter()
-            loss = clone(policy, head, train[head], arguments.steps, arguments.batch, arguments.learningRate)
+            loss = clone(
+                policy, head, train[head], arguments.steps, arguments.batch, arguments.learningRate, arguments.balance
+            )
             trainAccuracy, _ = accuracy(policy, head, train[head])
             heldAccuracy, heldRecall = accuracy(policy, head, heldOut[head])
             print(
