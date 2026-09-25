@@ -344,7 +344,7 @@ uv run python ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 
 
 Not measured here: the reward-variant and pool rows of package 5 on this engine, runs longer than 30 rollouts, self-play.
 
-### Package 5c: the game-design world — Measured
+### Package 5c: the game-design world — Measured, superseded by 5d
 
 The rules now carry the game-design lane of `docs/SIM.md` (2026-09-24 and 25): pantry, quota and bites by stake, hearts that scale with max hearts, level growth and talent, tree v2, drawn turn order, D34 weight `(work_power + 40)²` with the reward floor, food ×7, late-level XP, the owner layer (bonding, owner food, growth, insurance, gifts), items with mint, wear, skills and `SellItem` (D35), wild pets on empty slots (D37), rage against a repeat robber, absolute bites. The numbers and the reasons for each knob live in `docs/SIM.md`; the rules as built in `BRIEF.md`. The policy blob is format 3, 4,499 bytes: 40 self features, economy head 40 → 32 → 10.
 
@@ -371,6 +371,34 @@ Measured on engine `12482136861935123128`, commit `a516f20` (`~/metacraft/hibern
 
 - The learned pets eat far more cheaply than the teacher (a third of income against a half) and still die a little more often, mostly pets whose owner never visits (4.6–5.0 early deaths per 100 lives against 0 for devoted owners).
 - Persona recall falls further under PPO than in 5b (0.61–0.67); the reward does not ask for it (`docs/SIM.md` D2).
+
+### Package 5d: market, lineage and a brain that sees tonight — Measured
+
+Rules added since 5c, each measured in `docs/SIM.md`: loot by D26 (attacker might against defender grit), the heir package (two heirlooms, a rarer talent roll per generation), a block market (`rules/market.ms`: `ListItem`, `BuyItem`, buyback after three days, 5% to the pot), hunger read from the pet's own stats so gear adds power without hunger, and a teacher that stops re-minting a worn item that still beats an average roll. The policy blob is format 5, 4,731 bytes: 45 self features, economy head 45 → 32 → 12.
+
+Two starvations with money, found on the way and fixed at the root:
+
+- PPO seed 6 on the market engine (step18) let a might-heavy Fighter with 19k `$HBRN` die at dawn: it lived on the owner's morning Large, never bought food, lost two hearts in a failed attack and the night's hunger took the rest before the owner came. The policy saw hearts and hunger as separate features. `DawnHearts` now gives the hearts the pet wakes up with, computed by the tick's own `nightMeals` (`sim/env/observe.ms`).
+- The clone on that engine (step19) bought a Small portion where the teacher sells gear first, and sold one round too late. `bc.py --balance 0.5` weights each teacher label by (mean count / count)^0.5, so rare economy labels such as `SellItem` are learned (economy macro recall 0.864 → 0.955, held-out accuracy 0.973 → 0.946); that clone had 0 starved with money. It is the default now.
+
+Measured on engine `17847782851134087884`, commit `52ce235` (`~/metacraft/hibernal-train/step20`): `bc.py --envs 8 --steps 4000 --studentRounds 2` (label balance not yet the default then), `ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7; `evaluate.py` (16 worlds) and `health.py` (8 worlds, every slot one controller):
+
+| | Teacher | Clone | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with food or money (evaluate, all groups; health) | 0; 0 | 0; 0 | 0 / 0 / 0; 0 / 0 / 0 |
+| Early deaths per 100 lives (health; absent owners) | 1.75; 3.48 | 1.32; 3.28 | 1.53 / 1.59 / 2.15; 4.40 / 4.47 / 5.73 |
+| Own-world wealth, `$HBRN` per pet | 25,777 | 26,147 | 34,156 / 36,806 / 36,330 |
+| Mixed world against the teacher | +2.9% (seat noise) | 0.0% | +55.7 / +37.3 / +38.1% |
+| Fights per pet | 54.4 | 53.0 | 49.4 / 51.2 / 53.4 |
+| Food bill at level 20, % of work income | 52 | 53 | 36 / 37 / 37 |
+| Item mints per life, % of income on items; on the market | 9.0, 17.9%; 10.3% | 7.6, 15.6%; 9.1% | 1.1–2.1, 1.9–4.1%; 0.8–1.4% |
+| Wealth p90 / median | 1.66 | 1.56 | 2.06 / 1.98 / 2.32 |
+| Start-region wealth, richest over poorest | 3.4 | 2.8 | 2.2 / 2.7 / 2.9 |
+| Persona told from one log, with revenge | 0.84 | 0.85 | 0.71 / 0.69 / 0.68 |
+
+- PPO barely buys gear, and is right to: a teacher that never mints or buys gear dies half as often and ends richer (`docs/SIM.md` I2). Item value is a design question.
+- On the step19 engine, where gear still raised hunger, PPO drove poor neighbours to broke starvation (60–77 per ~2,900 lives): their whole daily income was robbed before their first bank, day after day (`docs/SIM.md` C6). On this engine it is 1.5–2.2 early deaths per 100 lives, still concentrated on pets whose owner never visits.
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
