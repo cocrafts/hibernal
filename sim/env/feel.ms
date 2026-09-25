@@ -244,7 +244,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	const victim = moment.env * feel.pets + blockStart(moment.index) + (defender.slot as int32);
 	feel.tally(key, FeelCounter.AttacksWon, 1);
 	const target = blockStart(moment.index) + (defender.slot as int32);
-	if (!world.pets[target].alive) {
+	if (world.isWild(target)) {
 		const taken = defender.harvest - world.wilds[target].harvest;
 		feel.tally(key, FeelCounter.WildRaids, 1);
 		feel.tally(key, FeelCounter.WildLoot, (taken / HBRN_UNIT) as int32);
@@ -531,4 +531,17 @@ test "a portion bought counts its price as food spent" {
 	feel.note(moment, world.applyEconomy(2, EconomyAction.BuyLarge));
 	const price = (foodCost(Food.Large, pets[2].level as int32) / HBRN_UNIT) as int32;
 	assert feel.tallied(2, FeelCounter.FoodSpent) == price;
+}
+
+test "a pet bitten to death in the fight still counts as robbed, not as a wild raid" {
+	const world = World.create(1, 3).beginEpoch(1);
+	const pets = world.pets;
+	const wilds = world.wilds;
+	wilds[5] = { ...wilds[5], alive: false, harvest: 900 * HBRN_UNIT };
+	const moment = world.momentOf(0, 3, Head.Attack, attackOn(5));
+	pets[5] = { ...pets[5], alive: false, hearts: 0 };
+	const feel = Feel.create(1, BLOCK_SLOTS);
+	feel.note(moment, world.fought(10, true));
+	assert feel.tallied(5, FeelCounter.Robbed) == 1;
+	assert feel.tallied(3, FeelCounter.WildRaids) == 0;
 }
