@@ -53,6 +53,12 @@ FEEL_FIELDS = (
     "wildRaids",
     "wildLoot",
     "sells",
+    "listings",
+    "marketBuys",
+    "marketSpent",
+    "marketSales",
+    "marketEarned",
+    "focusGearSum",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])

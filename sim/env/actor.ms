@@ -193,7 +193,7 @@ export function bestLegal(
 }
 
 test "each head gathers its own inputs" {
-	assert selfInputs(Head.Economy) == 40;
+	assert selfInputs(Head.Economy) == 44;
 	assert NODE_SELF_INPUTS == 8;
 	assert ATTACK_SELF_INPUTS == 12;
 	assert selfInput(Head.Economy, 5) == SelfFeature.Level;
@@ -212,11 +212,11 @@ test "each head gathers its own inputs" {
 }
 
 test "the best legal action ignores illegal logits and falls back when nothing is legal" {
-	const logits: int32[] = [9, 5, 7, -2, 8, 1, 0, 3, 6, 2];
-	const legal: int32[] = [0, 1, 1, 1, 0, 0, 0, 0, 0, 0];
+	const logits: int32[] = [9, 5, 7, -2, 8, 1, 0, 3, 6, 2, 1, 4];
+	const legal: int32[] = [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0];
 	assert bestLegal(Head.Economy, logits, 0, legal, 0, 0) == 2;
-	const none: int32[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+	const none: int32[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 	assert bestLegal(Head.Economy, logits, 0, none, 0, 0) == 0;
-	const tied: int32[] = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4];
+	const tied: int32[] = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4];
 	assert bestLegal(Head.Economy, tied, 0, legal, 0, 0) == 1;
 }

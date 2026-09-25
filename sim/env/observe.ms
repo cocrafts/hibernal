@@ -26,13 +26,24 @@ import {
 	at,
 	bonusBps,
 	hungerPerDay,
+	focusStat,
+	spareSlot,
+	listPrice,
+	listingGain,
 } from "../../rules/index";
 import { has, touches, built, regionOf } from "../../rules/tree";
-import { ACTS_PER_EPOCH, World, blockStart } from "../world";
+import {
+	ACTS_PER_EPOCH,
+	World,
+	blockStart,
+	hasListing,
+	bestListingFor,
+	economyMaskFor,
+} from "../world";
 import { personaKindOf } from "../teacher";
 
 export const FEATURE_ONE: int32 = 127;
-export const ECONOMY_ACTIONS: int32 = (EconomyAction.SellItem as int32) + 1;
+export const ECONOMY_ACTIONS: int32 = (EconomyAction.BuyItem as int32) + 1;
 export const NODE_ACTIONS: int32 = ALLOCATE_HOLD + 1;
 export const ATTACK_ACTIONS: int32 = ATTACK_HOLD + 1;
 
@@ -83,6 +94,10 @@ export enum SelfFeature {
 	MintsAfforded,
 	HungerShare,
 	BuysLeft,
+	SpareItemPrice,
+	Listed,
+	MarketGain,
+	MarketPrice,
 }
 
 export enum NodeFeature {
@@ -126,7 +141,7 @@ export enum TargetFeature {
 	Grudge,
 }
 
-export const SELF_FEATURES: int32 = (SelfFeature.BuysLeft as int32) + 1;
+export const SELF_FEATURES: int32 = (SelfFeature.MarketPrice as int32) + 1;
 export const NODE_FEATURES: int32 = (NodeFeature.BiteGuard as int32) + 1;
 export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
@@ -263,6 +278,18 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	put(features, selfSlot(offset, SelfFeature.HungerShare), hungerShare);
 	const buysLeft = FOOD_BUYS_PER_DAY - (pet.foodBoughtToday as int32);
 	put(features, selfSlot(offset, SelfFeature.BuysLeft), buysLeft * 40);
+	const spare = pet.gear.spareSlot(pet.focusStat());
+	if (spare.ok) {
+		const price = pet.gear.at(spare.value).listPrice(level);
+		put(features, selfSlot(offset, SelfFeature.SpareItemPrice), moneyFeature(price));
+	}
+	put(features, selfSlot(offset, SelfFeature.Listed), flag(world.hasListing(index)));
+	const best = world.bestListingFor(index);
+	if (best.ok) {
+		const listing = world.market[best.value];
+		put(features, selfSlot(offset, SelfFeature.MarketGain), pet.listingGain(listing) / 11);
+		put(features, selfSlot(offset, SelfFeature.MarketPrice), moneyFeature(listing.price));
+	}
 }
 
 function opensWith(this tree: Tree, id: int32): int32 {
@@ -390,7 +417,7 @@ export function legalInto(
 	const pet = world.pets[index];
 	if (!pet.alive) { return; }
 	if (head == Head.Economy) {
-		const economy = pet.legalEconomy(world.global);
+		const economy = world.economyMaskFor(index);
 		for (let ordinal = 0; ordinal < ECONOMY_ACTIONS; ordinal++) {
 			legal[offset + ordinal] = economy.has(ordinal as EconomyAction) ? 1 : 0;
 		}
@@ -430,11 +457,11 @@ test "money features are quarter octaves of a thousandth of a token" {
 }
 
 test "sizes follow the three heads" {
-	assert SELF_FEATURES == 40;
-	assert observationSize(Head.Economy) == 40;
-	assert observationSize(Head.Node) == 40 + 65 * 22;
-	assert observationSize(Head.Attack) == 40 + 11 * 13;
-	assert actionCount(Head.Economy) == 10;
+	assert SELF_FEATURES == 44;
+	assert observationSize(Head.Economy) == 44;
+	assert observationSize(Head.Node) == 44 + 65 * 22;
+	assert observationSize(Head.Attack) == 44 + 11 * 13;
+	assert actionCount(Head.Economy) == 12;
 	assert actionCount(Head.Node) == 65;
 	assert actionCount(Head.Attack) == 41;
 }

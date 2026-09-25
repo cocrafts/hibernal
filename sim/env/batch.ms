@@ -15,7 +15,7 @@ import {
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../../rules/pantry";
 import { Gear, Item, resaleValue } from "../../rules/items";
-import { ACTS_PER_EPOCH, Masks, World, WorldStats } from "../world";
+import { ACTS_PER_EPOCH, Masks, World, WorldStats, economyMaskFor } from "../world";
 import { personaKindOf, playEpisode } from "../teacher";
 import {
 	Head,
@@ -272,7 +272,7 @@ function masksOf(this world: World, index: int32, head: Head): Masks {
 	const pet = world.pets[index];
 	return match (head) {
 		Head.Economy => ({
-			economy: pet.legalEconomy(world.global),
+			economy: world.economyMaskFor(index),
 			nodes: { bits: 0 },
 			attacks: { bits: 0 },
 		}),

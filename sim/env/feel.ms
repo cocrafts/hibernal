@@ -17,6 +17,9 @@ import {
 	winChanceFromTable,
 	agedOut,
 	totalBonusBps,
+	statBonusBps,
+	itemCount,
+	focusStat,
 } from "../../rules/index";
 import { World, WorldStats, blockStart } from "../world";
 import { personaKindOf } from "../teacher";
@@ -77,9 +80,15 @@ export enum FeelCounter {
 	WildRaids,
 	WildLoot,
 	Sells,
+	Listings,
+	MarketBuys,
+	MarketSpent,
+	MarketSales,
+	MarketEarned,
+	FocusGearSum,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.Sells as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.FocusGearSum as int32) + 1;
 
 export enum Milestone {
 	EarlyLevel,
@@ -204,7 +213,21 @@ function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, aft
 		feel.tally(key, FeelCounter.Meals, 1);
 		feel.tally(key, FeelCounter.MealHeartsSum, actor.hearts as int32);
 	}
-	if (after.burrow > actor.burrow) { feel.tally(key, FeelCounter.Banks, 1); }
+	const listed = after.gear.itemCount() < actor.gear.itemCount();
+	if (action == (EconomyAction.ListItem as int32) && listed) {
+		feel.tally(key, FeelCounter.Listings, 1);
+	}
+	const banked = action == (EconomyAction.Bank as int32) || action == (EconomyAction.SellItem as int32);
+	if (banked && after.burrow > actor.burrow) { feel.tally(key, FeelCounter.Banks, 1); }
+}
+
+function noteSale(this feel: Feel, key: int32, moment: Moment, world: World): void {
+	if (world.stats.sales == moment.stats.sales) { return; }
+	feel.tally(key, FeelCounter.MarketBuys, 1);
+	feel.tally(key, FeelCounter.MarketSpent, (world.stats.lastPrice / HBRN_UNIT) as int32);
+	const seller = moment.env * feel.pets + world.stats.lastSeller;
+	feel.tally(seller, FeelCounter.MarketSales, 1);
+	feel.tally(seller, FeelCounter.MarketEarned, (world.stats.lastProceeds / HBRN_UNIT) as int32);
 }
 
 function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): void {
@@ -271,6 +294,7 @@ export function note(this feel: Feel, moment: Moment, world: World): void {
 	match (moment.head) {
 		Head.Economy => {
 			feel.noteEconomy(key, moment.action, moment.actor, world.pets[moment.index]);
+			feel.noteSale(key, moment, world);
 		},
 		Head.Node => {},
 		Head.Attack => { feel.noteAttack(key, moment, world); },
@@ -289,6 +313,7 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 		feel.tally(key, FeelCounter.HeartsSum, pet.hearts as int32);
 		feel.tally(key, FeelCounter.BondingSum, pet.bonding as int32);
 		feel.tally(key, FeelCounter.GearBonusSum, pet.gear.totalBonusBps());
+		feel.tally(key, FeelCounter.FocusGearSum, pet.gear.statBonusBps(pet.focusStat()));
 		const fightsIn = pet.fightsInOn(world.epoch);
 		feel.tally(key, FeelCounter.FightsInSum, fightsIn);
 		if (fightsIn >= INCOMING_CAP) { feel.tally(key, FeelCounter.FightsInCapDays, 1); }

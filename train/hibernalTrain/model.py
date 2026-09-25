@@ -7,7 +7,7 @@ from torch import nn
 from .env import SELF_FEATURES
 
 POLICY_MAGIC = 0x4E524248
-POLICY_FORMAT = 3
+POLICY_FORMAT = 4
 ACTIVATION_ONE = 128.0
 ACTIVATION_MAX = 127.0
 WEIGHT_MAX = 127.0
@@ -16,6 +16,7 @@ ECONOMY, NODE, ATTACK = 0, 1, 2
 NODE_CANDIDATES, NODE_FEATURES = 65, 22
 TARGET_CANDIDATES, TARGET_FEATURES = 11, 13
 STAKE_LEVELS = 4
+ECONOMY_ACTIONS = 12
 BUY_SMALL, EAT_SMALL, PORTION_SIZES = 2, 5, 3
 HEARTS_FEATURE = 0
 
@@ -90,7 +91,7 @@ class PetPolicy(nn.Module):
         super().__init__()
         self.register_buffer("nodeSelf", torch.tensor(selfInputIndexes[NODE], dtype=torch.long))
         self.register_buffer("attackSelf", torch.tensor(selfInputIndexes[ATTACK], dtype=torch.long))
-        self.economy = stack(QuantDense(SELF_FEATURES, 32, True), QuantDense(32, 10, False))
+        self.economy = stack(QuantDense(SELF_FEATURES, 32, True), QuantDense(32, ECONOMY_ACTIONS, False))
         self.node = stack(QuantDense(30, 32, True), QuantDense(32, 1, False))
         self.attack = stack(QuantDense(25, 32, True), QuantDense(32, 16, True), QuantDense(16, 4, False))
         self.critic = stack(nn.Linear(SELF_FEATURES, 64), nn.Tanh(), nn.Linear(64, 64), nn.Tanh(), nn.Linear(64, 1))
