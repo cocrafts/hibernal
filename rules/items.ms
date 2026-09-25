@@ -182,6 +182,26 @@ export function weakestSlot(this gear: Gear): GearSlot {
 	return weakest;
 }
 
+export enum GearError {
+	Bare,
+}
+
+export function weakestItemSlot(this gear: Gear): Result<GearSlot, GearError> {
+	let found = false;
+	let weakest = GearSlot.Head;
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		const slot = ordinal as GearSlot;
+		const item = gear.at(slot);
+		if (item.isEmpty()) { continue; }
+		if (!found || item.score() < gear.at(weakest).score()) {
+			weakest = slot;
+			found = true;
+		}
+	}
+	if (!found) { return Result.err(GearError.Bare); }
+	return Result.ok(weakest);
+}
+
 export function hasSkill(this gear: Gear, skill: ItemSkill): boolean {
 	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
 		if (gear.at(ordinal as GearSlot).skill == (skill as uint8)) { return true; }

@@ -32,7 +32,7 @@ import { ACTS_PER_EPOCH, World, blockStart } from "../world";
 import { personaKindOf } from "../teacher";
 
 export const FEATURE_ONE: int32 = 127;
-export const ECONOMY_ACTIONS: int32 = (EconomyAction.Mint as int32) + 1;
+export const ECONOMY_ACTIONS: int32 = (EconomyAction.SellItem as int32) + 1;
 export const NODE_ACTIONS: int32 = ALLOCATE_HOLD + 1;
 export const ATTACK_ACTIONS: int32 = ATTACK_HOLD + 1;
 
@@ -432,7 +432,7 @@ test "sizes follow the three heads" {
 	assert observationSize(Head.Economy) == 40;
 	assert observationSize(Head.Node) == 40 + 65 * 22;
 	assert observationSize(Head.Attack) == 40 + 11 * 13;
-	assert actionCount(Head.Economy) == 9;
+	assert actionCount(Head.Economy) == 10;
 	assert actionCount(Head.Node) == 65;
 	assert actionCount(Head.Attack) == 41;
 }

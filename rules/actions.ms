@@ -11,6 +11,7 @@ import {
 	hasSkill,
 	bare,
 	minted,
+	isEmpty,
 	Item,
 	mintPrice,
 	rolledGrade,
@@ -21,6 +22,8 @@ import {
 	at,
 	with,
 	score,
+	weakestItemSlot,
+	none,
 	wardedLoot,
 	damageGuardBps,
 } from "./items";
@@ -62,6 +65,7 @@ export enum EconomyAction {
 	EatMedium,
 	EatLarge,
 	Mint,
+	SellItem,
 }
 
 export enum StakeLevel {
@@ -82,6 +86,7 @@ export enum EconomyError {
 	Broke,
 	QuotaSpent,
 	NoFood,
+	NoGear,
 }
 
 export struct NodeMask {
@@ -227,6 +232,23 @@ export function mintItem(
 	});
 }
 
+export function soldItem(this pet: Pet, global: GlobalConfig): Result<PetAndGlobal, EconomyError> {
+	if (!pet.alive) { return Result.err(EconomyError.Dead); }
+	const found = pet.gear.weakestItemSlot();
+	if (!found.ok) { return Result.err(EconomyError.NoGear); }
+	const slot = found.value;
+	const price = pet.gear.at(slot).sellPrice(pet.level as int32);
+	const bare: Pet = {
+		...pet,
+		burrow: pet.burrow + price,
+		gear: pet.gear.with(slot, Item.none()),
+	};
+	return Result.ok({
+		pet: bare,
+		global: global.withWorkPower(pet.stats().rewardWeight(), bare.stats().rewardWeight()),
+	});
+}
+
 export function doEconomy(
 	this pet: Pet,
 	action: EconomyAction,
@@ -244,12 +266,13 @@ export function doEconomy(
 		EconomyAction.EatMedium => pet.eat(Food.Medium, global),
 		EconomyAction.EatLarge => pet.eat(Food.Large, global),
 		EconomyAction.Mint => pet.mintItem(global, seed),
+		EconomyAction.SellItem => pet.soldItem(global),
 	};
 }
 
 export function legalEconomy(this pet: Pet, global: GlobalConfig): BitSet<EconomyAction> {
 	let legal = 0 as BitSet<EconomyAction>;
-	for (let ordinal = 0; ordinal <= (EconomyAction.Mint as int32); ordinal++) {
+	for (let ordinal = 0; ordinal <= (EconomyAction.SellItem as int32); ordinal++) {
 		const action = ordinal as EconomyAction;
 		if (pet.doEconomy(action, global, 0).ok) { legal = legal.incl(action); }
 	}
@@ -875,4 +898,23 @@ test "rage builds against a repeat robber, strengthens only that fight and ends 
 	assert angrier.combatantFacing(other).might == calm.might;
 	assert angrier.calmedAgainst(robber).rage == 0;
 	assert angrier.calmedAgainst(other).rage == angrier.rage;
+}
+
+test "a pet sells its weakest item for cash and cannot sell bare" {
+	const duel = duelOver(0);
+	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None);
+	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None);
+	const geared: Pet = {
+		...duel.defender,
+		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
+	};
+	const sold = geared.soldItem(duel.global);
+	assert sold.ok;
+	if (!sold.ok) { return; }
+	assert sold.value.pet.gear.feet.isEmpty();
+	assert !sold.value.pet.gear.head.isEmpty();
+	assert sold.value.pet.burrow == geared.burrow + common.sellPrice(geared.level as int32);
+	const bare = duel.defender.soldItem(duel.global);
+	assert !bare.ok;
+	if (!bare.ok) { assert bare.error == EconomyError.NoGear; }
 }
