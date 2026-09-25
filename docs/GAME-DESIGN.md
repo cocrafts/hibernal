@@ -258,13 +258,13 @@ Goal: the world looks alive from day one, and one or two early players cannot ta
 
 | Rarity | Mint roll | Bonus |
 |---|---|---|
-| Common | 55% | +2% |
-| Rare | 30% | +4% |
-| Epic | 12% | +7% |
-| Legendary | 2.5% | +10% |
-| Mythic | 0.5% | +13% |
+| Common | 55% | +4% |
+| Rare | 30% | +8% |
+| Epic | 12% | +14% |
+| Legendary | 2.5% | +20% |
+| Mythic | 0.5% | +26% |
 
-  Full Mythic gear on one stat is +52%, which is ×2.3 income through `workPower²` (§9).
+  Bonuses doubled on 2026-09-25 so that gear pays its buyer (`BRIEF.md` §3.12); full Mythic gear on one stat is +104%.
 - **Mint**: pay `$HBRN` (price rising with level), rarity and affixes drawn from VRF in the ER. Part of the price is burned, part goes to the pot `[split Open]`.
 - **Sell back to the system**: a formula price, e.g. 50% of mint price reduced by wear; the difference is burned. Because the price is a formula, wash trading between one owner's pets cannot move it.
 - **Pet-to-pet market**: list, buy, cancel inside the ER at zero transaction fee; a fee (e.g. 5%) goes to the pot. In the sim: one market per block at a formula price, one listing per pet, buyback after 3 days (`BRIEF.md` §3.12, `rules/market.ms`).
