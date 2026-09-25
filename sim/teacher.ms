@@ -37,6 +37,8 @@ import {
 	at,
 	weakestSlot,
 	isEmpty,
+	score,
+	FAIR_SCORE_BPS,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -111,7 +113,8 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	}
 	const price = mintPrice(level);
 	const weakest = pet.gear.at(pet.gear.weakestSlot());
-	const due = weakest.isEmpty() || (weakest.wear as int32) >= ITEM_REPLACE_WEAR;
+	const worn = (weakest.wear as int32) >= ITEM_REPLACE_WEAR && weakest.score() < FAIR_SCORE_BPS;
+	const due = weakest.isEmpty() || worn;
 	const affordable = pet.burrow >= price + reserve && price <= spare;
 	if (due && affordable && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
