@@ -72,9 +72,11 @@ def distance(value, low, high):
     return 0.0
 
 
-def score(rows, weights):
+def score(rows, weights, limits):
     total = 0.0
     for name, (value, low, high, _mark) in rows.items():
+        if name in limits:
+            total += GATE_PENALTY * distance(value, None, limits[name])
         if low is None and high is None:
             continue
         total += weights.get(name, 1.0) * distance(value, low, high)
@@ -110,6 +112,7 @@ def main():
     parser = argparse.ArgumentParser(description="Coordinate search over rules knobs, scored by health.py")
     parser.add_argument("--knob", action="append", required=True, help="file:NAME=value,value,...")
     parser.add_argument("--weight", action="append", default=[], help="scorecard row name=weight")
+    parser.add_argument("--limit", action="append", default=[], help="scorecard row name=ceiling, a hard cap")
     parser.add_argument("--policy", default="teacher")
     parser.add_argument("--worlds", type=int, default=4)
     parser.add_argument("--seed", type=int, default=9001)
@@ -119,6 +122,7 @@ def main():
     arguments = parser.parse_args()
     knobs = [Knob(spec) for spec in arguments.knob]
     weights = {name: float(value) for name, value in (item.rsplit("=", 1) for item in arguments.weight)}
+    limits = {name: float(value) for name, value in (item.rsplit("=", 1) for item in arguments.limit)}
     RESULTS.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["rsync", "-a", "--delete", "--exclude", ".git", "--exclude", "out", "--exclude", "train/checkpoints",
@@ -137,8 +141,8 @@ def main():
                 off = sum(1 for row in rows.values() if row[3] == "OFF")
                 values = "\t".join(setting[knob.label()] for knob in knobs)
                 with table.open("a") as out:
-                    out.write(f"{values}\t{score(rows, weights):.4f}\t{off}\n")
-                print(f"{values}  score {score(rows, weights):.4f}  off {off}", flush=True)
+                    out.write(f"{values}\t{score(rows, weights, limits):.4f}\t{off}\n")
+                print(f"{values}  score {score(rows, weights, limits):.4f}  off {off}", flush=True)
         return {json.dumps(setting, sort_keys=True): measured[json.dumps(setting, sort_keys=True)] for setting in settings}
 
     with table.open("w") as out:
@@ -152,9 +156,9 @@ def main():
             results = evaluate(candidates)
             for setting in candidates:
                 rows = results[json.dumps(setting, sort_keys=True)]
-                if score(rows, weights) < score(bestRows, weights) - 1e-9:
+                if score(rows, weights, limits) < score(bestRows, weights, limits) - 1e-9:
                     best, bestRows, moved = setting, rows, True
-        print(f"pass {sweep + 1}: best {best} score {score(bestRows, weights):.4f}", flush=True)
+        print(f"pass {sweep + 1}: best {best} score {score(bestRows, weights, limits):.4f}", flush=True)
         if not moved:
             break
     print("best setting:")
