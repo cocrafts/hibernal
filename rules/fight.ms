@@ -320,7 +320,11 @@ function applyCut(loot: uint64, cutBps: int32): uint64 {
 	return loot * ((BPS - cutBps) as uint64) / (BPS as uint64);
 }
 
-export function takeableHarvest(harvest: uint64, attackerMight: int32, defenderGrit: int32): uint64 {
+export function takeableHarvest(
+	harvest: uint64,
+	attackerMight: int32,
+	defenderGrit: int32,
+): uint64 {
 	const might = Math.max(attackerMight, 0);
 	const total = might + Math.max(defenderGrit, 0);
 	if (total == 0) { return harvest; }
