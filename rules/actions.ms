@@ -66,6 +66,8 @@ export enum EconomyAction {
 	EatLarge,
 	Mint,
 	SellItem,
+	ListItem,
+	BuyItem,
 }
 
 export enum StakeLevel {
@@ -87,6 +89,7 @@ export enum EconomyError {
 	QuotaSpent,
 	NoFood,
 	NoGear,
+	NeedsMarket,
 }
 
 export struct NodeMask {
@@ -267,12 +270,14 @@ export function doEconomy(
 		EconomyAction.EatLarge => pet.eat(Food.Large, global),
 		EconomyAction.Mint => pet.mintItem(global, seed),
 		EconomyAction.SellItem => pet.soldItem(global),
+		EconomyAction.ListItem => Result.err(EconomyError.NeedsMarket),
+		EconomyAction.BuyItem => Result.err(EconomyError.NeedsMarket),
 	};
 }
 
 export function legalEconomy(this pet: Pet, global: GlobalConfig): BitSet<EconomyAction> {
 	let legal = 0 as BitSet<EconomyAction>;
-	for (let ordinal = 0; ordinal <= (EconomyAction.SellItem as int32); ordinal++) {
+	for (let ordinal = 0; ordinal <= (EconomyAction.BuyItem as int32); ordinal++) {
 		const action = ordinal as EconomyAction;
 		if (pet.doEconomy(action, global, 0).ok) { legal = legal.incl(action); }
 	}
