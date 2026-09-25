@@ -39,6 +39,9 @@ import {
 	isEmpty,
 	score,
 	FAIR_SCORE_BPS,
+	defeatHearts,
+	guardedBite,
+	damageGuardBps,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -57,7 +60,7 @@ import {
 } from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
-export const TEACHER_BUYS_GEAR: boolean = true;
+export const TEACHER_GEAR_SLOTS: int32 = 1023;
 export const REVENGE_WIN_CHANCE_BPS: int32 = 4000;
 export const NEVER_RANK: int32 = 1000;
 
@@ -107,8 +110,9 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	}
 	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
 	const reserve = foodReserve(level, pet.ownStats().hungerPerDay());
+	const gear = ((TEACHER_GEAR_SLOTS >> (index % BLOCK_SLOTS)) & 1) == 1;
 	const listing = world.bestListingFor(index);
-	if (TEACHER_BUYS_GEAR && listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
+	if (gear && listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
 		const asked = world.market[listing.value].price;
 		if (pet.burrow >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
 	}
@@ -117,7 +121,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	const worn = (weakest.wear as int32) >= ITEM_REPLACE_WEAR && weakest.score() < FAIR_SCORE_BPS;
 	const due = weakest.isEmpty() || worn;
 	const affordable = pet.burrow >= price + reserve && price <= spare;
-	if (TEACHER_BUYS_GEAR && due && affordable && masks.economy.has(EconomyAction.Mint)) {
+	if (gear && due && affordable && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
 	}
 	if (masks.economy.has(EconomyAction.ListItem)) { return EconomyAction.ListItem; }
@@ -207,6 +211,8 @@ export function teachAttack(this world: World, index: int32, masks: Masks): int3
 	const persona = Persona.of(kind);
 	const attacker = pet.combatant();
 	if (!attacker.attacksLeft(pet.fightsOutOn(world.epoch)).ok) { return ATTACK_HOLD; }
+	const defeat = guardedBite(defeatHearts(pet.maxHearts as int32), pet.gear.damageGuardBps());
+	if ((pet.hearts as int32) <= defeat) { return ATTACK_HOLD; }
 	if (kind == PersonaKind.Vengeful) {
 		const revenge = world.revengeOn(index, masks);
 		if (revenge != ATTACK_HOLD) { return revenge; }
