@@ -20,8 +20,8 @@ import {
 	deathSplit,
 } from "./emission";
 import { Pantry } from "./pantry";
-import { Gear, ItemSkill, allWornBy, hasSkill, spentSkill } from "./items";
-import { TALENT_LEVEL, Talent, TalentKind } from "./talent";
+import { Gear, ItemSkill, allWornBy, hasSkill, spentSkill, heirlooms } from "./items";
+import { TALENT_LEVEL, Talent, TalentKind, lineageNudgeBps } from "./talent";
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 import {
 	BONDING_MAX,
@@ -40,6 +40,7 @@ export const KNEE_VIGOR_BPS: int32 = 7000;
 export const END_VIGOR_BPS: int32 = 5000;
 export const INHERITANCE_TAX_PERCENT: uint64 = 30;
 export const HEIR_POINTS_CAP: int32 = 5;
+export const HEIRLOOM_SLOTS: int32 = 2;
 export const HUNGER_BPS: int32 = 1000;
 export const REWARD_FLOOR_SLOTS: uint32 = 500;
 export const BOT_WEIGHT: uint64 = 8649;
@@ -224,7 +225,7 @@ export function revealTalent(
 	if (!pet.alive) { return Result.err(TalentError.Dead); }
 	if ((pet.level as int32) < TALENT_LEVEL) { return Result.err(TalentError.TooYoung); }
 	if (pet.talentKind != (TalentKind.None as uint8)) { return Result.err(TalentError.Revealed); }
-	const talent = Talent.rolled(randomness);
+	const talent = Talent.rolled(randomness, lineageNudgeBps(pet.lineageGeneration as int32));
 	const before = pet.stats().rewardWeight();
 	const stats = Stats.built(pet.tree, pet.level as int32, talent).aged(pet.vigor());
 	const revealed: Pet = {
@@ -386,13 +387,14 @@ export function heirOf(
 	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, global);
 	const generation = (dead.lineageGeneration as int32) + 1;
 	const points = (hatched.pet.pointsUnspent as int32) + Math.min(generation, HEIR_POINTS_CAP);
+	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS, dead.level as int32);
 	const heir: Pet = {
 		...hatched.pet,
-		burrow: dead.burrow,
+		burrow: dead.burrow + proceeds,
 		pointsUnspent: points as uint8,
 		lineageGeneration: generation as uint16,
 		giftOwed: dead.giftOwed,
-		gear: dead.gear,
+		gear: heirlooms,
 	};
 	return Result.ok({
 		pet: heir,
@@ -596,12 +598,12 @@ test "a talent shows at level ten once, scales the growth of its stat and moves 
 	const grown = newborn.pet.fedDailyTo(newborn.global, 20);
 	assert (grown.pet.level as int32) >= TALENT_LEVEL;
 	let seed: uint64 = 1;
-	while (!strongForager(Talent.rolled(seed))) { seed += 1; }
+	while (!strongForager(Talent.rolled(seed, 0))) { seed += 1; }
 	const shown = grown.pet.revealTalent(grown.global, seed);
 	assert shown.ok;
 	if (!shown.ok) { return; }
 	const pet = shown.value.pet;
-	const talent = Talent.rolled(seed);
+	const talent = Talent.rolled(seed, 0);
 	const growth = ((pet.level as int32) - 1) * LEVEL_STAT_GROWTH;
 	assert (pet.forage as int32) == 80 + growth * talent.multiplierBps / BPS;
 	assert pet.might == grown.pet.might;

@@ -7,6 +7,8 @@ export const RARE_UNTIL_BPS: int32 = 8800;
 export const EPIC_UNTIL_BPS: int32 = 9800;
 export const LEGENDARY_UNTIL_BPS: int32 = 9980;
 export const GRADE_SPREAD_BPS: int32 = 1000;
+export const LINEAGE_NUDGE_BPS: int32 = 500;
+export const LINEAGE_NUDGE_CAP_BPS: int32 = 2500;
 
 export enum TalentKind {
 	None,
@@ -46,11 +48,20 @@ export function multiplierOf(grade: TalentGrade, spreadBps: int32): int32 {
 	};
 }
 
-export function rolled(this typeof Talent, randomness: uint64): Talent {
+export function lineageNudgeBps(generation: int32): int32 {
+	return Math.min(generation * LINEAGE_NUDGE_BPS, LINEAGE_NUDGE_CAP_BPS);
+}
+
+export function nudgedRoll(rollBps: int32, nudgeBps: int32): int32 {
+	return BPS - (BPS - rollBps) * BPS / (BPS + nudgeBps);
+}
+
+export function rolled(this typeof Talent, randomness: uint64, nudgeBps: int32): Talent {
 	const first = splitmix(randomness);
 	const second = splitmix(first);
 	const kind = (1 + (first % 3) as int32) as TalentKind;
-	const grade = gradeOf(((second >> 16) % (BPS as uint64)) as int32);
+	const roll = ((second >> 16) % (BPS as uint64)) as int32;
+	const grade = gradeOf(nudgedRoll(roll, nudgeBps));
 	const spread = ((second >> 40) % ((GRADE_SPREAD_BPS + 1) as uint64)) as int32;
 	return { kind: kind, multiplierBps: multiplierOf(grade, spread) };
 }
@@ -75,7 +86,7 @@ test "rolled talents cover every kind and stay inside the grade ranges" {
 	let seen = 0;
 	let common = 0;
 	for (let seed: uint64 = 1; seed <= 2000; seed++) {
-		const talent = Talent.rolled(seed);
+		const talent = Talent.rolled(seed, 0);
 		assert talent.kind != TalentKind.None;
 		assert talent.multiplierBps >= BPS && talent.multiplierBps <= 20000;
 		seen = seen | (1 << (talent.kind as int32));
@@ -83,4 +94,19 @@ test "rolled talents cover every kind and stay inside the grade ranges" {
 	}
 	assert seen == 14;
 	assert common > 1000 && common < 1400;
+}
+
+test "a later generation rolls the rarer grades a little more often" {
+	assert nudgedRoll(0, 0) == 0 && nudgedRoll(9999, 0) == 9999;
+	assert nudgedRoll(5000, 2500) == 6000;
+	assert lineageNudgeBps(1) == LINEAGE_NUDGE_BPS;
+	assert lineageNudgeBps(9) == LINEAGE_NUDGE_CAP_BPS;
+	let first = 0;
+	let fifth = 0;
+	for (let seed: uint64 = 1; seed <= 4000; seed++) {
+		if (Talent.rolled(seed, 0).multiplierBps > 12000) { first += 1; }
+		if (Talent.rolled(seed, lineageNudgeBps(5)).multiplierBps > 12000) { fifth += 1; }
+	}
+	assert fifth > first;
+	assert fifth * 100 < first * 140;
 }

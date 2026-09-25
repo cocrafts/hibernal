@@ -202,6 +202,26 @@ export function weakestItemSlot(this gear: Gear): Result<GearSlot, GearError> {
 	return Result.ok(weakest);
 }
 
+export function itemCount(this gear: Gear): int32 {
+	let count = 0;
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		if (!gear.at(ordinal as GearSlot).isEmpty()) { count += 1; }
+	}
+	return count;
+}
+
+export function heirlooms(this gear: Gear, kept: int32, level: int32): [Gear, uint64] {
+	let left = gear;
+	let proceeds: uint64 = 0;
+	for (let count = gear.itemCount(); count > kept; count--) {
+		const weakest = left.weakestItemSlot();
+		if (!weakest.ok) { break; }
+		proceeds += left.at(weakest.value).sellPrice(level);
+		left = left.with(weakest.value, Item.none());
+	}
+	return [left, proceeds];
+}
+
 export function resaleValue(this gear: Gear, level: int32): uint64 {
 	let value: uint64 = 0;
 	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
@@ -279,6 +299,20 @@ test "gear sums bonuses per stat and names its weakest slot" {
 	const full = gear.with(GearSlot.Feet, mythic);
 	assert full.weakestSlot() == GearSlot.Hands;
 	assert full.allWornBy(10).head.wear == 10;
+}
+
+test "an heir keeps the best items and the estate sells the rest back" {
+	const gear = Gear.bare()
+		.with(GearSlot.Head, Item.minted(TalentGrade.Rare, TalentKind.Might, ItemSkill.None))
+		.with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None))
+		.with(GearSlot.Hands, Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None));
+	assert gear.itemCount() == 3;
+	const [kept, proceeds] = gear.heirlooms(2, 20);
+	assert kept.itemCount() == 2;
+	assert kept.hands.isEmpty() && !kept.body.isEmpty() && !kept.head.isEmpty();
+	assert proceeds == gear.hands.sellPrice(20);
+	const [same, nothing] = gear.heirlooms(4, 20);
+	assert same.itemCount() == 3 && nothing == 0;
 }
 
 test "strong items may carry one skill, which wards loot or guards damage once owned" {
