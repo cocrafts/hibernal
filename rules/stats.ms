@@ -96,18 +96,27 @@ function faded(value: int32, vigorBps: int32): int32 {
 	return BASE_STAT + (value - BASE_STAT) * vigorBps / BPS;
 }
 
-function talentGrowth(growth: int32, talent: Talent, kind: TalentKind): int32 {
-	if (talent.kind != kind) { return growth; }
-	return growth * talent.multiplierBps / BPS;
+function talentScaled(value: int32, talent: Talent, kind: TalentKind): int32 {
+	if (talent.kind != kind) { return value; }
+	return ((value as int64) * (talent.multiplierBps as int64) / (BPS as int64)) as int32;
 }
 
-export function grown(this stats: Stats, level: int32, talent: Talent): Stats {
+export function talented(this stats: Stats, talent: Talent): Stats {
+	return {
+		...stats,
+		forage: talentScaled(stats.forage, talent, TalentKind.Forage),
+		might: talentScaled(stats.might, talent, TalentKind.Might),
+		grit: talentScaled(stats.grit, talent, TalentKind.Grit),
+	};
+}
+
+export function grown(this stats: Stats, level: int32): Stats {
 	const growth = Math.max(level - 1, 0) * LEVEL_STAT_GROWTH;
 	return {
 		...stats,
-		forage: stats.forage + talentGrowth(growth, talent, TalentKind.Forage),
-		might: stats.might + talentGrowth(growth, talent, TalentKind.Might),
-		grit: stats.grit + talentGrowth(growth, talent, TalentKind.Grit),
+		forage: stats.forage + growth,
+		might: stats.might + growth,
+		grit: stats.grit + growth,
 		maxHearts: stats.maxHearts + level / LEVELS_PER_HEART,
 	};
 }

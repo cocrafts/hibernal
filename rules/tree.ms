@@ -1,5 +1,5 @@
 import { BPS } from "./units";
-import { START_BONUS, BASE_MAX_HEARTS, BASE_STAT, Stats, Region, Mod, grown } from "./stats";
+import { START_BONUS, BASE_MAX_HEARTS, BASE_STAT, Stats, Region, Mod, grown, talented } from "./stats";
 import { Talent } from "./talent";
 
 export const TREE_NODES: int32 = 64;
@@ -351,7 +351,7 @@ export function built(this typeof Stats, tree: Tree, level: int32, talent: Talen
 			Region.Survivor => ({ ...flat, grit: flat.grit + START_BONUS }),
 		};
 	}
-	flat = flat.grown(level, talent);
+	flat = flat.grown(level);
 	let forageBps = 0;
 	let mightBps = 0;
 	let gritBps = 0;
@@ -413,7 +413,7 @@ export function built(this typeof Stats, tree: Tree, level: int32, talent: Talen
 			};
 		}
 	}
-	return stats;
+	return stats.talented(talent);
 }
 
 export function fromTree(this typeof Stats, tree: Tree): Stats {

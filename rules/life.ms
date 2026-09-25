@@ -612,7 +612,7 @@ function strongForager(talent: Talent): boolean {
 	return talent.kind == TalentKind.Forage && talent.multiplierBps >= 13000;
 }
 
-test "a talent shows at level ten once, scales the growth of its stat and moves the work power" {
+test "a talent shows at level ten once, scales its whole stat and moves the work power" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
 	const young = newborn.pet.revealTalent(newborn.global, 7);
 	assert !young.ok;
@@ -627,7 +627,7 @@ test "a talent shows at level ten once, scales the growth of its stat and moves 
 	const pet = shown.value.pet;
 	const talent = Talent.rolled(seed, 0);
 	const growth = ((pet.level as int32) - 1) * LEVEL_STAT_GROWTH;
-	assert (pet.forage as int32) == 80 + growth * talent.multiplierBps / BPS;
+	assert (pet.forage as int32) == (80 + growth) * talent.multiplierBps / BPS;
 	assert pet.might == grown.pet.might;
 	const added = pet.stats().rewardWeight() - grown.pet.stats().rewardWeight();
 	assert shown.value.global.totalWorkPower == grown.global.totalWorkPower + added;
