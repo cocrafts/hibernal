@@ -14,7 +14,7 @@ import {
 // (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../../rules/pantry";
-import { Gear, Item } from "../../rules/items";
+import { Gear, Item, resaleValue } from "../../rules/items";
 import { ACTS_PER_EPOCH, Masks, World, WorldStats } from "../world";
 import { personaKindOf, playEpisode } from "../teacher";
 import {
@@ -143,7 +143,8 @@ export function shaping(this weights: RewardWeights, moment: Moment, world: Worl
 }
 
 export function score(this pet: Pet, weights: RewardWeights): int64 {
-	const wealth = ((pet.harvest + pet.burrow) / MILLI_PER_UNIT) as int64;
+	const assets = pet.harvest + pet.burrow + pet.gear.resaleValue(pet.level as int32);
+	const wealth = (assets / MILLI_PER_UNIT) as int64;
 	if (pet.agedOut()) { return wealth; }
 	if (!pet.alive) { return -weights.deathMilli; }
 	return wealth + weights.heartMilli * (pet.hearts as int64);

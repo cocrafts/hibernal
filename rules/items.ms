@@ -202,6 +202,14 @@ export function weakestItemSlot(this gear: Gear): Result<GearSlot, GearError> {
 	return Result.ok(weakest);
 }
 
+export function resaleValue(this gear: Gear, level: int32): uint64 {
+	let value: uint64 = 0;
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		value += gear.at(ordinal as GearSlot).sellPrice(level);
+	}
+	return value;
+}
+
 export function hasSkill(this gear: Gear, skill: ItemSkill): boolean {
 	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
 		if (gear.at(ordinal as GearSlot).skill == (skill as uint8)) { return true; }
