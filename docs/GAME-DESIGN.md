@@ -118,7 +118,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 | Survivor | grit | max hearts | max hearts | bite guard, notable *Thick Hide* |
 
 - Keystones: Worker|Fighter *Glass Cannon* (58), *Tycoon* (59) · Fighter|Survivor *Cannibal* (60), *Berserker* (61) · Survivor|Worker *Pacifist* (62), *Bulwark* (63). A border's pair hangs off cluster 3's notable of the first direction and cluster 2's notable of the second. Effects in `BRIEF.md` §3.9.
-- Stats are built in one order: base, start, level growth (scaled by talent), then the sum of family percentages, then keystone multipliers (`Stats.built`).
+- Stats are built in one order: base, start, level growth, then the sum of family percentages, then keystone multipliers, then the talent multiplier on its whole stat (`Stats.built`; decided 2026-09-25, before that the talent scaled only the level growth).
 - Distances: own notable 6 points from the start, an own-border keystone 9; the other directions through the gate: entry, gate, entry, fork, cluster.
 - The draft ring layout this replaces (rings 1–4, lanes by stat) is in git history of this file before 2026-09-24.
 
