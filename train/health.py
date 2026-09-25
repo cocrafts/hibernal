@@ -126,6 +126,7 @@ def scorecard(counters, stats, epochs):
     rows += [
         ("wealth median, highest / lowest start", ratio(max(regionWealth), min(regionWealth)), 1.0, 1.5, "SIM F2"),
         ("item mints per life", ratio(field(counters, "mints").sum(), lives), None, None, "BRIEF 3.12"),
+        ("items sold for cash per 100 lives", 100 * ratio(field(counters, "sells").sum(), lives), None, None, "BRIEF 3.12"),
         ("item spend, % of income", 100 * ratio(field(counters, "mintSpent").sum(), earned.sum()), None, None, "BRIEF 3.12"),
         ("gear bonus, mean bps per pet-day", ratio(field(counters, "gearBonusSum").sum(), livingDays), None, None, "BRIEF 3.12"),
         ("loot from wild pets, % of income", 100 * ratio(field(counters, "wildLoot").sum(), earned.sum()), None, None, "BRIEF 3.14"),

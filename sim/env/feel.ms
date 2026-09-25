@@ -76,9 +76,10 @@ export enum FeelCounter {
 	RobbedAgain,
 	WildRaids,
 	WildLoot,
+	Sells,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.WildLoot as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.Sells as int32) + 1;
 
 export enum Milestone {
 	EarlyLevel,
@@ -184,6 +185,9 @@ export function momentOf(
 }
 
 function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, after: Pet): void {
+	if (action == (EconomyAction.SellItem as int32) && after.burrow > actor.burrow) {
+		feel.tally(key, FeelCounter.Sells, 1);
+	}
 	if (action == (EconomyAction.Mint as int32) && after.burrow < actor.burrow) {
 		feel.tally(key, FeelCounter.Mints, 1);
 		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;

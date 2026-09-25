@@ -105,6 +105,9 @@ function economyStep(this world: World, index: int32, diary: Diary): World {
 		EconomyAction.Rest => {},
 		EconomyAction.Bank => { diary.note(index, `bank ${money(before.harvest)}`); },
 		EconomyAction.Mint => { diary.note(index, gearNote(before, pet)); },
+		EconomyAction.SellItem => {
+			diary.note(index, `sold gear for ${money(pet.burrow - before.burrow)} to buy food`);
+		},
 		_ => {
 			const cost = money(before.burrow - pet.burrow);
 			diary.note(index, `${action.toString()} hearts ${before.hearts}->${pet.hearts} cost ${cost}`);

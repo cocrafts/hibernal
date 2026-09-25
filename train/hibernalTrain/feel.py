@@ -52,6 +52,7 @@ FEEL_FIELDS = (
     "robbedAgain",
     "wildRaids",
     "wildLoot",
+    "sells",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])
