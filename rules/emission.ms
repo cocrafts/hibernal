@@ -12,6 +12,10 @@ export const EMISSION_DECAY_DENOMINATOR: uint64 = 4;
 export const SPEND_PROTOCOL_PERCENT: uint64 = 10;
 export const SPEND_BURN_PERCENT: uint64 = 30;
 export const STAKE_PROTOCOL_PERCENT: uint64 = 5;
+export const SMALL_FOOD_PRICE: uint64 = 168;
+export const MEDIUM_FOOD_PRICE: uint64 = 315;
+export const LARGE_FOOD_PRICE: uint64 = 490;
+export const FOOD_PRICE_PERCENT: uint64 = 100;
 
 export enum Food {
 	Small,
@@ -84,11 +88,12 @@ export function growthBonus(pending: uint64, multiplierBps: int32): uint64 {
 
 export function foodCost(food: Food, level: int32): uint64 {
 	const base: uint64 = match (food) {
-		Food.Small => 168,
-		Food.Medium => 315,
-		Food.Large => 490,
+		Food.Small => SMALL_FOOD_PRICE,
+		Food.Medium => MEDIUM_FOOD_PRICE,
+		Food.Large => LARGE_FOOD_PRICE,
 	};
-	return base * HBRN_UNIT * ((20 + level) as uint64) / 20;
+	const scaled = base * HBRN_UNIT * FOOD_PRICE_PERCENT / 100;
+	return scaled * ((20 + level) as uint64) / 20;
 }
 
 export function foodHearts(food: Food): int32 {
