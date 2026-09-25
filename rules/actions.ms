@@ -426,6 +426,7 @@ export function settleAttack(
 	if (result.outcome == Outcome.AttackerWins) {
 		const harvestBefore = defenderToday.harvest;
 		const baseLoot = defenderCombatant.lootFor(
+			attackerCombatant,
 			stake,
 			harvestBefore,
 			defenderToday.fightsInToday as int32,

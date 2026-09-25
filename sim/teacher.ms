@@ -227,6 +227,7 @@ export function teachAttack(this world: World, index: int32, masks: Masks): int3
 		);
 		if (winChance < persona.minWinChanceBps) { continue; }
 		const value = defender.combatantFacing(pet).attackExpectedValue(
+			pet.combatantFacing(defender),
 			winChance,
 			stake,
 			defender.harvest,

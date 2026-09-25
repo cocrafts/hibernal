@@ -33,7 +33,6 @@ export const MAX_ROUNDS: int32 = 6;
 export const DRAWS_PER_STRIKE: int32 = 4;
 export const DRAWS_PER_ROUND: int32 = 13;
 export const ATTACK_MIGHT_DIVISOR: int32 = 100;
-export const GRIT_LOOT_SCALE: int32 = 1000;
 export const LOOT_PER_STAKE_BPS: int32 = 15000;
 export const MIN_BITE_STAKE: uint64 = 5000000;
 export const PACIFIST_LOOT_CUT_BPS: int32 = 7000;
@@ -321,18 +320,26 @@ function applyCut(loot: uint64, cutBps: int32): uint64 {
 	return loot * ((BPS - cutBps) as uint64) / (BPS as uint64);
 }
 
+export function takeableHarvest(harvest: uint64, attackerMight: int32, defenderGrit: int32): uint64 {
+	const might = Math.max(attackerMight, 0);
+	const total = might + Math.max(defenderGrit, 0);
+	if (total == 0) { return harvest; }
+	const takeable = harvest * ((2 * might) as uint64) / (total as uint64);
+	return Math.min(takeable, harvest);
+}
+
 export function lootFor(
 	this defender: Combatant,
+	attacker: Combatant,
 	stake: uint64,
 	harvest: uint64,
 	fightsInToday: int32,
 ): uint64 {
 	const stakeLoot = stake * (LOOT_PER_STAKE_BPS as uint64) / (BPS as uint64);
-	const reachable = Math.min(stakeLoot, harvest);
-	const kept = Math.max(GRIT_LOOT_SCALE - defender.grit, 0);
-	const afterGrit = reachable * (kept as uint64) / (GRIT_LOOT_SCALE as uint64);
+	const takeable = takeableHarvest(harvest, attacker.might, defender.grit);
+	const reachable = Math.min(stakeLoot, takeable);
 	const pacifist = defender.mods.has(Mod.Pacifist);
-	const afterPacifist = pacifist ? applyCut(afterGrit, PACIFIST_LOOT_CUT_BPS) : afterGrit;
+	const afterPacifist = pacifist ? applyCut(reachable, PACIFIST_LOOT_CUT_BPS) : reachable;
 	const thickHide = defender.mods.has(Mod.ThickHide) && fightsInToday < THICK_HIDE_FIGHTS;
 	return thickHide ? applyCut(afterPacifist, THICK_HIDE_LOOT_CUT_BPS) : afterPacifist;
 }
@@ -388,16 +395,22 @@ test "zero might attacker never wins" {
 	}
 }
 
-test "loot caps at the stake multiple and at harvest" {
+test "loot caps at the stake multiple, at harvest and at what might takes from grit" {
 	const defender = Combatant.plain(50, 100, 5);
-	assert defender.lootFor(100, 1000000, 0) == 135;
-	assert defender.lootFor(100, 120, 0) == 108;
+	const peer = Combatant.plain(100, 0, 5);
+	assert defender.lootFor(peer, 100, 1000000, 0) == 150;
+	assert defender.lootFor(peer, 100, 120, 0) == 120;
+	const tank = Combatant.plain(50, 300, 5);
+	assert tank.lootFor(peer, 100, 120, 0) == 60;
+	assert tank.lootFor(peer, 100, 1000000, 0) == 150;
+	assert takeableHarvest(120, 0, 0) == 120;
+	assert takeableHarvest(120, 0, 50) == 0;
 	const bare = Combatant.plain(50, 0, 5);
 	const pacifist: Combatant = { ...bare, mods: Mod.Pacifist | Mod.Pacifist };
-	assert pacifist.lootFor(100, 1000000, 0) == 45;
+	assert pacifist.lootFor(peer, 100, 1000000, 0) == 45;
 	const thickHide: Combatant = { ...bare, mods: Mod.ThickHide | Mod.ThickHide };
-	assert thickHide.lootFor(100, 1000000, 0) == 75;
-	assert thickHide.lootFor(100, 1000000, 3) == 150;
+	assert thickHide.lootFor(peer, 100, 1000000, 0) == 75;
+	assert thickHide.lootFor(peer, 100, 1000000, 3) == 150;
 }
 
 test "stake bounds and attack budget" {

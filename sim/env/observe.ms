@@ -341,12 +341,14 @@ function writeTargets(this world: World, index: int32, features: int32[], offset
 		const stakeCap = pet.attackable(target, world.epoch);
 		if (!stakeCap.ok) { continue; }
 		const defender = target.combatantFacing(pet);
-		const winChance = pet.combatantFacing(target).winChanceFromTable(defender);
+		const attacker = pet.combatantFacing(target);
+		const winChance = attacker.winChanceFromTable(defender);
 		put(features, targetSlot(row, TargetFeature.WinChance), winChance * FEATURE_ONE / BPS);
 		for (let ordinal = 0; ordinal < STAKE_LEVELS; ordinal++) {
 			const stake = pet.stakeAt(stakeCap.value, ordinal as StakeLevel);
 			if (!stake.ok) { continue; }
 			const value = defender.attackExpectedValue(
+				attacker,
 				winChance,
 				stake.value,
 				target.harvest,

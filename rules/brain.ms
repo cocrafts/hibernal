@@ -103,12 +103,14 @@ export function chooseStake(
 
 export function attackExpectedValue(
 	this defender: Combatant,
+	attacker: Combatant,
 	winChanceBps: int32,
 	stake: uint64,
 	harvest: uint64,
 	fightsInToday: int32,
 ): int64 {
-	const [winnings, _protocolFee] = stakeSplit(defender.lootFor(stake, harvest, fightsInToday));
+	const loot = defender.lootFor(attacker, stake, harvest, fightsInToday);
+	const [winnings, _protocolFee] = stakeSplit(loot);
 	const weightedGain = (winnings as int64) * (winChanceBps as int64);
 	const weightedLoss = (stake as int64) * ((BPS - winChanceBps) as int64);
 	return (weightedGain - weightedLoss) / (BPS as int64);
@@ -132,6 +134,7 @@ export function scoreTarget(
 	const winChance = attackerCombatant.winChanceAgainst(defenderCombatant, seed, BRAIN_ODDS_RUNS);
 	if (winChance < persona.minWinChanceBps) { return Result.err(Skip.OddsTooLow); }
 	const expectedValue = defenderCombatant.attackExpectedValue(
+		attackerCombatant,
 		winChance,
 		stake,
 		defender.harvest,
@@ -220,9 +223,10 @@ test "a low pet eats the largest portion it holds" {
 
 test "attack expected value follows odds" {
 	const defender = Combatant.plain(50, 0, 5);
-	assert defender.attackExpectedValue(9000, 100, 1000000, 0) > 0;
-	assert defender.attackExpectedValue(3000, 100, 1000000, 0) < 0;
-	assert defender.attackExpectedValue(9000, 100, 0, 0) < 0;
+	const attacker = Combatant.plain(80, 0, 5);
+	assert defender.attackExpectedValue(attacker, 9000, 100, 1000000, 0) > 0;
+	assert defender.attackExpectedValue(attacker, 3000, 100, 1000000, 0) < 0;
+	assert defender.attackExpectedValue(attacker, 9000, 100, 0, 0) < 0;
 }
 
 test "empty harvest target is never worth attacking" {
