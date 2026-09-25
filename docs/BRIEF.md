@@ -275,6 +275,7 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 ### 3.14 Wild pets and the reward floor (D34, D37)
 - The reward denominator counts at least 500 slots (§3.3). Empty block slots show wild pets whose stats and age are formulas of `(block, slot, epoch, seed)`; a real claim replaces one; they age and die by formula.
 - Fighting a wild pet computes it on the spot and uses VRF. Loot from wild pets is tracked per slot per epoch in `Block` or capped per player, so they stay practice targets.
+- In the sim (2026-09-25, `World.wildsAwake`, agent proposal): each empty slot shows a wild pet, a common pet at the world's median level that never attacks or dies; its harvest is that slot's bot share of the day, robbable by neighbors under the normal fight rules; what nobody takes is gone at dawn, stakes lost to a wild pet go to the pot. Teacher world: loot from wild pets 10% of income, fights per pet per day 0.42 → 0.56, early deaths 2.4 → 2.0 per 100 lives (`docs/SIM.md` G1).
 - A real-account army driven by `act` (≈ 0.0041 SOL rent per pet, ~2 SOL for 500) waits on the ER throughput probe.
 
 ### 3.15 Social interactions *(proposed, `GAME-DESIGN.md` §13)*
