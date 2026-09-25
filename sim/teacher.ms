@@ -57,6 +57,7 @@ import {
 } from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
+export const TEACHER_BUYS_GEAR: boolean = true;
 export const REVENGE_WIN_CHANCE_BPS: int32 = 4000;
 export const NEVER_RANK: int32 = 1000;
 
@@ -107,7 +108,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
 	const reserve = foodReserve(level, pet.ownStats().hungerPerDay());
 	const listing = world.bestListingFor(index);
-	if (listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
+	if (TEACHER_BUYS_GEAR && listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
 		const asked = world.market[listing.value].price;
 		if (pet.burrow >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
 	}
@@ -116,7 +117,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	const worn = (weakest.wear as int32) >= ITEM_REPLACE_WEAR && weakest.score() < FAIR_SCORE_BPS;
 	const due = weakest.isEmpty() || worn;
 	const affordable = pet.burrow >= price + reserve && price <= spare;
-	if (due && affordable && masks.economy.has(EconomyAction.Mint)) {
+	if (TEACHER_BUYS_GEAR && due && affordable && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
 	}
 	if (masks.economy.has(EconomyAction.ListItem)) { return EconomyAction.ListItem; }
