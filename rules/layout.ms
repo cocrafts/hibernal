@@ -99,14 +99,23 @@ export struct FightRecord {
 	rounds: int32;
 }
 
+export function ownStats(this pet: Pet): Stats {
+	return {
+		...Stats.built(pet.tree, pet.level as int32, pet.talent()),
+		forage: pet.forage as int32,
+		might: pet.might as int32,
+		grit: pet.grit as int32,
+		maxHearts: pet.maxHearts as int32,
+	};
+}
+
 export function stats(this pet: Pet): Stats {
 	const gear = pet.gear;
 	return {
-		...Stats.built(pet.tree, pet.level as int32, pet.talent()),
+		...pet.ownStats(),
 		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage)),
 		might: geared(pet.might, gear.statBonusBps(TalentKind.Might)),
 		grit: geared(pet.grit, gear.statBonusBps(TalentKind.Grit)),
-		maxHearts: pet.maxHearts as int32,
 	};
 }
 

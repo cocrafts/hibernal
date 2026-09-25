@@ -20,8 +20,20 @@ import {
 	deathSplit,
 } from "./emission";
 import { Pantry } from "./pantry";
-import { Gear, ItemSkill, allWornBy, hasSkill, spentSkill, heirlooms } from "./items";
-import { TALENT_LEVEL, Talent, TalentKind, lineageNudgeBps } from "./talent";
+import {
+	Gear,
+	GearSlot,
+	Item,
+	ItemSkill,
+	allWornBy,
+	hasSkill,
+	spentSkill,
+	heirlooms,
+	minted,
+	with,
+	bare,
+} from "./items";
+import { TALENT_LEVEL, Talent, TalentGrade, TalentKind, lineageNudgeBps } from "./talent";
 import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
 import {
 	BONDING_MAX,
@@ -277,7 +289,7 @@ export function tickTo(
 	const growing = pet.lastTickEpoch < pet.growthMultiplierExpiry;
 	const multiplierBps = growing ? pet.growthMultiplierBps as int32 : 0;
 	const stats = pet.stats();
-	const hunger = stats.hungerPerDay();
+	const hunger = pet.ownStats().hungerPerDay();
 	let hearts = pet.hearts as int32;
 	let pantry = pet.pantry;
 	let workedEpochs = 0;
@@ -470,6 +482,16 @@ test "hunger is a share of max hearts that might and forage raise and grit lower
 	assert gritty.hungerPerDay() == 2;
 	assert stone.appetiteBps() == MIN_APPETITE_BPS;
 	assert tiny.hungerPerDay() == 1;
+}
+
+test "gear makes a pet stronger without making it hungrier" {
+	const newborn = hatch(Region.Fighter, 0, GlobalConfig.genesis(0));
+	const strong: Pet = { ...newborn.pet, might: 400, maxHearts: 40 };
+	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.None);
+	const armed: Pet = { ...strong, gear: Gear.bare().with(GearSlot.Head, mythic) };
+	assert armed.stats().might > strong.stats().might;
+	assert armed.stats().hungerPerDay() > armed.ownStats().hungerPerDay();
+	assert armed.ownStats().hungerPerDay() == strong.ownStats().hungerPerDay();
 }
 
 test "hunger takes a heart every day and starvation leaves the work power" {
