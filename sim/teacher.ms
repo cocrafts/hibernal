@@ -167,8 +167,9 @@ export function revengeOn(this world: World, index: int32, masks: Masks): int32 
 	if (!robber.ok) { return ATTACK_HOLD; }
 	if (!masks.attacks.allowsAttack(robber.value, StakeLevel.Quarter)) { return ATTACK_HOLD; }
 	const slot = robber.value as int32;
-	const defender = world.pets[blockStart(index) + slot];
-	const winChance = world.pets[index].combatantFacing(defender).winChanceFromTable(defender.combatantFacing(world.pets[index]));
+	const defender = world.defenderAt(blockStart(index) + slot);
+	const avenger = world.pets[index];
+	const winChance = avenger.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(avenger));
 	if (winChance < REVENGE_WIN_CHANCE_BPS) { return ATTACK_HOLD; }
 	return attackChoice(robber.value, StakeLevel.Quarter);
 }
@@ -188,7 +189,7 @@ export function teachAttack(this world: World, index: int32, masks: Masks): int3
 	let bestRank: int64 = 0;
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		if (base + slot == index) { continue; }
-		const defender = world.pets[base + slot];
+		const defender = world.defenderAt(base + slot);
 		const capped = pet.attackable(defender, world.epoch);
 		if (!capped.ok) { continue; }
 		const budget = persona.chooseStake(defender.harvest, pet.burrow);

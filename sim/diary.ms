@@ -125,7 +125,7 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const target = blockStart(index) + slot;
 	const level = (choice % STAKE_LEVELS) as StakeLevel;
 	const attacker = world.pets[index];
-	const defender = world.pets[target];
+	const defender = world.defenderAt(target);
 	const robber = world.robberOf(index);
 	const revenge = robber.ok && (robber.value as int32) == slot ? " revenge" : "";
 	const odds = attacker.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(attacker)) / 100;
@@ -134,7 +134,7 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const won = world.stats.wins;
 	const after = world.applyAttack(index, choice);
 	const attackerAfter = after.pets[index];
-	const defenderAfter = after.pets[target];
+	const defenderAfter = after.defenderAt(target);
 	const opening = `attack ${nameOf(target)} ${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
 	if (after.stats.wins > won) {
 		const loot = money(defender.harvest - defenderAfter.harvest);

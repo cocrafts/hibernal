@@ -74,9 +74,11 @@ export enum FeelCounter {
 	MintSpent,
 	GearBonusSum,
 	RobbedAgain,
+	WildRaids,
+	WildLoot,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.RobbedAgain as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.WildLoot as int32) + 1;
 
 export enum Milestone {
 	EarlyLevel,
@@ -176,7 +178,7 @@ export function momentOf(
 		head: head,
 		action: action,
 		actor: world.pets[index],
-		defender: world.pets[target],
+		defender: world.defenderAt(target),
 		stats: world.stats,
 	};
 }
@@ -233,6 +235,12 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	}
 	const victim = moment.env * feel.pets + blockStart(moment.index) + (defender.slot as int32);
 	feel.tally(key, FeelCounter.AttacksWon, 1);
+	if (!world.pets[blockStart(moment.index) + (defender.slot as int32)].alive) {
+		const taken = defender.harvest - world.wilds[blockStart(moment.index) + (defender.slot as int32)].harvest;
+		feel.tally(key, FeelCounter.WildRaids, 1);
+		feel.tally(key, FeelCounter.WildLoot, (taken / HBRN_UNIT) as int32);
+		return;
+	}
 	feel.tally(victim, FeelCounter.Robbed, 1);
 	const last = grudges[victim];
 	const again = last.epoch != 0 && world.epoch <= last.epoch + REVENGE_EPOCHS;

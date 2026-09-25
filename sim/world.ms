@@ -22,6 +22,18 @@ import {
 	INHERITANCE_TAX_PERCENT,
 	agedOut,
 	heirOf,
+	BOT_WEIGHT,
+	REWARD_SCALE,
+	NEWBORN_EPOCHS,
+	Stats,
+	Tree,
+	Talent,
+	TalentKind,
+	Insurance,
+	built,
+	withNode,
+	unrevealed,
+	settle,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -90,6 +102,7 @@ export struct World {
 	epoch: uint64;
 	round: int32;
 	turns: int32[];
+	wilds: Pet[];
 	seed: uint64;
 	stats: WorldStats;
 }
@@ -106,6 +119,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const owners: OwnerKind[] = [];
 	const ownerLedgers: OwnerLedger[] = [];
 	const turns: int32[] = [];
+	const wilds: Pet[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
 		const slot = index % BLOCK_SLOTS;
 		turns.push(index);
@@ -121,6 +135,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 			global,
 		);
 		pets.push(hatched.pet);
+		wilds.push({ ...hatched.pet, alive: false });
 		claimEpochs.push(0);
 		deathEpochs.push(0);
 		levelTenEpochs.push(0);
@@ -141,6 +156,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		epoch: 0,
 		round: 0,
 		turns: turns,
+		wilds: wilds,
 		seed: seed,
 		stats: { fights: 0, wins: 0, deaths: 0, heirs: 0, illegal: 0 },
 	};
@@ -194,7 +210,9 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 	const deathEpochs = world.deathEpochs;
 	const levelTenEpochs = world.levelTenEpochs;
 	const levelTwentyEpochs = world.levelTwentyEpochs;
-	let global = world.global;
+	const before = world.global.rewardPerWorkPower;
+	let global = world.global.settle(epoch);
+	const botShare = (global.rewardPerWorkPower - before) * BOT_WEIGHT / REWARD_SCALE;
 	let heirs = world.stats.heirs;
 	for (let index = 0; index < world.pets.length; index++) {
 		let pet = pets[index];
@@ -244,7 +262,54 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		epoch: epoch,
 		stats: { ...world.stats, heirs: heirs },
 	};
-	return begun.ownersVisited().inRound(0);
+	return begun.ownersVisited().wildsAwake(botShare).inRound(0);
+}
+
+export function wildsAwake(this world: World, harvest: uint64): World {
+	const wilds = world.wilds;
+	const level = Math.max(world.medianLevel(), 1);
+	for (let index = 0; index < world.pets.length; index++) {
+		const pet = world.pets[index];
+		if (pet.alive) {
+			wilds[index] = { ...wilds[index], alive: false };
+			continue;
+		}
+		const region = pet.startRegion();
+		const stats = Stats.built(Tree.empty().withNode(region as int32), level, Talent.unrevealed());
+		wilds[index] = {
+			...pet,
+			alive: true,
+			level: level as uint16,
+			forage: stats.forage as uint16,
+			might: stats.might as uint16,
+			grit: stats.grit as uint16,
+			maxHearts: stats.maxHearts as uint8,
+			hearts: stats.maxHearts as uint8,
+			tree: Tree.empty().withNode(region as int32),
+			harvest: harvest,
+			burrow: 0,
+			bornEpoch: world.epoch - Math.min(world.epoch, NEWBORN_EPOCHS),
+			lastTickEpoch: world.epoch,
+			fightDay: world.epoch,
+			fightsInToday: 0,
+			bitesInToday: 0,
+			fightsOutToday: 0,
+			slotsAttackedToday: 0 as BitSet<BlockSlot>,
+			talentKind: TalentKind.None as uint8,
+			gear: Gear.bare(),
+			insurance: Insurance.None as uint8,
+			rage: 0,
+		};
+	}
+	return world;
+}
+
+export function isWild(this world: World, position: int32): boolean {
+	return !world.pets[position].alive && world.wilds[position].alive;
+}
+
+export function defenderAt(this world: World, position: int32): Pet {
+	return world.isWild(position) ? world.wilds[position] : world.pets[position];
 }
 
 export function ownersVisited(this world: World): World {
@@ -332,7 +397,7 @@ export function attackMaskFor(this world: World, index: int32): AttackMask {
 	let attacks = attackHoldMask();
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		if (base + slot == index) { continue; }
-		attacks = attacks.attacksOn(pet, world.pets[base + slot], world.epoch);
+		attacks = attacks.attacksOn(pet, world.defenderAt(base + slot), world.epoch);
 	}
 	return attacks;
 }
@@ -383,11 +448,25 @@ export function applyAttack(this world: World, index: int32, choice: int32): Wor
 	if (slot < 0 || slot >= BLOCK_SLOTS || target == index) { return world.counted(true); }
 	const entropy = mixSeeds(world.seed, pet.blockId as uint64);
 	const seed = fightSeed(entropy, pet.slot as int32, slot, world.epoch, world.round);
-	const settled = pet.settleAttack(pets[target], level, world.global, world.epoch, seed);
+	const wild = world.isWild(target);
+	const defender = world.defenderAt(target);
+	const settled = pet.settleAttack(defender, level, world.global, world.epoch, seed);
 	if (!settled.ok) { return world.counted(true); }
 	pets[index] = settled.value.attacker;
-	pets[target] = settled.value.defender;
 	const won = settled.value.record.loot > 0 ? 1 : 0;
+	if (wild) {
+		const wilds = world.wilds;
+		const tamed = settled.value.defender;
+		const kept = tamed.burrow - defender.burrow;
+		wilds[target] = { ...tamed, alive: true, hearts: defender.hearts, burrow: 0 };
+		const global = settled.value.global;
+		return {
+			...world,
+			global: { ...global, recycledPending: global.recycledPending + kept },
+			stats: { ...world.stats, fights: world.stats.fights + 1, wins: world.stats.wins + won },
+		};
+	}
+	pets[target] = settled.value.defender;
 	const grudges = world.grudges;
 	const robber = world.robberOf(index);
 	if (robber.ok && robber.value == slot as BlockSlot) { grudges[index] = Grudge.none(); }

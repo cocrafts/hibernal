@@ -128,6 +128,7 @@ def scorecard(counters, stats, epochs):
         ("item mints per life", ratio(field(counters, "mints").sum(), lives), None, None, "BRIEF 3.12"),
         ("item spend, % of income", 100 * ratio(field(counters, "mintSpent").sum(), earned.sum()), None, None, "BRIEF 3.12"),
         ("gear bonus, mean bps per pet-day", ratio(field(counters, "gearBonusSum").sum(), livingDays), None, None, "BRIEF 3.12"),
+        ("loot from wild pets, % of income", 100 * ratio(field(counters, "wildLoot").sum(), earned.sum()), None, None, "BRIEF 3.14"),
         ("loot lost, % of income", 100 * ratio(field(counters, "lootLost").sum(), earned.sum()), None, None, "SIM C6"),
         ("attacks under 40% odds, %", 100 * ratio(field(counters, "recklessAttacks").sum(), attacks), None, 1.0, "SIM C1"),
         ("attacks per pet per day", ratio(attacks, livingDays), None, None, "SIM C"),

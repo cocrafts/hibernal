@@ -237,10 +237,12 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	let threat = 0;
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		const mate = world.pets[base + slot];
-		if (base + slot == index || !mate.alive) { continue; }
-		if (!mate.shieldedAt(world.epoch)) {
-			richest = Math.max(richest, moneyFeature(mate.harvest));
+		const target = world.defenderAt(base + slot);
+		if (base + slot == index || !target.alive) { continue; }
+		if (!target.shieldedAt(world.epoch)) {
+			richest = Math.max(richest, moneyFeature(target.harvest));
 		}
+		if (!mate.alive) { continue; }
 		if (mate.attackable(pet, world.epoch).ok) {
 			threat = Math.max(threat, mate.combatantFacing(pet).winChanceFromTable(pet.combatantFacing(mate)));
 		}
@@ -315,7 +317,7 @@ function writeTargets(this world: World, index: int32, features: int32[], offset
 	const base = blockStart(index);
 	const robber = world.robberOf(index);
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		const target = world.pets[base + slot];
+		const target = world.defenderAt(base + slot);
 		if (base + slot == index || !target.alive) { continue; }
 		const row = offset + slot * TARGET_FEATURES;
 		put(features, targetSlot(row, TargetFeature.Present), FEATURE_ONE);

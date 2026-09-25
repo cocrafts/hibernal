@@ -589,7 +589,8 @@ test "feel counters agree with the world's own fight counts and survive the reop
 		assert stats.fights > 0;
 		assert batch.feelTotal(env, FeelCounter.Attacks) == stats.fights;
 		assert batch.feelTotal(env, FeelCounter.AttacksWon) == stats.wins;
-		assert batch.feelTotal(env, FeelCounter.Robbed) == stats.wins;
+		const wildRaids = batch.feelTotal(env, FeelCounter.WildRaids);
+		assert batch.feelTotal(env, FeelCounter.Robbed) + wildRaids == stats.wins;
 		assert batch.feelTotal(env, FeelCounter.Avenged) <= stats.wins;
 		assert batch.feelTotal(env, FeelCounter.Meals) > 0;
 		assert batch.feelTotal(env, FeelCounter.StarvedStocked) == 0;
