@@ -179,6 +179,8 @@ test "insurance revives once, burns half the wallet and leaves a scar" {
 		recycledPending: 0,
 		protocolPending: 0,
 		burned: 7,
+		livingPets: 1,
+		floorSlots: 500,
 	};
 	const dying: Pet = {
 		...testPet(),

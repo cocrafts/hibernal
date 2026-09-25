@@ -137,7 +137,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		buildTargets: buildTargets,
 		owners: owners,
 		ownerLedgers: ownerLedgers,
-		global: global,
+		global: { ...global, floorSlots: (blocks * BLOCK_SLOTS) as uint32 },
 		epoch: 0,
 		round: 0,
 		turns: turns,
@@ -164,7 +164,7 @@ export function staggered(this typeof World, blocks: int32, seed: uint64): World
 		};
 		claimEpochs[index] = claimEpoch;
 	}
-	return { ...world, global: GlobalConfig.genesis(0) };
+	return { ...world, global: { ...GlobalConfig.genesis(0), floorSlots: total as uint32 } };
 }
 
 export function blockStart(index: int32): int32 {

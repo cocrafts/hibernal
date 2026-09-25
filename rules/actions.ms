@@ -46,6 +46,7 @@ import {
 	withSpend,
 	withProtocolFee,
 	withWorkPower,
+	withDeath,
 	born,
 	tickTo,
 	vigor,
@@ -439,7 +440,7 @@ export function settleAttack(
 		return Result.ok({
 			attacker: raider.gainXp(raidXp(loot)),
 			defender: remains.gainXp(DEFENSE_LOSS_XP),
-			global: remains.alive ? paid : paid.withWorkPower(remains.stats().rewardWeight(), 0),
+			global: remains.alive ? paid : paid.withDeath(remains.stats().rewardWeight()),
 			record: { ...record, loot: loot },
 		});
 	}
@@ -454,7 +455,7 @@ export function settleAttack(
 	return Result.ok({
 		attacker: beaten,
 		defender: holder.gainXp(DEFENSE_WIN_XP),
-		global: beaten.alive ? paid : paid.withWorkPower(beaten.stats().rewardWeight(), 0),
+		global: beaten.alive ? paid : paid.withDeath(beaten.stats().rewardWeight()),
 		record: record,
 	});
 }

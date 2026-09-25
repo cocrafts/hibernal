@@ -82,6 +82,8 @@ export struct GlobalConfig {
 	recycledPending: uint64;
 	protocolPending: uint64;
 	burned: uint64;
+	livingPets: uint32;
+	floorSlots: uint32;
 }
 
 export struct FightRecord {

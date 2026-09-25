@@ -33,6 +33,8 @@ export const END_VIGOR_BPS: int32 = 5000;
 export const INHERITANCE_TAX_PERCENT: uint64 = 30;
 export const HEIR_POINTS_CAP: int32 = 5;
 export const HUNGER_BPS: int32 = 1000;
+export const REWARD_FLOOR_SLOTS: uint32 = 500;
+export const BOT_WEIGHT: uint64 = 8649;
 export const MIGHT_APPETITE_BPS: int32 = 50;
 export const FORAGE_APPETITE_BPS: int32 = 30;
 export const GRIT_APPETITE_BPS: int32 = 40;
@@ -78,7 +80,22 @@ export function genesis(this typeof GlobalConfig, genesisTimestamp: uint64): Glo
 		recycledPending: 0,
 		protocolPending: 0,
 		burned: 0,
+		livingPets: 0,
+		floorSlots: REWARD_FLOOR_SLOTS,
 	};
+}
+
+export function rewardDenominator(this global: GlobalConfig): uint64 {
+	const empty = Math.max((global.floorSlots as int64) - (global.livingPets as int64), 0 as int64);
+	return global.totalWorkPower + BOT_WEIGHT * (empty as uint64);
+}
+
+export function withBirth(this global: GlobalConfig, weight: uint64): GlobalConfig {
+	return { ...global.withWorkPower(0, weight), livingPets: global.livingPets + 1 };
+}
+
+export function withDeath(this global: GlobalConfig, weight: uint64): GlobalConfig {
+	return { ...global.withWorkPower(weight, 0), livingPets: global.livingPets - 1 };
 }
 
 export function settle(this global: GlobalConfig, epoch: uint64): GlobalConfig {
@@ -89,7 +106,7 @@ export function settle(this global: GlobalConfig, epoch: uint64): GlobalConfig {
 			global.rewardPerWorkPower,
 			global.rewardEpoch,
 			epoch,
-			global.totalWorkPower,
+			global.rewardDenominator(),
 			global.recycledPending,
 		),
 		rewardEpoch: epoch,
@@ -173,7 +190,7 @@ export function born(
 		rage: 0,
 		rageEpoch: 0,
 	};
-	return { pet: pet, global: settled.withWorkPower(0, stats.rewardWeight()) };
+	return { pet: pet, global: settled.withBirth(stats.rewardWeight()) };
 }
 
 export function vigorBps(age: uint64): int32 {
@@ -320,7 +337,9 @@ export function tickTo(
 	};
 	const gift = newDay && alive ? fed.giftFor(foodReserve(fed.level as int32, hunger)) : 0;
 	const gifted: Pet = { ...fed, burrow: fed.burrow - gift, giftOwed: fed.giftOwed + gift };
-	const weighed = settled.withWorkPower(weight, alive ? gifted.stats().rewardWeight() : 0);
+	const weighed = alive
+		? settled.withWorkPower(weight, gifted.stats().rewardWeight())
+		: settled.withDeath(weight);
 	return Result.ok({
 		pet: gifted.onFightDay(epoch),
 		global: { ...weighed, burned: weighed.burned + harvestBurned + burrowBurned },
@@ -410,7 +429,8 @@ test "a newborn starts at its region with one point and joins the work power" {
 }
 
 test "the first tick pays the emission share and levels on work xp" {
-	const first = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
+	const small: GlobalConfig = { ...GlobalConfig.genesis(0), floorSlots: 2 };
+	const first = hatch(Region.Worker, 0, small);
 	const second = Pet.born(0, BlockSlot.Second, Region.Fighter, 0, first.global);
 	const firstTicked = first.pet.tickedTo(second.global, 1);
 	const secondTicked = second.pet.tickedTo(firstTicked.global, 1);
@@ -631,4 +651,24 @@ test "an insured pet that starves comes back once from its tick" {
 	assert next.pet.scars == 1;
 	assert next.pet.burrow == 200;
 	assert next.global.burned >= newborn.global.burned + 200;
+}
+
+test "below the floor, empty slots count as bots and their share is not paid" {
+	const floored: GlobalConfig = { ...GlobalConfig.genesis(0), floorSlots: 10 };
+	const lone = hatch(Region.Worker, 0, floored);
+	assert lone.global.livingPets == 1;
+	assert lone.global.rewardDenominator() == lone.global.totalWorkPower + BOT_WEIGHT * 9;
+	const ticked = lone.pet.tickedTo(lone.global, 1);
+	const share = EMISSION_START * lone.global.totalWorkPower / lone.global.rewardDenominator();
+	assert ticked.pet.harvest <= share + 1 && ticked.pet.harvest + 100 >= share;
+	const dead: Pet = { ...ticked.pet, hearts: 1, minHearts: 0, pantry: Pantry.unstocked() };
+	const gone = dead.tickedTo(ticked.global, 2);
+	assert !gone.pet.alive;
+	assert gone.global.livingPets == 0;
+	assert gone.global.totalWorkPower == 0;
+}
+
+test "a common level-twenty pet weighs what a bot weighs" {
+	const common = Stats.built(Tree.empty().withNode(Region.Fighter as int32), 20, Talent.unrevealed());
+	assert common.rewardWeight() == BOT_WEIGHT;
 }
