@@ -7,7 +7,7 @@ export const START_BONUS: int32 = 30;
 export const BASE_MAX_HEARTS: int32 = 10;
 export const LEVEL_STAT_GROWTH: int32 = 5;
 export const LEVELS_PER_HEART: int32 = 2;
-export const REWARD_WEIGHT_OFFSET: uint64 = 40;
+export const REWARD_WEIGHT_OFFSET: uint64 = 50;
 
 export enum Region {
 	Worker,
