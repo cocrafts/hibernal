@@ -135,16 +135,20 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const after = world.applyAttack(index, choice);
 	const attackerAfter = after.pets[index];
 	const defenderAfter = after.defenderAt(target);
-	const opening = `attack ${nameOf(target)} ${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
+	const wild = world.isWild(target);
+	const targetName = wild ? `a wild ${defender.startRegion().toString()}` : nameOf(target);
+	const opening = `attack ${targetName} ${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
 	if (after.stats.wins > won) {
 		const loot = money(defender.harvest - defenderAfter.harvest);
 		diary.note(index, `${opening} -> won, took ${loot}`);
+		if (wild) { return after; }
 		const bitten = defenderAfter.hearts < defender.hearts ? ", bitten" : "";
 		diary.note(target, `robbed by ${nameOf(index)} -${loot}${bitten}`);
 		return after;
 	}
 	const hearts = `hearts ${attacker.hearts}->${attackerAfter.hearts}`;
 	diary.note(index, `${opening} -> lost, burrow ${change(attacker.burrow, attackerAfter.burrow)} ${hearts}`);
+	if (wild) { return after; }
 	diary.note(target, `held off ${nameOf(index)}, burrow ${change(defender.burrow, defenderAfter.burrow)}`);
 	return after;
 }
