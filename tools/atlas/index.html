@@ -667,10 +667,8 @@ Lượt/epoch  = 1 + might ÷ 100                                   Pacifist: Er
 					<div class="formula">maxStake = max(harvest_D ÷ 1.5, 5 HBRN)
 stake    = max(maxStake × {25, 50, 75, 100}%, 5 HBRN)
            ← StakeLevel trong rules/actions.ms, phải có đủ trong burrow
-đề xuất  =min(stake × 1.5, harvest_D, harvest_D × 2 × might_A ÷ (might_A + grit_D))
-           ← thay hệ số grit bên dưới: cướp nhiều hay ít theo might kẻ cướp và grit nạn nhân
-hiện tại = min(stake × 1.5, harvest_D)
-         × (1000 − grit_D) ÷ 1000
+loot     = min(stake × 1.5, harvest_D, harvest_D × 2 × might_A ÷ (might_A + grit_D))
+           ← cướp nhiều hay ít theo might kẻ cướp và grit nạn nhân (D26)
          × Pacifist 30% · ThickHide 50%*</div>
 					<p class="note">* ThickHide chỉ giảm trong 3 trận bị đánh đầu tiên mỗi ngày.</p>
 				</div>
@@ -887,7 +885,7 @@ Pet mới sinh     tặng sẵn 190 XP (cấp 1) → Worker lên cấp 3 ở tic
 			<div class="formula">mọi trận   attacker: burrow − stake, fightsOutToday + 1,
                      slotsAttackedToday thêm slot target
            target: fightsInToday + 1 · trả về FightRecord
-thắng      loot = lootFor(stake, harvest_D, fightsInToday_D)
+thắng      loot = lootFor(attacker, stake, harvest_D, fightsInToday_D)
            attacker lấy lại stake, cộng loot × 95%, + raidXp(loot)
            target mất loot, + 20 XP; biteAllowed thì − 1 heart
 thua       stake × 95% vào burrow target; attacker − 1 heart
@@ -1308,7 +1306,7 @@ flowchart LR
 
 						<tr class="group-row"><td colspan="7">Pet cùng block, phía bị động</td></tr>
 						<tr><td class="mono">N1</td><td>block</td><td>Bị đánh</td><td>≤ 3 trận vào mỗi ngày, ≤ 1 cắn</td><td>mất loot, có thể −1 heart, +20/+60 XP</td><td class="mono">actions.ms settleAttack · layout.ms fightsInOn</td><td><span class="chip done">có</span></td></tr>
-						<tr><td class="mono">N2</td><td>block</td><td>Lượng cướp D26</td><td>attacker thắng</td><td>min(1.5 × stake, harvest, harvest × 2 might_a ÷ (might_a + grit_d)), rồi Pacifist −70%, ThickHide −50%</td><td class="mono">fight.ms lootFor (còn (1000 − grit) ÷ 1000)</td><td><span class="chip partial">đổi công thức</span></td></tr>
+						<tr><td class="mono">N2</td><td>block</td><td>Lượng cướp D26</td><td>attacker thắng</td><td>min(1.5 × stake, harvest, harvest × 2 might_a ÷ (might_a + grit_d)), rồi Pacifist −70%, ThickHide −50%</td><td class="mono">fight.ms lootFor</td><td><span class="chip done">có</span></td></tr>
 						<tr><td class="mono">N3</td><td>block</td><td>Chia xác pet chết đói hoặc chết trận</td><td>hearts = 0</td><td>50% chia đều harvest bạn cùng block, 50% burn</td><td class="mono">life.ms bury</td><td><span class="chip done">có</span></td></tr>
 						<tr><td class="mono">N4</td><td>block</td><td>Thừa kế khi chết già</td><td>ngày 90, heir claim trong 7 epoch grace</td><td>30% vào pot, 70% cho heir; +1 điểm khởi đầu mỗi đời, tối đa +5; 1–2 ô gia bảo</td><td class="mono">chưa có: life.ms inherit</td><td><span class="chip todo">chưa</span></td></tr>
 

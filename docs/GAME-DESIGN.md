@@ -53,7 +53,7 @@ Constants in `rules/fight.ms`, spec in `BRIEF.md` §3.6.
 | Bleed | `damage × bleed × 0.4%` per round for 3 rounds, the stronger bleed replaces a weaker one |
 | Rounds | max 6; outcome by cross-multiplied HP share, tie → defender |
 | Attacks/epoch | `1 + might / 100`; Pacifist refused |
-| Loot | `min(stake × 1.5, harvest) × (1000 − grit) / 1000`, then Pacifist and Thick Hide cuts |
+| Loot | `min(stake × 1.5, harvest, harvest × 2 × might_A / (might_A + grit_D))` (D26), then Pacifist and Thick Hide cuts |
 
 **How it was balanced.** A JS model of the formulas was hill-climbed until +40 points in any single attribute against an equal 120/120 peer gave a similar edge, then the constants were ported and re-measured in MetaScript with `sim/curve.ms`.
 
