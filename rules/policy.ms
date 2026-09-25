@@ -138,7 +138,11 @@ export function foldPortionSizes(logits: Span<int32>, legal: BitSet<EconomyActio
 	foldFamily(logits, legal, EconomyAction.EatSmall);
 }
 
-function foldFamily(logits: Span<int32>, legal: BitSet<EconomyAction>, smallest: EconomyAction): void {
+function foldFamily(
+	logits: Span<int32>,
+	legal: BitSet<EconomyAction>,
+	smallest: EconomyAction,
+): void {
 	let carried = 0;
 	let carrying = false;
 	for (let size = Food.Large as int32; size >= 0; size--) {

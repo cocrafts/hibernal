@@ -98,7 +98,8 @@ export function visited(this pet: Pet, habit: OwnerHabit, draw: uint64, epoch: u
 	let refused = false;
 	const talked = cared.talkedTo();
 	if (talked.ok) { cared = talked.value; }
-	const hungry = (cared.hearts as int64) * (BPS as int64) < (cared.maxHearts as int64) * (habit.feedBelowBps as int64);
+	const feedBelow = (cared.maxHearts as int64) * (habit.feedBelowBps as int64);
+	const hungry = (cared.hearts as int64) * (BPS as int64) < feedBelow;
 	if (hungry) {
 		const fed = cared.ownerFed(habit.food);
 		if (fed.ok) {

@@ -275,7 +275,8 @@ export function wildsAwake(this world: World, harvest: uint64): World {
 			continue;
 		}
 		const region = pet.startRegion();
-		const stats = Stats.built(Tree.empty().withNode(region as int32), level, Talent.unrevealed());
+		const tree = Tree.empty().withNode(region as int32);
+		const stats = Stats.built(tree, level, Talent.unrevealed());
 		wilds[index] = {
 			...pet,
 			alive: true,

@@ -408,7 +408,8 @@ export function settleAttack(
 			defenderToday.fightsInToday as int32,
 		);
 		const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
-		const loot = defenderToday.gear.wardedLoot(Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore));
+		const boosted = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
+		const loot = defenderToday.gear.wardedLoot(boosted);
 		const [winnings, fee] = stakeSplit(loot);
 		const bites = guardedBite(
 			biteHearts(
@@ -434,7 +435,10 @@ export function settleAttack(
 		const [survivor, insuredGlobal] = robbed.revived(global);
 		const cannibal = attackerToday.stats().mods.has(Mod.Cannibal);
 		const [remains, devoured] = survivor.devouredBy(cannibal);
-		const paidOut: Pet = { ...committed, burrow: committed.burrow + stake + winnings + devoured };
+		const paidOut: Pet = {
+			...committed,
+			burrow: committed.burrow + stake + winnings + devoured,
+		};
 		const raider = paidOut.calmedAgainst(defenderToday);
 		const paid = insuredGlobal.withProtocolFee(fee);
 		return Result.ok({
@@ -445,7 +449,8 @@ export function settleAttack(
 		});
 	}
 	const [keptStake, fee] = stakeSplit(stake);
-	const lost = guardedBite(defeatHearts(committed.maxHearts as int32), committed.gear.damageGuardBps());
+	const defeat = defeatHearts(committed.maxHearts as int32);
+	const lost = guardedBite(defeat, committed.gear.damageGuardBps());
 	const hearts = Math.max((committed.hearts as int32) - lost, 0);
 	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
 	const [beaten, insuredGlobal] = fallen.revived(global);
@@ -462,7 +467,8 @@ export function settleAttack(
 
 function devouredBy(this victim: Pet, cannibal: boolean): [Pet, uint64] {
 	if (!cannibal || victim.alive) { return [victim, 0]; }
-	const share = (victim.harvest + victim.burrow) * (CANNIBAL_WALLET_BPS as uint64) / (BPS as uint64);
+	const wallet = victim.harvest + victim.burrow;
+	const share = wallet * (CANNIBAL_WALLET_BPS as uint64) / (BPS as uint64);
 	const fromHarvest = Math.min(share, victim.harvest);
 	const remains: Pet = {
 		...victim,
@@ -615,7 +621,8 @@ test "allocation needs a settled pet and points, and moves the work power" {
 	if (grown.ok) {
 		assert grown.value.pet.forage == 88;
 		assert grown.value.pet.pointsUnspent == 0;
-		assert grown.value.global.totalWorkPower == (36 + REWARD_WEIGHT_OFFSET) * (36 + REWARD_WEIGHT_OFFSET);
+		const shifted = 36 + REWARD_WEIGHT_OFFSET;
+		assert grown.value.global.totalWorkPower == shifted * shifted;
 		const noPoints = grown.value.pet.allocateNode(5, grown.value.global);
 		assert !noPoints.ok;
 		if (!noPoints.ok) { assert noPoints.error == AllocationError.NoPoints; }
@@ -731,11 +738,18 @@ test "a winning attacker bites an empty harvest" {
 
 test "a cannibal whose bite kills takes half of what the victim left" {
 	const duel = duelOver(0);
-	const cannibal: Pet = { ...duel.attacker, tree: { bits: (1 as uint64) << (KEYSTONE_CANNIBAL as uint64) } };
+	const cannibalTree = (1 as uint64) << (KEYSTONE_CANNIBAL as uint64);
+	const cannibal: Pet = { ...duel.attacker, tree: { bits: cannibalTree } };
 	const frail: Pet = { ...duel.defender, hearts: 1 };
 	let kills = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
-		const result = cannibal.settleAttack(frail, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		const result = cannibal.settleAttack(
+			frail,
+			StakeLevel.Quarter,
+			duel.global,
+			DUEL_EPOCH,
+			seed,
+		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
 		if (after.record.outcome != Outcome.AttackerWins) { continue; }
@@ -746,7 +760,13 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 	}
 	assert kills > 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
-		const plain = duel.attacker.settleAttack(frail, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		const plain = duel.attacker.settleAttack(
+			frail,
+			StakeLevel.Quarter,
+			duel.global,
+			DUEL_EPOCH,
+			seed,
+		);
 		if (!plain.ok) { unreachable; }
 		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
 		assert plain.value.defender.burrow == frail.burrow;
@@ -755,11 +775,18 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 
 test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 	const duel = duelOver(0);
-	const cannibal: Pet = { ...duel.attacker, tree: { bits: (1 as uint64) << (KEYSTONE_CANNIBAL as uint64) } };
+	const cannibalTree = (1 as uint64) << (KEYSTONE_CANNIBAL as uint64);
+	const cannibal: Pet = { ...duel.attacker, tree: { bits: cannibalTree } };
 	const frail: Pet = { ...duel.defender, hearts: 1, insurance: Insurance.Armed as uint8 };
 	let saves = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
-		const result = cannibal.settleAttack(frail, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		const result = cannibal.settleAttack(
+			frail,
+			StakeLevel.Quarter,
+			duel.global,
+			DUEL_EPOCH,
+			seed,
+		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
 		if (after.record.outcome != Outcome.AttackerWins) { continue; }
@@ -776,14 +803,21 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 
 test "a revive charm spares a bitten pet without a burn, and a ward cuts the loot" {
 	const duel = duelOver(0);
+	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive);
 	const charmed: Pet = {
 		...duel.defender,
 		hearts: 1,
-		gear: Gear.bare().with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive)),
+		gear: Gear.bare().with(GearSlot.Body, charm),
 	};
 	let saves = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
-		const result = duel.attacker.settleAttack(charmed, StakeLevel.Quarter, duel.global, DUEL_EPOCH, seed);
+		const result = duel.attacker.settleAttack(
+			charmed,
+			StakeLevel.Quarter,
+			duel.global,
+			DUEL_EPOCH,
+			seed,
+		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
 		if (after.record.outcome != Outcome.AttackerWins) { continue; }
@@ -794,14 +828,27 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 	}
 	assert saves > 0;
 	const rich = duelOver(900 * HBRN_UNIT);
+	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery);
 	const warded: Pet = {
 		...rich.defender,
-		gear: Gear.bare().with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery)),
+		gear: Gear.bare().with(GearSlot.Feet, ward),
 	};
 	let compared = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
-		const plain = rich.attacker.settleAttack(rich.defender, StakeLevel.Whole, rich.global, DUEL_EPOCH, seed);
-		const guarded = rich.attacker.settleAttack(warded, StakeLevel.Whole, rich.global, DUEL_EPOCH, seed);
+		const plain = rich.attacker.settleAttack(
+			rich.defender,
+			StakeLevel.Whole,
+			rich.global,
+			DUEL_EPOCH,
+			seed,
+		);
+		const guarded = rich.attacker.settleAttack(
+			warded,
+			StakeLevel.Whole,
+			rich.global,
+			DUEL_EPOCH,
+			seed,
+		);
 		if (!plain.ok || !guarded.ok) { unreachable; }
 		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
 		if (guarded.value.record.outcome != Outcome.AttackerWins) { continue; }

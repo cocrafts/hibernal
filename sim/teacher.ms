@@ -169,7 +169,8 @@ export function revengeOn(this world: World, index: int32, masks: Masks): int32 
 	const slot = robber.value as int32;
 	const defender = world.defenderAt(blockStart(index) + slot);
 	const avenger = world.pets[index];
-	const winChance = avenger.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(avenger));
+	const facing = defender.combatantFacing(avenger);
+	const winChance = avenger.combatantFacing(defender).winChanceFromTable(facing);
 	if (winChance < REVENGE_WIN_CHANCE_BPS) { return ATTACK_HOLD; }
 	return attackChoice(robber.value, StakeLevel.Quarter);
 }

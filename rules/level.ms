@@ -16,7 +16,9 @@ export function xpToReach(level: int32): uint32 {
 	const steps = (Math.max(level, 1) - 1) as uint32;
 	const lateLevels = Math.max(level - LATE_LEVEL, 0);
 	const late = lateLevels as uint32;
-	return LEVEL_XP_PER_STEP * steps + steps * steps * steps + LATE_LEVEL_XP_PER_CUBE * late * late * late;
+	return LEVEL_XP_PER_STEP * steps +
+		steps * steps * steps +
+		LATE_LEVEL_XP_PER_CUBE * late * late * late;
 }
 
 export function levelForXp(xp: uint32): int32 {

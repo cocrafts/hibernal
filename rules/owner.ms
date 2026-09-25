@@ -41,7 +41,9 @@ export function bondedBy(this pet: Pet, amount: int32): Pet {
 export function ownerFed(this pet: Pet, food: Food): Result<Pet, OwnerError> {
 	if (!pet.alive) { return Result.err(OwnerError.Dead); }
 	if ((pet.bonding as int32) < REFUSAL_BONDING) { return Result.err(OwnerError.Refused); }
-	if ((pet.ownerFedToday as int32) >= OWNER_FOOD_PER_DAY) { return Result.err(OwnerError.FedToday); }
+	if ((pet.ownerFedToday as int32) >= OWNER_FOOD_PER_DAY) {
+		return Result.err(OwnerError.FedToday);
+	}
 	if (pet.hearts >= pet.maxHearts) { return Result.err(OwnerError.Full); }
 	const restored = mealHearts(food, pet.stats().foodBps);
 	const hearts = Math.min((pet.hearts as int32) + restored, pet.maxHearts as int32);
@@ -108,7 +110,8 @@ export function revived(this pet: Pet, global: GlobalConfig): [Pet, GlobalConfig
 }
 
 export function foodReserve(level: int32, hungerPerDay: int32): uint64 {
-	const perDay = foodCost(Food.Large, level) * (hungerPerDay as uint64) / (foodHearts(Food.Large) as uint64);
+	const largeHearts = foodHearts(Food.Large) as uint64;
+	const perDay = foodCost(Food.Large, level) * (hungerPerDay as uint64) / largeHearts;
 	return perDay * GIFT_RESERVE_DAYS;
 }
 
@@ -209,7 +212,8 @@ test "a devoted pet gifts a capped share and keeps its food reserve" {
 	const devoted: Pet = { ...testPet(), bonding: 127, burrow: 100000 * HBRN_UNIT };
 	assert devoted.giftFor(reserve) == GIFT_CAP;
 	const modest: Pet = { ...devoted, burrow: 2000 * HBRN_UNIT };
-	assert modest.giftFor(reserve) == 2000 * HBRN_UNIT * (GIFT_SHARE_BPS as uint64) / (BPS as uint64);
+	const share = 2000 * HBRN_UNIT * (GIFT_SHARE_BPS as uint64) / (BPS as uint64);
+	assert modest.giftFor(reserve) == share;
 	const poor: Pet = { ...devoted, burrow: reserve };
 	assert poor.giftFor(reserve) == 0;
 	const cool: Pet = { ...devoted, bonding: (GIFT_BONDING - 1) as int8 };

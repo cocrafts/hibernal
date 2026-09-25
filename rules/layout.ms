@@ -134,7 +134,8 @@ export function combatantFacing(this pet: Pet, opponent: Pet): Combatant {
 
 export function robbedBy(this pet: Pet, robber: Pet, epoch: uint64): Pet {
 	if (pet.rage > 0 && pet.grudgeSlot == robber.slot) {
-		return { ...pet, rage: Math.min((pet.rage as int32) + 1, RAGE_MAX) as uint8, rageEpoch: epoch };
+		const rage = Math.min((pet.rage as int32) + 1, RAGE_MAX);
+		return { ...pet, rage: rage as uint8, rageEpoch: epoch };
 	}
 	return { ...pet, grudgeSlot: robber.slot, rage: 1, rageEpoch: epoch };
 }

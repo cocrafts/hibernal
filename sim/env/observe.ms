@@ -244,12 +244,14 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 		}
 		if (!mate.alive) { continue; }
 		if (mate.attackable(pet, world.epoch).ok) {
-			threat = Math.max(threat, mate.combatantFacing(pet).winChanceFromTable(pet.combatantFacing(mate)));
+			const odds = mate.combatantFacing(pet).winChanceFromTable(pet.combatantFacing(mate));
+			threat = Math.max(threat, odds);
 		}
 	}
 	put(features, selfSlot(offset, SelfFeature.RichestHarvest), richest);
 	put(features, selfSlot(offset, SelfFeature.Threat), threat * FEATURE_ONE / BPS);
-	put(features, selfSlot(offset, SelfFeature.ModRelentless), flag(stats.mods.has(Mod.Relentless)));
+	const relentless = flag(stats.mods.has(Mod.Relentless));
+	put(features, selfSlot(offset, SelfFeature.ModRelentless), relentless);
 	put(features, selfSlot(offset, SelfFeature.ModBerserker), flag(stats.mods.has(Mod.Berserker)));
 	put(features, selfSlot(offset, SelfFeature.Bonding), pet.bonding as int32);
 	put(features, selfSlot(offset, SelfFeature.GearBonus), pet.gear.totalBonusBps() / 40);

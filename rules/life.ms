@@ -1,5 +1,13 @@
 import { BPS } from "./units";
-import { BASE_STAT, LEVEL_STAT_GROWTH, REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
+import {
+	BASE_STAT,
+	LEVEL_STAT_GROWTH,
+	REWARD_WEIGHT_OFFSET,
+	Mod,
+	Region,
+	Stats,
+	aged,
+} from "./stats";
 import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import {
@@ -388,7 +396,10 @@ export function heirOf(
 	};
 	return Result.ok({
 		pet: heir,
-		global: hatched.global.withWorkPower(hatched.pet.stats().rewardWeight(), heir.stats().rewardWeight()),
+		global: hatched.global.withWorkPower(
+			hatched.pet.stats().rewardWeight(),
+			heir.stats().rewardWeight(),
+		),
 	});
 }
 
@@ -423,7 +434,8 @@ test "a newborn starts at its region with one point and joins the work power" {
 	assert worker.pet.xp == NEWBORN_XP;
 	assert worker.pet.startRegion() == Region.Worker;
 	assert worker.pet.tree.has(Region.Worker as int32);
-	assert worker.global.totalWorkPower == (34 + REWARD_WEIGHT_OFFSET) * (34 + REWARD_WEIGHT_OFFSET);
+	const shifted = 34 + REWARD_WEIGHT_OFFSET;
+	assert worker.global.totalWorkPower == shifted * shifted;
 	assert worker.global.rewardEpoch == 4;
 	assert worker.pet.rewardSnapshot == worker.global.rewardPerWorkPower;
 }
@@ -669,6 +681,7 @@ test "below the floor, empty slots count as bots and their share is not paid" {
 }
 
 test "a common level-twenty pet weighs what a bot weighs" {
-	const common = Stats.built(Tree.empty().withNode(Region.Fighter as int32), 20, Talent.unrevealed());
+	const fighterTree = Tree.empty().withNode(Region.Fighter as int32);
+	const common = Stats.built(fighterTree, 20, Talent.unrevealed());
 	assert common.rewardWeight() == BOT_WEIGHT;
 }

@@ -93,8 +93,18 @@ export function gradeBonusBps(grade: TalentGrade): int32 {
 	};
 }
 
-export function minted(this typeof Item, grade: TalentGrade, stat: TalentKind, skill: ItemSkill): Item {
-	return { rarity: ((grade as int32) + 1) as uint8, stat: stat as uint8, wear: 0, skill: skill as uint8 };
+export function minted(
+	this typeof Item,
+	grade: TalentGrade,
+	stat: TalentKind,
+	skill: ItemSkill,
+): Item {
+	return {
+		rarity: ((grade as int32) + 1) as uint8,
+		stat: stat as uint8,
+		wear: 0,
+		skill: skill as uint8,
+	};
 }
 
 export function score(this item: Item): int32 {
@@ -237,7 +247,8 @@ test "gear sums bonuses per stat and names its weakest slot" {
 	assert gear.statBonusBps(TalentKind.Grit) == 200;
 	assert gear.statBonusBps(TalentKind.Forage) == 0;
 	assert gear.weakestSlot() == GearSlot.Feet;
-	const full = gear.with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.AntiRobbery));
+	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.AntiRobbery);
+	const full = gear.with(GearSlot.Feet, mythic);
 	assert full.weakestSlot() == GearSlot.Hands;
 	assert full.allWornBy(10).head.wear == 10;
 }
@@ -250,12 +261,15 @@ test "strong items may carry one skill, which wards loot or guards damage once o
 		if (rolledSkill(seed, TalentGrade.Legendary) != ItemSkill.None) { skilled += 1; }
 	}
 	assert skilled > 330 && skilled < 470;
-	const warded = Gear.bare().with(GearSlot.Feet, Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery));
+	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery);
+	const warded = Gear.bare().with(GearSlot.Feet, ward);
 	assert warded.wardedLoot(1000) == 600;
 	assert Gear.bare().wardedLoot(1000) == 1000;
-	const guarded = Gear.bare().with(GearSlot.Head, Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.DamageGuard));
+	const guard = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.DamageGuard);
+	const guarded = Gear.bare().with(GearSlot.Head, guard);
 	assert guarded.damageGuardBps() == DAMAGE_GUARD_BPS;
-	const reviving = Gear.bare().with(GearSlot.Body, Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive));
+	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive);
+	const reviving = Gear.bare().with(GearSlot.Body, charm);
 	assert reviving.hasSkill(ItemSkill.Revive);
 	assert !reviving.spentSkill(ItemSkill.Revive).hasSkill(ItemSkill.Revive);
 	assert reviving.spentSkill(ItemSkill.Revive).body.rarity == reviving.body.rarity;

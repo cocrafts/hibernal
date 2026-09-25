@@ -89,7 +89,8 @@ function gearNote(before: Pet, after: Pet): string {
 		if (item != before.gear.at(slot)) {
 			const grade = ((item.rarity as int32) - 1) as TalentGrade;
 			const stat = (item.stat as int32) as TalentKind;
-			return `minted ${grade.toString()} ${stat.toString()} gear for its ${slot.toString()}, net cost ${cost}`;
+			const gear = `${grade.toString()} ${stat.toString()} gear`;
+			return `minted ${gear} for its ${slot.toString()}, net cost ${cost}`;
 		}
 	}
 	return `minted and sold back a weaker roll, net cost ${cost}`;
@@ -128,7 +129,8 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const defender = world.defenderAt(target);
 	const robber = world.robberOf(index);
 	const revenge = robber.ok && (robber.value as int32) == slot ? " revenge" : "";
-	const odds = attacker.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(attacker)) / 100;
+	const facing = defender.combatantFacing(attacker);
+	const odds = attacker.combatantFacing(defender).winChanceFromTable(facing) / 100;
 	const stake = attacker.stakeFor(defender, level, world.epoch);
 	const staked = stake.ok ? money(stake.value) : "?";
 	const won = world.stats.wins;
@@ -137,7 +139,8 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const defenderAfter = after.defenderAt(target);
 	const wild = world.isWild(target);
 	const targetName = wild ? `a wild ${defender.startRegion().toString()}` : nameOf(target);
-	const opening = `attack ${targetName} ${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
+	const terms = `${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
+	const opening = `attack ${targetName} ${terms}`;
 	if (after.stats.wins > won) {
 		const loot = money(defender.harvest - defenderAfter.harvest);
 		diary.note(index, `${opening} -> won, took ${loot}`);
@@ -188,7 +191,9 @@ function main(): int32 {
 	for (let row = 0; row < diary.pets.length; row++) {
 		const index = diary.pets[row];
 		const pet = world.pets[index];
-		console.log(`== ${nameOf(index)}, start ${pet.startRegion().toString()}, owner ${world.owners[index].toString()}, seed ${DIARY_SEED}`);
+		const owner = world.owners[index].toString();
+		const origin = `start ${pet.startRegion().toString()}, owner ${owner}`;
+		console.log(`== ${nameOf(index)}, ${origin}, seed ${DIARY_SEED}`);
 		for (let day = 0; day < EPISODE_EPOCHS; day++) {
 			console.log(pages[day * diary.pets.length + row]);
 		}

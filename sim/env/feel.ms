@@ -186,12 +186,15 @@ export function momentOf(
 function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, after: Pet): void {
 	if (action == (EconomyAction.Mint as int32) && after.burrow < actor.burrow) {
 		feel.tally(key, FeelCounter.Mints, 1);
-		feel.tally(key, FeelCounter.MintSpent, ((actor.burrow - after.burrow) / HBRN_UNIT) as int32);
+		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
+		feel.tally(key, FeelCounter.MintSpent, spent);
 	}
 	if (after.pantry.stored() > actor.pantry.stored()) {
 		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
 		feel.tally(key, FeelCounter.FoodSpent, spent);
-		if ((actor.level as int32) >= LEVEL_CAP) { feel.tally(key, FeelCounter.FoodSpentAtCap, spent); }
+		if ((actor.level as int32) >= LEVEL_CAP) {
+			feel.tally(key, FeelCounter.FoodSpentAtCap, spent);
+		}
 	}
 	if (after.hearts > actor.hearts) {
 		feel.tally(key, FeelCounter.Meals, 1);
@@ -205,7 +208,8 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	const attacker = moment.actor;
 	const defender = moment.defender;
 	const level = (moment.action % STAKE_LEVELS) as StakeLevel;
-	const winChance = attacker.combatantFacing(defender).winChanceFromTable(defender.combatantFacing(attacker));
+	const facing = defender.combatantFacing(attacker);
+	const winChance = attacker.combatantFacing(defender).winChanceFromTable(facing);
 	const persona = Persona.of(personaKindOf(moment.index));
 	feel.tally(key, FeelCounter.Attacks, 1);
 	feel.tally(key, FeelCounter.WinChanceSum, winChance);
@@ -235,8 +239,9 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	}
 	const victim = moment.env * feel.pets + blockStart(moment.index) + (defender.slot as int32);
 	feel.tally(key, FeelCounter.AttacksWon, 1);
-	if (!world.pets[blockStart(moment.index) + (defender.slot as int32)].alive) {
-		const taken = defender.harvest - world.wilds[blockStart(moment.index) + (defender.slot as int32)].harvest;
+	const target = blockStart(moment.index) + (defender.slot as int32);
+	if (!world.pets[target].alive) {
+		const taken = defender.harvest - world.wilds[target].harvest;
 		feel.tally(key, FeelCounter.WildRaids, 1);
 		feel.tally(key, FeelCounter.WildLoot, (taken / HBRN_UNIT) as int32);
 		return;
@@ -244,11 +249,14 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	feel.tally(victim, FeelCounter.Robbed, 1);
 	const last = grudges[victim];
 	const again = last.epoch != 0 && world.epoch <= last.epoch + REVENGE_EPOCHS;
-	if (again && last.robber == attacker.blockSlot()) { feel.tally(victim, FeelCounter.RobbedAgain, 1); }
+	if (again && last.robber == attacker.blockSlot()) {
+		feel.tally(victim, FeelCounter.RobbedAgain, 1);
+	}
 	grudges[victim] = { robber: attacker.blockSlot(), epoch: world.epoch };
 	const struck = world.pets[blockStart(moment.index) + (defender.slot as int32)];
 	const bitten = (defender.hearts as int32) - (struck.hearts as int32);
-	feel.tally(victim, FeelCounter.LootLost, ((defender.harvest - struck.harvest) / HBRN_UNIT) as int32);
+	const lost = ((defender.harvest - struck.harvest) / HBRN_UNIT) as int32;
+	feel.tally(victim, FeelCounter.LootLost, lost);
 	feel.tally(victim, FeelCounter.HeartsBitten, bitten);
 	if (!struck.alive) { feel.tally(victim, FeelCounter.Bitten, 1); }
 }
@@ -321,10 +329,13 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 		if (pet.alive && pet.bornEpoch == world.epoch) {
 			grudges[key] = { robber: BlockSlot.First, epoch: 0 };
 		}
-		if (pet.alive && feel.lifeBorns[key] == pet.bornEpoch + 1 && pet.harvest >= feel.harvests[key]) {
+		const sameLife = feel.lifeBorns[key] == pet.bornEpoch + 1;
+		if (pet.alive && sameLife && pet.harvest >= feel.harvests[key]) {
 			const earned = ((pet.harvest - feel.harvests[key]) / HBRN_UNIT) as int32;
 			feel.tally(key, FeelCounter.Earned, earned);
-			if ((pet.level as int32) >= LEVEL_CAP) { feel.tally(key, FeelCounter.EarnedAtCap, earned); }
+			if ((pet.level as int32) >= LEVEL_CAP) {
+				feel.tally(key, FeelCounter.EarnedAtCap, earned);
+			}
 		}
 		const larder = feel.larders[key];
 		if (pet.alive || larder == Larder.Dead) { continue; }
