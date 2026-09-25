@@ -34,6 +34,26 @@ import {
 	withNode,
 	unrevealed,
 	settle,
+	Listing,
+	MarketError,
+	focusStat,
+	spareSlot,
+	listingGain,
+	listedItem,
+	boughtListing,
+	expiredAt,
+	paidFor,
+	boughtBack,
+	LISTING_DAYS,
+	MARKET_FEE_BPS,
+	BPS,
+	GearSlot,
+	ItemSkill,
+	TalentGrade,
+	minted,
+	bare,
+	with,
+	sellPrice,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -86,6 +106,10 @@ export struct WorldStats {
 	deaths: int32;
 	heirs: int32;
 	illegal: int32;
+	sales: int32;
+	lastSeller: int32;
+	lastPrice: uint64;
+	lastProceeds: uint64;
 }
 
 export struct World {
@@ -103,6 +127,7 @@ export struct World {
 	round: int32;
 	turns: int32[];
 	wilds: Pet[];
+	market: Listing[];
 	seed: uint64;
 	stats: WorldStats;
 }
@@ -157,8 +182,19 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		round: 0,
 		turns: turns,
 		wilds: wilds,
+		market: [],
 		seed: seed,
-		stats: { fights: 0, wins: 0, deaths: 0, heirs: 0, illegal: 0 },
+		stats: {
+			fights: 0,
+			wins: 0,
+			deaths: 0,
+			heirs: 0,
+			illegal: 0,
+			sales: 0,
+			lastSeller: 0,
+			lastPrice: 0,
+			lastProceeds: 0,
+		},
 	};
 }
 
@@ -256,10 +292,20 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 			global = revealed.value.global;
 		}
 	}
+	const market: Listing[] = [];
+	for (const listing of world.market) {
+		if (!listing.expiredAt(epoch)) {
+			market.push(listing);
+			continue;
+		}
+		const seller = listing.seller as int32;
+		pets[seller] = pets[seller].boughtBack(listing);
+	}
 	const begun: World = {
 		...world,
 		global: global,
 		epoch: epoch,
+		market: market,
 		stats: { ...world.stats, heirs: heirs },
 	};
 	return begun.ownersVisited().wildsAwake(botShare).inRound(0);
@@ -403,10 +449,55 @@ export function attackMaskFor(this world: World, index: int32): AttackMask {
 	return attacks;
 }
 
+export function hasListing(this world: World, index: int32): boolean {
+	for (const listing of world.market) {
+		if (listing.seller == (index as uint32)) { return true; }
+	}
+	return false;
+}
+
+function outranks(this listing: Listing, gain: int32, best: Listing, bestGain: int32): boolean {
+	if (gain != bestGain) { return gain > bestGain; }
+	if (listing.price != best.price) { return listing.price < best.price; }
+	return listing.seller < best.seller;
+}
+
+export function bestListingFor(this world: World, index: int32): Result<int32, MarketError> {
+	const pet = world.pets[index];
+	const block = blockStart(index);
+	let best = -1;
+	let bestGain = 0;
+	for (let position = 0; position < world.market.length; position++) {
+		const listing = world.market[position];
+		const seller = listing.seller as int32;
+		if (blockStart(seller) != block || seller == index || listing.price > pet.burrow) {
+			continue;
+		}
+		const gain = pet.listingGain(listing);
+		if (gain <= 0) { continue; }
+		if (best < 0 || listing.outranks(gain, world.market[best], bestGain)) {
+			best = position;
+			bestGain = gain;
+		}
+	}
+	if (best < 0) { return Result.err(MarketError.NotWanted); }
+	return Result.ok(best);
+}
+
+export function economyMaskFor(this world: World, index: int32): BitSet<EconomyAction> {
+	const pet = world.pets[index];
+	const legal = pet.legalEconomy(world.global);
+	if (!pet.alive) { return legal; }
+	const spare = pet.gear.spareSlot(pet.focusStat()).ok;
+	const listable = spare && !world.hasListing(index) ? legal.incl(EconomyAction.ListItem) : legal;
+	const wanted = world.bestListingFor(index).ok;
+	return wanted ? listable.incl(EconomyAction.BuyItem) : listable;
+}
+
 export function masksFor(this world: World, index: int32): Masks {
 	const pet = world.pets[index];
 	return {
-		economy: pet.legalEconomy(world.global),
+		economy: world.economyMaskFor(index),
 		nodes: pet.legalNodes(world.global),
 		attacks: world.attackMaskFor(index),
 	};
@@ -417,10 +508,48 @@ function counted(this world: World, illegal: boolean): World {
 	return { ...world, stats: { ...world.stats, illegal: world.stats.illegal + 1 } };
 }
 
+function listedBy(this world: World, index: int32): World {
+	if (!world.economyMaskFor(index).has(EconomyAction.ListItem)) { return world.counted(true); }
+	const listed = world.pets[index].listedItem(world.global, index as uint32, world.epoch);
+	if (!listed.ok) { return world.counted(true); }
+	const pets = world.pets;
+	const market = world.market;
+	pets[index] = listed.value.pet;
+	market.push(listed.value.listing);
+	return { ...world, global: listed.value.global };
+}
+
+function boughtBy(this world: World, index: int32): World {
+	const found = world.bestListingFor(index);
+	if (!found.ok) { return world.counted(true); }
+	const listing = world.market[found.value];
+	const bought = world.pets[index].boughtListing(listing, index as uint32, world.global);
+	if (!bought.ok) { return world.counted(true); }
+	const pets = world.pets;
+	pets[index] = bought.value.buyer;
+	const seller = listing.seller as int32;
+	const paid = pets[seller].paidFor(listing, bought.value.proceeds, bought.value.global);
+	pets[seller] = paid.pet;
+	const market: Listing[] = [];
+	for (let position = 0; position < world.market.length; position++) {
+		if (position != found.value) { market.push(world.market[position]); }
+	}
+	const stats: WorldStats = {
+		...world.stats,
+		sales: world.stats.sales + 1,
+		lastSeller: seller,
+		lastPrice: listing.price,
+		lastProceeds: bought.value.proceeds,
+	};
+	return { ...world, global: paid.global, market: market, stats: stats };
+}
+
 export function applyEconomy(this world: World, index: int32, action: EconomyAction): World {
 	const pets = world.pets;
 	const pet = pets[index];
 	if (!pet.alive) { return world; }
+	if (action == EconomyAction.ListItem) { return world.listedBy(index); }
+	if (action == EconomyAction.BuyItem) { return world.boughtBy(index); }
 	const round = (world.epoch << (2 as uint64)) | (world.round as uint64);
 	const seed = mixSeeds(mixSeeds(mixSeeds(world.seed, 7919), index as uint64), round);
 	const economy = pet.doEconomy(action, world.global, seed);
@@ -644,6 +773,40 @@ test "a dead pet has empty masks and is buried once" {
 	assert world.pets[5].harvest == mateBefore + 55;
 	const again = world.endEpoch();
 	assert again.stats.deaths == 1;
+}
+
+test "a listed item sells to a pet that wants it, and an unsold one is bought back" {
+	let world = World.create(1, 6).beginEpoch(1);
+	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
+	world.pets[0] = { ...world.pets[0], gear: Gear.bare().with(GearSlot.Head, might) };
+	assert world.economyMaskFor(0).has(EconomyAction.ListItem);
+	world = world.applyEconomy(0, EconomyAction.ListItem);
+	assert world.market.length == 1 && world.hasListing(0);
+	assert !world.economyMaskFor(0).has(EconomyAction.ListItem);
+	const price = world.market[0].price;
+	world.pets[1] = { ...world.pets[1], burrow: price };
+	assert world.economyMaskFor(1).has(EconomyAction.BuyItem);
+	assert !world.economyMaskFor(2).has(EconomyAction.BuyItem);
+	const far = World.create(2, 6).beginEpoch(1);
+	far.market.push(world.market[0]);
+	far.pets[11] = { ...far.pets[11], burrow: price };
+	assert !far.economyMaskFor(11).has(EconomyAction.BuyItem);
+	const sellerBurrow = world.pets[0].burrow;
+	world = world.applyEconomy(1, EconomyAction.BuyItem);
+	assert world.market.length == 0;
+	assert world.pets[1].gear.head == might;
+	const fee = price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);
+	assert world.pets[0].burrow == sellerBurrow + price - fee;
+	assert world.stats.sales == 1 && world.stats.lastSeller == 0;
+	assert world.stats.illegal == 0;
+	world.pets[0] = { ...world.pets[0], gear: Gear.bare().with(GearSlot.Head, might) };
+	world = world.applyEconomy(0, EconomyAction.ListItem);
+	const listedBurrow = world.pets[0].burrow;
+	world = world.endEpoch().beginEpoch(1 + LISTING_DAYS - 1);
+	assert world.market.length == 1;
+	world = world.endEpoch().beginEpoch(1 + LISTING_DAYS);
+	assert world.market.length == 0;
+	assert world.pets[0].burrow == listedBurrow + might.sellPrice(world.pets[0].level as int32);
 }
 
 test "an heir takes the slot after the grace period" {

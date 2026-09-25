@@ -51,6 +51,7 @@ import {
 	Masks,
 	World,
 	blockStart,
+	bestListingFor,
 } from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
@@ -102,13 +103,20 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 		return buyAction(purchase.value);
 	}
 	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
+	const reserve = foodReserve(level, pet.stats().hungerPerDay());
+	const listing = world.bestListingFor(index);
+	if (listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
+		const asked = world.market[listing.value].price;
+		if (pet.burrow >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
+	}
 	const price = mintPrice(level);
-	const fed = pet.burrow >= price + foodReserve(level, pet.stats().hungerPerDay());
 	const weakest = pet.gear.at(pet.gear.weakestSlot());
 	const due = weakest.isEmpty() || (weakest.wear as int32) >= ITEM_REPLACE_WEAR;
-	if (due && fed && price <= spare && masks.economy.has(EconomyAction.Mint)) {
+	const affordable = pet.burrow >= price + reserve && price <= spare;
+	if (due && affordable && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
 	}
+	if (masks.economy.has(EconomyAction.ListItem)) { return EconomyAction.ListItem; }
 	return EconomyAction.Rest;
 }
 

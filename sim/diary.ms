@@ -12,6 +12,7 @@ import {
 	GearSlot,
 	TalentGrade,
 	TalentKind,
+	Item,
 	at,
 } from "../rules/index";
 import { ACTS_PER_EPOCH, WORLD_BLOCKS, EPISODE_EPOCHS, World, blockStart } from "./world";
@@ -81,6 +82,14 @@ function ownerNotes(this world: World, index: int32, yesterday: Pet, visitsBefor
 	return notes;
 }
 
+function firstChanged(before: Pet, after: Pet): GearSlot {
+	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
+		const slot = ordinal as GearSlot;
+		if (after.gear.at(slot) != before.gear.at(slot)) { return slot; }
+	}
+	return GearSlot.Head;
+}
+
 function gearNote(before: Pet, after: Pet): string {
 	const cost = money(before.burrow - after.burrow);
 	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
@@ -96,6 +105,25 @@ function gearNote(before: Pet, after: Pet): string {
 	return `minted and sold back a weaker roll, net cost ${cost}`;
 }
 
+function itemName(item: Item): string {
+	const grade = ((item.rarity as int32) - 1) as TalentGrade;
+	const stat = (item.stat as int32) as TalentKind;
+	return `${grade.toString()} ${stat.toString()} gear`;
+}
+
+function marketNote(this world: World, index: int32, before: Pet, diary: Diary): void {
+	const listing = world.market[world.market.length - 1];
+	const price = money(listing.price);
+	diary.note(index, `put its ${itemName(listing.item)} on the market for ${price}`);
+}
+
+function purchaseNote(this world: World, index: int32, bought: Item, diary: Diary): void {
+	const seller = blockStart(index) + world.stats.lastSeller % BLOCK_SLOTS;
+	const price = money(world.stats.lastPrice);
+	diary.note(index, `bought ${itemName(bought)} from ${nameOf(seller)} for ${price}`);
+	diary.note(seller, `sold its ${itemName(bought)} to ${nameOf(index)} for ${price}`);
+}
+
 function economyStep(this world: World, index: int32, diary: Diary): World {
 	const before = world.pets[index];
 	const action = world.teachEconomy(index, world.masksFor(index));
@@ -107,6 +135,11 @@ function economyStep(this world: World, index: int32, diary: Diary): World {
 		EconomyAction.Mint => { diary.note(index, gearNote(before, pet)); },
 		EconomyAction.SellItem => {
 			diary.note(index, `sold gear for ${money(pet.burrow - before.burrow)} to buy food`);
+		},
+		EconomyAction.ListItem => { after.marketNote(index, before, diary); },
+		EconomyAction.BuyItem => {
+			const slot = firstChanged(before, pet);
+			after.purchaseNote(index, pet.gear.at(slot), diary);
 		},
 		_ => {
 			const cost = money(before.burrow - pet.burrow);
