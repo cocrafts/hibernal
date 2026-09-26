@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";

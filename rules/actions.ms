@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
 import { revived } from "./owner";

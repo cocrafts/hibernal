@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { STAKE_LEVELS, EconomyAction } from "./actions";
 import { Food } from "./emission";
 

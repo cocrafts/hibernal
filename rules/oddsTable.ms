@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import { Combatant, Mod, modsFromMask } from "./stats";
 import { splitmix } from "./rng";

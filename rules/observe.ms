@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS, ACTS_PER_EPOCH } from "./units";
 import { Mod, Stats } from "./stats";
 import {

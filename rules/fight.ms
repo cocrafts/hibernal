@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { Combatant, Mod } from "./stats";
 import { BPS } from "./units";
 import { Dice } from "./rng";

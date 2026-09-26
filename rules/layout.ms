@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import { Mod, Region, Stats, Combatant } from "./stats";
 import { Tree, built } from "./tree";
