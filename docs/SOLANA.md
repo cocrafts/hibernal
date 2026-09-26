@@ -131,7 +131,7 @@ If step 3 or 4 does not pass inside the agreed timebox, do not rewrite everythin
 
 ## 7. Unknowns to measure on devnet
 
-1. Compute budget per transaction inside the ER, and the CU of one `act` and one `fight`.
+1. Compute budget per transaction inside the ER, and the CU of one `act` and one `fight`. Measured for the brain alone (2026-09-27): the ER honours a 1.4M `SetComputeUnitLimit`, inference is 590,655 CU, and the ER reads a non-delegated L1 account (`ON-CHAIN-AI.md` §6 package 6). A whole `act` and a `fight` are unmeasured.
 2. Crank scheduling from our program: interval accuracy and reliability with many pets.
 3. VRF in ER: latency, callback flow, fee confirmed at zero, how to delegate or select the ephemeral queue.
 4. Delegating `GlobalConfig`, the account every settlement touches.
