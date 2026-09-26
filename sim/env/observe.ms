@@ -299,10 +299,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 		put(features, selfSlot(offset, SelfFeature.MarketGain), pet.listingGain(listing) / 11);
 		put(features, selfSlot(offset, SelfFeature.MarketPrice), moneyFeature(listing.price));
 	}
-	const hungry = (pet.hearts as int32) - hunger;
-	const floor = pet.minHearts as int32;
-	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, stats.foodBps);
-	put(features, selfSlot(offset, SelfFeature.DawnHearts), dawn * 8);
+	put(features, selfSlot(offset, SelfFeature.DawnHearts), pet.dawnHearts() * 8);
 	const perDay = Math.max(foodReserve(level, hunger) / GIFT_RESERVE_DAYS, 1 as uint64);
 	const foodDays = Math.min(pet.wallet() / perDay, 31 as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.FoodDays), foodDays * 4);

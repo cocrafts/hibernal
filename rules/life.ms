@@ -277,6 +277,13 @@ export function hungerPerDay(this stats: Stats): int32 {
 	return Math.max(((hunger + scale / 2) / scale) as int32, 1);
 }
 
+export function dawnHearts(this pet: Pet): int32 {
+	const hungry = (pet.hearts as int32) - pet.ownStats().hungerPerDay();
+	const floor = pet.minHearts as int32;
+	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, pet.stats().foodBps);
+	return dawn;
+}
+
 export function tickTo(
 	this pet: Pet,
 	global: GlobalConfig,
