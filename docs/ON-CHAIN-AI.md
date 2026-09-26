@@ -400,31 +400,31 @@ Measured on engine `17847782851134087884`, commit `52ce235` (`~/metacraft/hibern
 - PPO barely buys gear, and is right to: a teacher that never mints or buys gear dies half as often and ends richer (`docs/SIM.md` I2). Item value is a design question.
 - On the step19 engine, where gear still raised hunger, PPO drove poor neighbours to broke starvation (60–77 per ~2,900 lives): their whole daily income was robbed before their first bank, day after day (`docs/SIM.md` C6). On this engine it is 1.5–2.2 early deaths per 100 lives, still concentrated on pets whose owner never visits.
 
-### Package 5f: owner bank, small gifts and a pet that will not starve with money — Measured
+### Package 5f: owner bank, small gifts, and a brain that buys its own dinner — Measured
 
-The user decided on 2026-09-26 (`docs/SIM.md`): death must be very bad (reward death penalty 500 → 30k `$HBRN`, Cautious 90k; I2), an owner who opens the app banks 50% of the harvest with an 8-hour cooldown (C6), a pet gifts its owner at most 5% of the day's income out of affection (B2), the food bill share is not a target and prices stay (H), Fighters and Survivors must keep pace without a Worker running away (F2), persona recall ≥ 0.8 is reported, not gated (D2). Decided by the agent under the user's delegation, each measured first: purchases spend the harvest before the burrow; a talent on a Fighter's might or a Survivor's grit multiplies its reward weight (Common → Epic wealth per day lived: Worker 385 → 707, Fighter 364 → 517, Survivor 262 → 570 in the teacher world); a food purchase the wallet cannot cover even for a Small portion sells the weakest item; and a survival reflex in `act`: on its last economy turn a pet that would not wake up (`dawnHearts` ≤ 0) and can eat or buy may only eat or buy. The policy blob is unchanged: format 6, 4,763 bytes.
+The user decided on 2026-09-26 (`docs/SIM.md`): death must be very bad (the reward's death penalty goes from 500 to 30k `$HBRN` of score, Cautious 90k; no pet's money is touched, I2); an owner who opens the app banks 50% of the harvest with an 8-hour cooldown, and the sim opens the app at dawn and at later rounds with 50% (devoted) or 10% (casual) odds (C6); a pet gifts its owner at most 5% of the day's income out of affection (B2); the food bill share is not a target and prices stay (H); earning is the Worker's talent, and a Worker build that only earns and dies to robbers made a build choice (F2); the brain learns survival by itself; persona recall ≥ 0.8 is reported, not gated (D2). Rules added on the way, each measured first: purchases spend the harvest before the burrow; a food purchase the wallet cannot cover even for a Small portion sells the weakest item; appetite stops at 300% (a might talent took single level-20 Fighters to 45–55% of their max hearts a day). Measured and removed at the user's word: a talent on might or grit multiplying the reward weight, and a last-turn survival reflex in `act`. A starvation counts against the brain when the pet ended its day with money for a Small portion; the old "food in the pantry" clause only caught pets that ate their last portion at night and still died. The policy blob is unchanged: format 6, 4,763 bytes.
 
-Measured on engine `9237392065831878773`, commit `3e52998` (`~/metacraft/hibernal-train/step28`): `bc.py --envs 8 --steps 4000 --studentRounds 2` (label balance 0.5), `ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7; `evaluate.py` (16 worlds) and `health.py` (8 worlds, every slot one controller):
+Measured on engine `16948401298924711931`, commit `7ab5e6f` (`~/metacraft/hibernal-train/step29`; the starvation counter re-read at `ccbae26`, `step29b`): `bc.py --envs 8 --steps 4000 --studentRounds 2` (label balance 0.5), `ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7; `evaluate.py` (16 worlds) and `health.py` (8 worlds, every slot one controller):
 
 | | Teacher | Clone | PPO seeds 5 / 6 / 7 |
 |---|---|---|---|
 | Illegal actions | 0 | 0 | 0 / 0 / 0 |
-| Starved with food or money (evaluate, all groups; health) | 0; 0 | 0; 0 | 0 / 0 / 0; 0 / 0 / 0 |
-| Early deaths per 100 lives (health; absent owners) | 2.00; 5.15 | 4.11; 9.90 | 3.55 / 3.87 / 3.92; 9.32 / 10.50 / 9.46 |
-| Starved without money, per ~3,000 lives | 50 | 68 | 101 / 113 / 95 |
-| Own-world wealth, `$HBRN` per pet | 31,711 | 31,929 | 42,647 / 41,190 / 43,043 |
-| Mixed world against the teacher | −1.7% (seat noise) | +1.5% | +27.5 / +24.6 / +36.1% |
-| Food bill at level 20, % of work income | 53 | 52 | 37 / 35 / 35 |
-| % of income on mints; on the market | 8.8; 5.0 | 10.0; 5.9 | 6.5–7.5; 3.1–3.7 |
-| Income p90 / p99 / top against the median | 3.3 / 4.4 / 6.1 | 3.4 / 4.6 / 7.1 | 3.0–3.1 / 3.9–4.3 / 6.1–6.8 |
-| Start-region wealth, richest over poorest | 3.3 | 3.4 | 1.36 / 1.56 / 1.42 |
-| Gift to a devoted owner, `$HBRN` a day | 36 | 37 | 30 |
-| Persona told from one log, with revenge | 0.83 | 0.85 | 0.77 / 0.62 / 0.66 |
+| Starved with money for a meal (evaluate, all groups; health) | 0; 0 | 0; 0 | 0 / 0 / 0; 0 / 0 / 0 |
+| Early deaths per 100 lives (health; absent owners) | 2.10; 5.82 | 3.61; 8.59 | 3.77 / 4.68 / 4.15; 8.96 / 12.05 / 10.31 |
+| Starved without money, per ~3,000 lives | 54 | 51 | 97 / 131 / 110 |
+| Own-world wealth, `$HBRN` per pet | 31,851 | 31,730 | 39,367 / 40,274 / 41,414 |
+| Mixed world against the teacher | −3.5% (seat noise) | +3.4% | +15.1 / +14.3 / +3.4% |
+| Food bill at level 20, % of work income | 53 | 52 | 39 / 40 / 40 |
+| % of income on mints; on the market | 8.9; 4.9 | 10.1; 6.1 | 6.3–7.6; 2.9–3.5 |
+| Income p90 / p99 / top against the median | 3.5 / 4.6 / 6.5 | 3.6 / 4.9 / 7.5 | 2.7–3.2 / 4.0–4.4 / 5.6–6.4 |
+| Start-region wealth, richest over poorest | 3.7 | 3.4 | 1.7 / 2.0 / 3.0 |
+| Gift to a devoted owner, `$HBRN` a day | 36 | 37 | 31 |
+| Persona told from one log, with revenge | 0.85 | 0.84 | 0.71 / 0.74 / 0.75 |
 
 - Package 5e (step24, engine `2583165197786226676`) for comparison: PPO starved without money 122–135 per ~3,000 lives, early deaths 4.7–5.1 per 100, start-region wealth spread 3.9–4.1.
-- The death penalty alone barely moved starvation (PPO seed 5 from `bc24`: 122 at 500, 146 / 145 / 113 at 10k / 30k / 100k; at 100k the critic's explained variance fell to 0.69). In PPO worlds the starved are Workers farmed by PPO robbers: robbed 0.6 times a day against 0.3 for the rest, half their income lost, still minting; in mixed worlds PPO pets die no more often than the teacher's. Learned brains still let poor pets starve without money about twice as often as the teacher.
-- Every starvation with money on the way (step26: one; step27: three) was a pet that knew it would not wake up (`DawnHearts` = 0) and had money, and did not buy: Fighters with might talent eating 45–55% of their hearts a day who lived on the owner's breakfast, and a bled Worker that kept fighting. The last-turn reflex removes the class; the step27 policies replayed under it starve with money 0 times. Applied on every turn it cost the teacher 50 → 65 starved (it forbade banking while hungry).
-- Persona recall of PPO seeds 6 and 7 sits under the 0.8 the user set; reported, not gated.
+- The death penalty alone barely moved starvation (PPO seed 5 from `bc24`: 122 at 500, 146 / 145 / 113 at 10k / 30k / 100k; at 100k the critic's explained variance fell to 0.69). In PPO worlds the starved are Workers farmed by PPO robbers: robbed 0.6 times a day against 0.3 for the rest, half their income lost, still minting. The user counts that as competition, not a brain fault. Learned brains still let poor pets starve without money about twice as often as the teacher.
+- On the way, every starvation with money (step26: one; step27: three) was a pet that knew it would not wake up (`DawnHearts` = 0) and did not buy: Fighters eating 45–55% of their hearts a day who lived on the owner's breakfast, and a bled Worker that kept fighting. With the food sale inside `buy`, the appetite ceiling and no reflex, step29 has none.
+- Persona recall of the learned brains (0.71–0.75) sits under the 0.8 the user set; reported, not gated.
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
