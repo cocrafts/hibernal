@@ -1,5 +1,5 @@
 import { BPS } from "./units";
-import { Region, Stats, Combatant } from "./stats";
+import { Mod, Region, Stats, Combatant } from "./stats";
 import { Tree, built } from "./tree";
 import { Outcome, RAGE_STEP_BPS, RAGE_MAX, RAGE_DAYS } from "./fight";
 import { isShielded } from "./emission";
@@ -44,6 +44,11 @@ export struct Pet {
 	pointsUnspent: uint8;
 	xp: uint32;
 	tree: Tree;
+	foodBps: int32;
+	experienceBps: int32;
+	lootBps: int32;
+	biteGuardBps: int32;
+	mods: BitSet<Mod>;
 	harvest: uint64;
 	burrow: uint64;
 	rewardSnapshot: uint64;
@@ -102,12 +107,33 @@ export struct FightRecord {
 
 export function ownStats(this pet: Pet): Stats {
 	return {
-		...Stats.built(pet.tree, pet.level as int32, pet.talent()),
+		...Stats.base(),
 		forage: pet.forage as int32,
 		might: pet.might as int32,
 		grit: pet.grit as int32,
 		maxHearts: pet.maxHearts as int32,
+		foodBps: pet.foodBps,
+		experienceBps: pet.experienceBps,
+		lootBps: pet.lootBps,
+		biteGuardBps: pet.biteGuardBps,
+		mods: pet.mods,
 	};
+}
+
+export function withTreeBonuses(this pet: Pet, built: Stats): Pet {
+	return {
+		...pet,
+		foodBps: built.foodBps,
+		experienceBps: built.experienceBps,
+		lootBps: built.lootBps,
+		biteGuardBps: built.biteGuardBps,
+		mods: built.mods,
+	};
+}
+
+export function withTree(this pet: Pet, tree: Tree): Pet {
+	const planted: Pet = { ...pet, tree: tree };
+	return planted.withTreeBonuses(Stats.built(tree, pet.level as int32, pet.talent()));
 }
 
 export function stats(this pet: Pet): Stats {

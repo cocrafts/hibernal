@@ -3,6 +3,7 @@ import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
 import { Pantry, mealHearts } from "./pantry";
 import { Tree } from "./tree";
+import { noMods } from "./stats";
 import { TalentKind } from "./talent";
 import { Gear, ItemSkill, hasSkill, spentSkill } from "./items";
 
@@ -270,6 +271,11 @@ function testPet(): Pet {
 		pointsUnspent: 0,
 		xp: 0,
 		tree: Tree.empty(),
+		foodBps: 0,
+		experienceBps: 0,
+		lootBps: 0,
+		biteGuardBps: 0,
+		mods: noMods(),
 		harvest: 0,
 		burrow: 0,
 		rewardSnapshot: 0,

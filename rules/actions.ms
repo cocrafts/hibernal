@@ -319,7 +319,7 @@ export function allocateNode(
 	const cost = nodeCost(id);
 	const derived = Stats.built(tree, pet.level as int32, pet.talent()).aged(pet.vigor());
 	const grown: Pet = {
-		...pet,
+		...pet.withTreeBonuses(derived),
 		tree: tree,
 		forage: derived.forage as uint16,
 		might: derived.might as uint16,
@@ -781,7 +781,7 @@ test "a winning attacker bites an empty harvest" {
 test "a cannibal whose bite kills takes half of what the victim left" {
 	const duel = duelOver(0);
 	const cannibalTree = (1 as uint64) << (KEYSTONE_CANNIBAL as uint64);
-	const cannibal: Pet = { ...duel.attacker, tree: { bits: cannibalTree } };
+	const cannibal = duel.attacker.withTree({ bits: cannibalTree });
 	const frail: Pet = { ...duel.defender, hearts: 1 };
 	let kills = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
@@ -818,7 +818,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 	const duel = duelOver(0);
 	const cannibalTree = (1 as uint64) << (KEYSTONE_CANNIBAL as uint64);
-	const cannibal: Pet = { ...duel.attacker, tree: { bits: cannibalTree } };
+	const cannibal = duel.attacker.withTree({ bits: cannibalTree });
 	const frail: Pet = { ...duel.defender, hearts: 1, insurance: Insurance.Armed as uint8 };
 	let saves = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {

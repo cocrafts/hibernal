@@ -1,4 +1,4 @@
-import { Combatant } from "./stats";
+import { Combatant, noMods } from "./stats";
 import { BPS } from "./units";
 import { Tree } from "./tree";
 import { BlockSlot, Pet } from "./layout";
@@ -158,6 +158,11 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		pointsUnspent: 0,
 		xp: 0,
 		tree: Tree.empty(),
+		foodBps: 0,
+		experienceBps: 0,
+		lootBps: 0,
+		biteGuardBps: 0,
+		mods: noMods(),
 		harvest: harvest,
 		burrow: burrow,
 		rewardSnapshot: 0,

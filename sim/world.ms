@@ -324,7 +324,7 @@ export function wildsAwake(this world: World, harvest: uint64): World {
 		const tree = Tree.empty().withNode(region as int32);
 		const stats = Stats.built(tree, level, Talent.unrevealed());
 		wilds[index] = {
-			...pet,
+			...pet.withTreeBonuses(stats),
 			alive: true,
 			level: level as uint16,
 			forage: stats.forage as uint16,
@@ -332,7 +332,7 @@ export function wildsAwake(this world: World, harvest: uint64): World {
 			grit: stats.grit as uint16,
 			maxHearts: stats.maxHearts as uint8,
 			hearts: stats.maxHearts as uint8,
-			tree: Tree.empty().withNode(region as int32),
+			tree: tree,
 			harvest: harvest,
 			burrow: 0,
 			bornEpoch: world.epoch - Math.min(world.epoch, NEWBORN_EPOCHS),
