@@ -178,15 +178,30 @@ export function buy(
 		return Result.err(EconomyError.QuotaSpent);
 	}
 	const cost = foodCost(food, pet.level as int32);
-	if (pet.wallet() < cost) { return Result.err(EconomyError.Broke); }
+	const funded = pet.fundedFor(cost, foodCost(Food.Small, pet.level as int32), global);
+	if (!funded.ok) { return Result.err(funded.error); }
+	const payer = funded.value.pet;
 	return Result.ok({
 		pet: {
-			...pet.charged(cost),
-			pantry: pet.pantry.adding(food, 1),
-			foodBoughtToday: pet.foodBoughtToday + 1,
+			...payer.charged(cost),
+			pantry: payer.pantry.adding(food, 1),
+			foodBoughtToday: payer.foodBoughtToday + 1,
 		},
-		global: global.withSpend(Split.ofSpend(cost)),
+		global: funded.value.global.withSpend(Split.ofSpend(cost)),
 	});
+}
+
+function fundedFor(
+	this pet: Pet,
+	cost: uint64,
+	cheapest: uint64,
+	global: GlobalConfig,
+): Result<PetAndGlobal, EconomyError> {
+	if (pet.wallet() >= cost) { return Result.ok({ pet: pet, global: global }); }
+	if (pet.wallet() >= cheapest) { return Result.err(EconomyError.Broke); }
+	const sold = pet.soldItem(global);
+	if (!sold.ok || sold.value.pet.wallet() < cost) { return Result.err(EconomyError.Broke); }
+	return sold;
 }
 
 export function eat(
@@ -921,4 +936,33 @@ test "a pet sells its weakest item for cash and cannot sell bare" {
 	const bare = duel.defender.soldItem(duel.global);
 	assert !bare.ok;
 	if (!bare.ok) { assert bare.error == EconomyError.NoGear; }
+}
+
+test "a pet that cannot pay for the smallest portion sells its weakest item to eat" {
+	const duel = duelOver(0);
+	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None, 1);
+	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None, 1);
+	const cost = foodCost(Food.Small, duel.defender.level as int32);
+	const short: Pet = {
+		...duel.defender,
+		harvest: 0,
+		burrow: cost - 1,
+		pantry: Pantry.unstocked(),
+		foodBoughtToday: 0,
+		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
+	};
+	const bought = short.buy(Food.Small, duel.global);
+	assert bought.ok;
+	if (!bought.ok) { return; }
+	assert bought.value.pet.gear.feet.isEmpty() && !bought.value.pet.gear.head.isEmpty();
+	assert bought.value.pet.burrow == cost - 1 + common.sellPrice() - cost;
+	assert bought.value.pet.pantry.portions(Food.Small) == 1;
+	const lean: Pet = { ...short, burrow: cost };
+	const bigger = lean.buy(Food.Medium, duel.global);
+	assert !bigger.ok;
+	if (!bigger.ok) { assert bigger.error == EconomyError.Broke; }
+	const bare: Pet = { ...short, gear: Gear.bare() };
+	const broke = bare.buy(Food.Small, duel.global);
+	assert !broke.ok;
+	if (!broke.ok) { assert broke.error == EconomyError.Broke; }
 }
