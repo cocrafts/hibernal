@@ -40,6 +40,7 @@ export struct Stats {
 	experienceBps: int32;
 	lootBps: int32;
 	biteGuardBps: int32;
+	rewardBoostBps: int32;
 	mods: BitSet<Mod>;
 }
 
@@ -79,6 +80,7 @@ export function base(this typeof Stats): Stats {
 		experienceBps: 0,
 		lootBps: 0,
 		biteGuardBps: 0,
+		rewardBoostBps: BPS,
 		mods: noMods(),
 	};
 }
@@ -89,7 +91,7 @@ export function workPower(this stats: Stats): uint64 {
 
 export function rewardWeight(this stats: Stats): uint64 {
 	const shifted = stats.workPower() + REWARD_WEIGHT_OFFSET;
-	return shifted * shifted;
+	return shifted * shifted * (stats.rewardBoostBps as uint64) / (BPS as uint64);
 }
 
 function faded(value: int32, vigorBps: int32): int32 {

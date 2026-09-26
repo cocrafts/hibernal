@@ -117,7 +117,18 @@ export function stats(this pet: Pet): Stats {
 		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage)),
 		might: geared(pet.might, gear.statBonusBps(TalentKind.Might)),
 		grit: geared(pet.grit, gear.statBonusBps(TalentKind.Grit)),
+		rewardBoostBps: pet.startTalentBps(),
 	};
+}
+
+function startTalentBps(this pet: Pet): int32 {
+	const start = match (pet.startRegion()) {
+		Region.Worker => TalentKind.Forage,
+		Region.Fighter => TalentKind.Might,
+		Region.Survivor => TalentKind.Grit,
+	};
+	if (start == TalentKind.Forage || pet.talentKind != (start as uint8)) { return BPS; }
+	return pet.talentBps as int32;
 }
 
 function geared(value: uint16, bonusBps: int32): int32 {
