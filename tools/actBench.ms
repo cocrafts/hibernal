@@ -53,11 +53,13 @@ import {
 	nodeSelfInput,
 	paidFor,
 	splitmix,
+	stats,
 	talent,
 	tickTo,
 	writeNode,
 	writeNodeHold,
 	writeSelf,
+	writeSelfForNodeAndAttack,
 	writeTarget,
 	writeTargetHold,
 } from "../rules/index";
@@ -148,6 +150,15 @@ export function tickedNeighbours(
 export function observedSelf(this context: ActContext, around: Surroundings, self: Span<int32>): void {
 	for (let position = 0; position < self.length; position++) { self[position] = 0; }
 	around.writeSelf(context.persona, context.market, self, 0);
+}
+
+export function observedSelfForNodeAndAttack(
+	this context: ActContext,
+	around: Surroundings,
+	self: Span<int32>,
+): void {
+	for (let position = 0; position < self.length; position++) { self[position] = 0; }
+	around.writeSelfForNodeAndAttack(context.persona, around.actorPet().stats(), self, 0);
 }
 
 export function economyChoice(
@@ -430,12 +441,12 @@ export function actTicked(
 	const growing = context.surroundingsIn(pets, wilds, afterEconomy);
 	let node = ALLOCATE_HOLD;
 	if (growing.actorPet().legalNodes(afterEconomy).bits != 0) {
-		context.observedSelf(growing, self);
+		context.observedSelfForNodeAndAttack(growing, self);
 		node = nodeChoice(policy, growing, self);
 	}
 	const afterNode = context.appliedNode(pets, afterEconomy, node);
 	const armed = context.surroundingsIn(pets, wilds, afterNode);
-	context.observedSelf(armed, self);
+	context.observedSelfForNodeAndAttack(armed, self);
 	const attack = attackChoice(policy, armed, self);
 	return { choice: { economy: economy, node: node, attack: attack }, global: afterNode };
 }

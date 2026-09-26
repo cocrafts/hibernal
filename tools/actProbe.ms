@@ -51,6 +51,7 @@ import {
 	nodeChoice,
 	nodeRows,
 	observedSelf,
+	observedSelfForNodeAndAttack,
 	surroundingsIn,
 	targetRows,
 } from "./actBench";
@@ -200,7 +201,7 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	logComputeUnits();
 	const growing = context.surroundingsIn(block.pets, wilds.pets, afterEconomy);
 	const growable = growing.actorPet().legalNodes(afterEconomy).bits != 0;
-	if (growable) { context.observedSelf(growing, self); }
+	if (growable) { context.observedSelfForNodeAndAttack(growing, self); }
 	logComputeUnits();
 	const nodes = growable ? nodeRows(growing) : 0;
 	logComputeUnits();
@@ -209,7 +210,7 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	const afterNode = context.appliedNode(block.pets, afterEconomy, node);
 	logComputeUnits();
 	const armed = context.surroundingsIn(block.pets, wilds.pets, afterNode);
-	context.observedSelf(armed, self);
+	context.observedSelfForNodeAndAttack(armed, self);
 	logComputeUnits();
 	const targets = targetRows(armed);
 	logComputeUnits();

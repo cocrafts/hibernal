@@ -1,6 +1,6 @@
 import * as arithmetic from "./arithmetic";
 import { BPS, ACTS_PER_EPOCH } from "./units";
-import { Mod, Stats } from "./stats";
+import { Mod, Stats, asCombatant } from "./stats";
 import {
 	TREE_NODES,
 	NodeKind,
@@ -26,7 +26,6 @@ import {
 	Pet,
 	attackedOn,
 	blockSlot,
-	combatant,
 	combatantFacing,
 	fightsInOn,
 	fightsOutOn,
@@ -280,6 +279,31 @@ export function attackMask(this around: Surroundings): AttackMask {
 	return attacks;
 }
 
+export function writeSelfForNodeAndAttack(
+	this around: Surroundings,
+	persona: PersonaKind,
+	stats: Stats,
+	features: Span<int32>,
+	offset: int32,
+): void {
+	const pet = around.actorPet();
+	const fighter = stats.asCombatant(pet.hearts as int32);
+	const attacks = try fighter.attacksLeft(pet.fightsOutOn(around.epoch)) catch 0;
+	put(features, selfSlot(offset, SelfFeature.Hearts), heartShare(pet.hearts, pet.maxHearts));
+	put(features, selfSlot(offset, SelfFeature.MaxHearts), (pet.maxHearts as int32) * 2);
+	put(features, selfSlot(offset, SelfFeature.Harvest), moneyFeature(pet.harvest));
+	put(features, selfSlot(offset, SelfFeature.Burrow), moneyFeature(pet.burrow));
+	put(features, selfSlot(offset, SelfFeature.Level), (pet.level as int32) * 6);
+	put(features, selfSlot(offset, SelfFeature.PointsUnspent), (pet.pointsUnspent as int32) * 6);
+	put(features, selfSlot(offset, SelfFeature.RegionWorker) + (pet.region as int32), FEATURE_ONE);
+	put(features, selfSlot(offset, SelfFeature.PersonaCautious) + (persona as int32), FEATURE_ONE);
+	put(features, selfSlot(offset, SelfFeature.AttacksLeft), attacks * 40);
+	const roundShare = around.round * FEATURE_ONE / (ACTS_PER_EPOCH - 1);
+	put(features, selfSlot(offset, SelfFeature.Round), roundShare);
+	put(features, selfSlot(offset, SelfFeature.Might), stats.might / 2);
+	put(features, selfSlot(offset, SelfFeature.Grit), stats.grit / 2);
+}
+
 export function writeSelf(
 	this around: Surroundings,
 	persona: PersonaKind,
@@ -290,29 +314,15 @@ export function writeSelf(
 	const pet = around.actorPet();
 	const epoch = around.epoch;
 	const stats = pet.stats();
-	const fighter = pet.combatant();
+	around.writeSelfForNodeAndAttack(persona, stats, features, offset);
 	const level = pet.level as int32;
 	const meal = foodCost(Food.Small, level);
-	const attacks = try fighter.attacksLeft(pet.fightsOutOn(epoch)) catch 0;
-	put(features, selfSlot(offset, SelfFeature.Hearts), heartShare(pet.hearts, pet.maxHearts));
-	put(features, selfSlot(offset, SelfFeature.MaxHearts), (pet.maxHearts as int32) * 2);
 	const mealsAfforded = Math.min(pet.wallet() / meal, 31 as uint64) as int32;
 	const age = Math.min(epoch - pet.bornEpoch, FEATURE_ONE as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.MealsAfforded), mealsAfforded * 4);
-	put(features, selfSlot(offset, SelfFeature.Harvest), moneyFeature(pet.harvest));
-	put(features, selfSlot(offset, SelfFeature.Burrow), moneyFeature(pet.burrow));
-	put(features, selfSlot(offset, SelfFeature.Level), level * 6);
-	put(features, selfSlot(offset, SelfFeature.PointsUnspent), (pet.pointsUnspent as int32) * 6);
-	put(features, selfSlot(offset, SelfFeature.RegionWorker) + (pet.region as int32), FEATURE_ONE);
-	put(features, selfSlot(offset, SelfFeature.PersonaCautious) + (persona as int32), FEATURE_ONE);
-	put(features, selfSlot(offset, SelfFeature.AttacksLeft), attacks * 40);
 	put(features, selfSlot(offset, SelfFeature.Age), age);
 	put(features, selfSlot(offset, SelfFeature.Shielded), flag(pet.shieldedAt(epoch)));
-	const roundShare = around.round * FEATURE_ONE / (ACTS_PER_EPOCH - 1);
-	put(features, selfSlot(offset, SelfFeature.Round), roundShare);
 	put(features, selfSlot(offset, SelfFeature.FightsIn), pet.fightsInOn(epoch) * 40);
-	put(features, selfSlot(offset, SelfFeature.Might), stats.might / 2);
-	put(features, selfSlot(offset, SelfFeature.Grit), stats.grit / 2);
 	put(features, selfSlot(offset, SelfFeature.Forage), stats.forage / 2);
 	for (let ordinal = 0; ordinal <= (Mod.Cannibal as int32); ordinal++) {
 		put(
