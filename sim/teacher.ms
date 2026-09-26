@@ -43,6 +43,8 @@ import {
 	defeatHearts,
 	guardedBite,
 	damageGuardBps,
+	Pet,
+	Stats,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -384,4 +386,31 @@ test "a short episode is legal, deterministic and has fights" {
 	for (let index = 0; index < first.pets.length; index++) {
 		assert first.pets[index] == second.pets[index];
 	}
+}
+
+function treeBonusesHold(pet: Pet): boolean {
+	const built = Stats.built(pet.tree, pet.level as int32, pet.talent());
+	return pet.foodBps == built.foodBps &&
+		pet.experienceBps == built.experienceBps &&
+		pet.lootBps == built.lootBps &&
+		pet.biteGuardBps == built.biteGuardBps &&
+		pet.mods == built.mods;
+}
+
+test "the tree bonuses a pet stores match its tree through lives and heirs" {
+	let world = World.staggered(1, 11);
+	for (let day = 1; day <= 110; day++) {
+		world = world.beginEpoch(day as uint64);
+		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				world = world.act(world.actorAt(turn));
+			}
+		}
+		world = world.endEpoch();
+		for (const pet of world.pets) {
+			assert treeBonusesHold(pet);
+		}
+	}
+	assert world.stats.heirs > 0;
 }
