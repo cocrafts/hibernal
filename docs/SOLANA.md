@@ -132,8 +132,8 @@ If step 3 or 4 does not pass inside the agreed timebox, do not rewrite everythin
 ## 7. Unknowns to measure on devnet
 
 1. Compute budget per transaction inside the ER, and the CU of one `act` and one `fight`. Measured for the brain alone (2026-09-27): the ER honours a 1.4M `SetComputeUnitLimit`, inference is 590,655 CU, and the ER reads a non-delegated L1 account (`ON-CHAIN-AI.md` §6 package 6). A whole `act` and a `fight` are unmeasured.
-2. Crank scheduling from our program: interval accuracy and reliability with many pets.
-3. VRF in ER: latency, callback flow, fee confirmed at zero, how to delegate or select the ephemeral queue.
+2. Crank scheduling from our program: interval accuracy and reliability with many pets. Measured for one account (2026-09-27, `tools/fightProbe.ms` + `tools/chain/fightDevnet.mjs`, program `3afnQ9cpoaDYbZnUnVE2etrtsvdyi6Tm95M9jCh9qcCc`): a `ScheduleTask` of 3 iterations at 1,000 ms ran 3 fights within 2.1 s; scheduling cost 2,295 CU. Many pets and hour-long intervals are unmeasured.
+3. VRF in ER: latency, callback flow, fee confirmed at zero, how to delegate or select the ephemeral queue. Measured (2026-09-27, same probe): the request costs 14,483 CU on the ephemeral queue `5hBR571xnXppuCPveTrctfTU7tJLSN94nq7kv7FRK5Tc` and the callback lands 1.1 s later; the callback only accepts the VRF identity PDA scoped to our program as signer (`verifyVrfCallback`), and matching it to a stored pending request is the program's job. A fight settles in 5.5–16.9k CU in the ER; commit-and-undelegate costs 22.8k CU and the account is back on L1 46–59 s later. The fee is unmeasured.
 4. Delegating `GlobalConfig`, the account every settlement touches.
 5. An owner-signed SKR purchase on L1 while the `Pet` is delegated: whether the ER sees the L1 change or the pet must undelegate.
 6. A fight between pets in two different blocks, all accounts delegated.
