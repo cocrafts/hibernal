@@ -25,10 +25,16 @@ import {
 	hungerPerDay,
 	legalEconomy,
 	legalNodes,
+	ALLOCATE_HOLD,
+	actorPet,
 	ownStats,
 	stats,
 	talent,
 	winChanceFromTable,
+	pressureBps,
+	log2Times32,
+	oddsKeyAgainst,
+	winChanceBps,
 } from "../rules/index";
 import { POLICY_BLOB_BYTES, PolicyBlob, buffersMatchPolicy } from "./policyBench";
 import {
@@ -193,11 +199,12 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	const afterEconomy = context.appliedEconomy(block.pets, settled, economy);
 	logComputeUnits();
 	const growing = context.surroundingsIn(block.pets, wilds.pets, afterEconomy);
-	context.observedSelf(growing, self);
+	const growable = growing.actorPet().legalNodes(afterEconomy).bits != 0;
+	if (growable) { context.observedSelf(growing, self); }
 	logComputeUnits();
-	const nodes = nodeRows(growing);
+	const nodes = growable ? nodeRows(growing) : 0;
 	logComputeUnits();
-	const node = nodeChoice(blob.bytes, growing, self);
+	const node = growable ? nodeChoice(blob.bytes, growing, self) : ALLOCATE_HOLD;
 	logComputeUnits();
 	const afterNode = context.appliedNode(block.pets, afterEconomy, node);
 	logComputeUnits();
@@ -266,9 +273,31 @@ function costsLogged(): Result<uint64, ProgramError> {
 	logComputeUnits();
 	const meal = foodCost(Food.Small, actor.level as int32);
 	logComputeUnits();
+	const target = actor.combatantFacing(mate);
+	logComputeUnits();
+	const pressure = facing.pressureBps(target);
+	logComputeUnits();
+	const logged = log2Times32(123456789);
+	logComputeUnits();
+	const key = facing.oddsKeyAgainst(target);
+	logComputeUnits();
+	const cell = key.winChanceBps();
+	logComputeUnits();
+	let signedSum = 0;
+	for (let step = 0; step < 100; step++) {
+		signedSum += ((actor.might as int32) + step) / (7 + (context.round as int32));
+	}
+	logComputeUnits();
+	let unsignedSum: uint32 = 0;
+	for (let step = 0; step < 100; step++) {
+		unsignedSum += ((actor.might as uint32) + (step as uint32)) / (7 + (context.round as uint32));
+	}
+	logComputeUnits();
 	logU64((built.might as uint64) + (derived.grit as uint64) + (fighter.hearts as uint64) +
 		(odds as uint64) + (reachable.ok ? 1 : 0) + (dawn as uint64) + (hunger as uint64) +
-		(nodes.bits & 1) + meal + ((economy as uint16) as uint64));
+		(nodes.bits & 1) + meal + ((economy as uint16) as uint64) +
+		(pressure as uint64) + (logged as uint64) + (key.ratio as uint64) + (cell as uint64) +
+		(signedSum as uint64) + (unsignedSum as uint64));
 	return Result.ok(0);
 }
 

@@ -35,6 +35,7 @@ import {
 	allowsChoice,
 	allowsNode,
 	allocateNode,
+	actorPet,
 	attackHoldMask,
 	attackLogits,
 	attackMask,
@@ -427,8 +428,11 @@ export function actTicked(
 	const economy = context.economyChoice(policy, morning, self);
 	const afterEconomy = context.appliedEconomy(pets, settled, economy);
 	const growing = context.surroundingsIn(pets, wilds, afterEconomy);
-	context.observedSelf(growing, self);
-	const node = nodeChoice(policy, growing, self);
+	let node = ALLOCATE_HOLD;
+	if (growing.actorPet().legalNodes(afterEconomy).bits != 0) {
+		context.observedSelf(growing, self);
+		node = nodeChoice(policy, growing, self);
+	}
 	const afterNode = context.appliedNode(pets, afterEconomy, node);
 	const armed = context.surroundingsIn(pets, wilds, afterNode);
 	context.observedSelf(armed, self);
