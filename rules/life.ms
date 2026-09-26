@@ -332,7 +332,8 @@ export function tickTo(
 	const risen = pet.gainXp(earned * ((BPS + stats.experienceBps) as uint32) / (BPS as uint32));
 	const faded = Stats.built(pet.tree, risen.level as int32, pet.talent())
 		.aged(vigorBps(epoch - pet.bornEpoch));
-	const income = pet.harvest + pending + growthBonus(pending, multiplierBps);
+	const newIncome = pending + growthBonus(pending, multiplierBps);
+	const income = pet.harvest + newIncome;
 	const saved = revivals > 0;
 	const harvestBurned = saved ? income * INSURANCE_BURN_PERCENT / 100 : 0;
 	const burrowBurned = saved ? pet.burrow * INSURANCE_BURN_PERCENT / 100 : 0;
@@ -358,7 +359,8 @@ export function tickTo(
 		rewardSnapshot: settled.rewardPerWorkPower,
 		lastTickEpoch: epoch,
 	};
-	const gift = newDay && alive ? fed.giftFor(foodReserve(fed.level as int32, hunger)) : 0;
+	const reserve = foodReserve(fed.level as int32, hunger);
+	const gift = newDay && alive ? fed.giftFor(reserve, newIncome) : 0;
 	const gifted: Pet = { ...fed, burrow: fed.burrow - gift, giftOwed: fed.giftOwed + gift };
 	const weighed = alive
 		? settled.withWorkPower(weight, gifted.stats().rewardWeight())
