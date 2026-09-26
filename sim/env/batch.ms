@@ -98,7 +98,7 @@ export enum StepError {
 }
 
 export function flat(this typeof RewardWeights): RewardWeights {
-	return { heartMilli: 20000, deathMilli: 500000, comfortMilli: 0, lossAversionBps: 0 };
+	return { heartMilli: 20000, deathMilli: 30000000, comfortMilli: 0, lossAversionBps: 0 };
 }
 
 export function of(this typeof RewardWeights, kind: PersonaKind): RewardWeights {
@@ -106,7 +106,7 @@ export function of(this typeof RewardWeights, kind: PersonaKind): RewardWeights 
 	return match (kind) {
 		PersonaKind.Cautious => ({
 			...flat,
-			deathMilli: 1500000,
+			deathMilli: 90000000,
 			comfortMilli: 5000,
 			lossAversionBps: 10000,
 		}),
