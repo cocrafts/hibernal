@@ -166,9 +166,12 @@ function keystoneMask(): uint64 {
 function lowestNode(bits: uint64): int32 {
 	let id = 0;
 	let rest = bits;
-	while ((rest & 1) == 0) {
-		rest = rest >> 1;
-		id += 1;
+	for (let width = 32; width > 0; width = width / 2) {
+		const low = ((1 as uint64) << (width as uint64)) - 1;
+		if ((rest & low) == 0) {
+			rest = rest >> (width as uint64);
+			id += width;
+		}
 	}
 	return id;
 }
