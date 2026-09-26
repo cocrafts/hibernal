@@ -200,7 +200,9 @@ function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, aft
 		feel.tally(key, FeelCounter.MintSpent, spent);
 	}
 	if (after.pantry.stored() > actor.pantry.stored()) {
-		const spent = ((actor.wallet() - after.wallet()) / HBRN_UNIT) as int32;
+		const before = actor.wallet() + actor.gear.resaleValue();
+		const spent = ((before - after.wallet() - after.gear.resaleValue()) / HBRN_UNIT) as int32;
+		if (after.gear.resaleValue() < actor.gear.resaleValue()) { feel.tally(key, FeelCounter.Sells, 1); }
 		feel.tally(key, FeelCounter.FoodSpent, spent);
 		if ((actor.level as int32) >= LEVEL_CAP) {
 			feel.tally(key, FeelCounter.FoodSpentAtCap, spent);

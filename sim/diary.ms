@@ -149,7 +149,7 @@ function economyStep(this world: World, index: int32, diary: Diary): World {
 			after.purchaseNote(index, pet.gear.at(slot), diary);
 		},
 		_ => {
-			const cost = money(before.wallet() - pet.wallet());
+			const cost = money(before.wallet() + before.gear.resaleValue() - pet.wallet() - pet.gear.resaleValue());
 			diary.note(index, `${action.toString()} hearts ${before.hearts}->${pet.hearts} cost ${cost}`);
 		},
 	}
