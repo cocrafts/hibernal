@@ -42,10 +42,10 @@
 | 73,728 | 894,524 |
 | 294,912 | exceeds 1,400,000 |
 
-- Rust `-O3` is the floor. MetaScript-generated C for the same loop is unmeasured.
+- Rust `-O3` is the floor. MetaScript-generated C for `rules/policy.ms` costs 25–31 CU per weight on msc 0.2.55 (package 6, §6), about 2.5× the floor.
 - The fight settles in the VRF callback `consume_fight`, a separate transaction, so the budget of `act` belongs to the brain and its bookkeeping.
 - Executed weights, not stored weights, are what cost CU: a network scored once per candidate target costs its size times the number of candidates.
-- Working limit: about 40–50k executed weights per `act`, leaving room for account parsing, tick and writes, and for MetaScript codegen overhead.
+- Working limit: about 40–50k executed weights per `act` at the Rust rate. At the measured MetaScript rate that is 1.2–1.5M CU, the whole transaction; the current policy executes at most 20,192 weights (590k CU), and account parsing, observation, tick and writes are unmeasured.
 
 ## 3. Size and rent — Measured
 
@@ -125,7 +125,7 @@ Built in this order; balance and exact numbers come later (`BRIEF.md` §6, ROADM
 | 4 | `sim/env/`: observation, batched env with a C ABI, teacher actions; `train/`: behavior cloning, PPO, snapshot pool; `rules/policy.ms`: int8 inference used for every evaluation | done 2026-09-17, below: the pipeline runs end to end, the policy is not tuned |
 | 5 | `sim/env/feel.ms`: feel metrics counted in MetaScript; reward terms per persona; PFSP pool weighting; three seeds | done 2026-09-17, below: loss aversion makes the Cautious persona, PFSP and a revenge bonus measured no gain |
 | 5b | A world that lives and dies: lifespan and heirs (`BRIEF.md` §3.7), keystones per persona, grudge as a target feature, staggered claims; BC and PPO re-measured on it | done 2026-09-23, below: the numbers of packages 4 and 5 are on older engines and superseded |
-| 6 | `rules/policy.ms` and the observation on chain (ROADMAP S4), CU measured in LiteSVM | after 5, waits on `std/solana` |
+| 6 | `rules/policy.ms` and the observation on chain (ROADMAP S4), CU measured in LiteSVM | inference done 2026-09-26, below: every head in one `act` costs 590k CU, chain logits equal host; the observation waits on the account layout |
 
 Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from the change in harvest plus burrow with penalties for lost hearts and death, persona as an input.
 
@@ -425,6 +425,24 @@ Measured on engine `16948401298924711931`, commit `7ab5e6f` (`~/metacraft/hibern
 - The death penalty alone barely moved starvation (PPO seed 5 from `bc24`: 122 at 500, 146 / 145 / 113 at 10k / 30k / 100k; at 100k the critic's explained variance fell to 0.69). In PPO worlds the starved are Workers farmed by PPO robbers: robbed 0.6 times a day against 0.3 for the rest, half their income lost, still minting. The user counts that as competition, not a brain fault. Learned brains still let poor pets starve without money about twice as often as the teacher.
 - On the way, every starvation with money (step26: one; step27: three) was a pet that knew it would not wake up (`DawnHearts` = 0) and did not buy: Fighters eating 45–55% of their hearts a day who lived on the owner's breakfast, and a bled Worker that kept fighting. With the food sale inside `buy`, the appetite ceiling and no reflex, step29 has none.
 - Persona recall of the learned brains (0.71–0.75) sits under the 0.8 the user set; reported, not gated.
+
+### Package 6: the policy on SBF — Measured (inference), observation open
+
+`tools/policyProbe.ms` (`--os=solana`) runs `rules/policy.ms` unchanged over a policy blob that stays in account data (`Ptr<PolicyBlob>` over the account, never copied onto the 4 KB stack), on fixed synthetic inputs: `checkPolicy`, one economy pass, the attack head for 9 targets and the tree head for 6 candidate nodes. `tools/chain/policyLiteSvm.mjs` runs it in LiteSVM 1.4.1 under a 1.4M limit (`npm ci` in `tools/chain` first) and writes the blob for `tools/policyHost.ms`, which runs the same inference natively. Measured 2026-09-26 on msc 0.2.55, engine `16948401298924711931`, checkpoint `p29s5` (step29), compute-unit log cost subtracted:
+
+| Section | Executed weights | CU | CU per weight |
+|---|---|---|---|
+| `checkPolicy` | – | 24 | – |
+| Economy × 1 | 1,856 | 46,086 | 24.8 |
+| Attack × 9 targets | 1,376 each | 360,724 (40,080 each) | 29.1 |
+| Tree × 6 nodes | 992 each | 182,676 (30,446 each) | 30.7 |
+| Every head | 20,192 | 589,510 | 29.2 |
+
+- Chain logits equal host logits: checksum `0xbcdd5dac7cb68f98` for `p29s5` on both, `0x29d5ec3284ae60c3` for `bc29` (589,442 CU). The `.so` is 15,792 bytes.
+- MetaScript-generated C costs about 2.5× the Rust `-O3` floor of §2; the cause is unmeasured.
+- An `act` that runs every head needs `SetComputeUnitLimit` (590k against the 200k default, 42% of 1.4M). The attack head runs only while attacks are left and the tree head only with points unspent (§4); the economy head alone is ~46k. The social head of §4 is not in the policy.
+- The probe's stack buffers are sized with literals that `buffersMatchPolicy` checks against `rules/policy.ms` at run time: on msc 0.2.55 a sized array whose dimension is a named `const` gets size 0 (`~/metascript/.inbox/compiler/2026-09-26-sized-array-dimension-from-a-named-const-is-zero.md`).
+- Open: the observation on chain. `sim/env/observe.ms` reads `World` and writes `int32[]`; on chain it has to read the `Pet` and `Block` accounts, whose byte layout is not fixed yet (`BRIEF.md` §5.1). Also open: what `act` does when a program upgrade moves the engine version and `checkPolicy` rejects the stored blob.
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
