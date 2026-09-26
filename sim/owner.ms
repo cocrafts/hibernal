@@ -27,6 +27,7 @@ export enum OwnerKind {
 
 export struct OwnerHabit {
 	visitPercent: int32;
+	opensPercent: int32;
 	feedBelowBps: int32;
 	food: Food;
 	growthPercent: int32;
@@ -52,6 +53,7 @@ export function habitOf(kind: OwnerKind): OwnerHabit {
 	return match (kind) {
 		OwnerKind.Devoted => ({
 			visitPercent: 90,
+			opensPercent: 50,
 			feedBelowBps: 7000,
 			food: Food.Large,
 			growthPercent: 30,
@@ -60,6 +62,7 @@ export function habitOf(kind: OwnerKind): OwnerHabit {
 		}),
 		OwnerKind.Casual => ({
 			visitPercent: 35,
+			opensPercent: 10,
 			feedBelowBps: 5000,
 			food: Food.Medium,
 			growthPercent: 10,
@@ -68,6 +71,7 @@ export function habitOf(kind: OwnerKind): OwnerHabit {
 		}),
 		OwnerKind.Absent => ({
 			visitPercent: 0,
+			opensPercent: 0,
 			feedBelowBps: 0,
 			food: Food.Small,
 			growthPercent: 0,
@@ -144,6 +148,14 @@ export function visits(this habit: OwnerHabit, draw: uint64): boolean {
 	return rolled(draw, 0, habit.visitPercent);
 }
 
+export function openDraw(seed: uint64, index: int32, epoch: uint64, round: int32): uint64 {
+	return mixSeeds(visitDraw(seed, index, epoch), round as uint64);
+}
+
+export function opens(this habit: OwnerHabit, draw: uint64): boolean {
+	return rolled(draw, 3, habit.opensPercent);
+}
+
 test "owner kinds split the slots and only a devoted owner visits almost daily" {
 	let devoted = 0;
 	let absent = 0;
@@ -162,4 +174,14 @@ test "owner kinds split the slots and only a devoted owner visits almost daily" 
 	}
 	assert devotedVisits > 80;
 	assert absentVisits == 0;
+	let devotedOpens = 0;
+	let casualOpens = 0;
+	for (let epoch: uint64 = 1; epoch <= 100; epoch++) {
+		for (let round = 1; round < 4; round++) {
+			if (habitOf(OwnerKind.Devoted).opens(openDraw(3, 1, epoch, round))) { devotedOpens += 1; }
+			if (habitOf(OwnerKind.Casual).opens(openDraw(3, 1, epoch, round))) { casualOpens += 1; }
+		}
+	}
+	assert devotedOpens > 110 && devotedOpens < 190;
+	assert casualOpens > 10 && casualOpens < 60;
 }

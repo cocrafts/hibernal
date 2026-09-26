@@ -18,6 +18,7 @@ import {
 	attackHoldMask,
 	attackChoice,
 	HBRN_UNIT,
+	EPOCH_SECONDS,
 	LIFESPAN_EPOCHS,
 	INHERITANCE_TAX_PERCENT,
 	agedOut,
@@ -60,7 +61,7 @@ import {
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../rules/pantry";
 import { Gear, Item } from "../rules/items";
-import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited } from "./owner";
+import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited, openDraw, opens } from "./owner";
 
 export const WORLD_BLOCKS: int32 = 20;
 export const ACTS_PER_EPOCH: int32 = 4;
@@ -396,7 +397,27 @@ export function inRound(this world: World, round: int32): World {
 			turns[picked] = waiting;
 		}
 	}
-	return { ...world, round: round };
+	const shuffled: World = { ...world, round: round };
+	return round > 0 ? shuffled.ownersOpened() : shuffled;
+}
+
+export function ownersOpened(this world: World): World {
+	const pets = world.pets;
+	const ledgers = world.ownerLedgers;
+	const roundSeconds = EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64);
+	const now = world.epoch * EPOCH_SECONDS + (world.round as uint64) * roundSeconds;
+	for (let index = 0; index < pets.length; index++) {
+		const pet = pets[index];
+		if (!pet.alive) { continue; }
+		const draw = openDraw(world.seed, index, world.epoch, world.round);
+		if (!habitOf(world.owners[index]).opens(draw)) { continue; }
+		const banked = pet.ownerBanked(now);
+		if (!banked.ok) { continue; }
+		const ledger = ledgers[index];
+		ledgers[index] = { ...ledger, banked: ledger.banked + banked.value.burrow - pet.burrow };
+		pets[index] = banked.value;
+	}
+	return world;
 }
 
 export function actorAt(this world: World, turn: int32): int32 {
@@ -748,6 +769,26 @@ test "hold applies nothing and stays legal" {
 	assert after.stats.illegal == 0;
 	assert after.pets[4].lastTickEpoch == 1;
 	assert after.pets[4].harvest > 0;
+}
+
+test "an owner who opens the app again waits out the 8-hour cooldown" {
+	const world = World.create(2, 5).beginEpoch(1);
+	const dawn = world.epoch * EPOCH_SECONDS;
+	const before: uint64[] = [];
+	for (const ledger of world.ownerLedgers) { before.push(ledger.banked); }
+	const later = world.inRound(1);
+	let opened = 0;
+	for (let index = 0; index < later.pets.length; index++) {
+		const moved = later.ownerLedgers[index].banked - before[index];
+		if (later.pets[index].ownerBankedAt == dawn) { assert moved == 0; }
+		if (moved > 0) { opened += 1; }
+	}
+	const noon = later.inRound(2);
+	let banked = 0;
+	for (let index = 0; index < noon.pets.length; index++) {
+		if (noon.pets[index].ownerBankedAt > dawn) { banked += 1; }
+	}
+	assert banked > opened;
 }
 
 test "an illegal action counts and changes nothing" {
