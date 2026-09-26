@@ -21,6 +21,8 @@ import {
 	combatant,
 	combatantFacing,
 	dawnHearts,
+	doEconomy,
+	EconomyAction,
 	foodCost,
 	hungerPerDay,
 	legalEconomy,
@@ -302,6 +304,25 @@ function costsLogged(): Result<uint64, ProgramError> {
 	return Result.ok(0);
 }
 
+function economyCostsLogged(): Result<uint64, ProgramError> {
+	const context = try contextAt();
+	const config = try configAt();
+	const block = try petsCopied();
+	const global = loaded(config);
+	const actor = block.pets[context.actor as int32];
+	let legal: uint64 = 0;
+	logComputeUnits();
+	logComputeUnits();
+	for (let ordinal = 0; ordinal <= (EconomyAction.BuyItem as int32); ordinal++) {
+		if (actor.doEconomy(ordinal as EconomyAction, global, 0).ok) {
+			legal = legal | ((1 as uint64) << (ordinal as uint64));
+		}
+		logComputeUnits();
+	}
+	logU64(legal);
+	return Result.ok(0);
+}
+
 function digestLogged(): Result<uint64, ProgramError> {
 	const config = try configAt();
 	const block = try petsCopied();
@@ -334,6 +355,7 @@ function dispatch(): Result<uint64, ProgramError> {
 		},
 		2 => digestLogged(),
 		4 => costsLogged(),
+		5 => economyCostsLogged(),
 		3 => written(data),
 		_ => Result.err(ProgramError.invalidInstructionData()),
 	};

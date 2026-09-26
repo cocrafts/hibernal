@@ -156,6 +156,13 @@ for (const name of SCENARIOS) {
 		const cost = marks[0] - marks[1];
 		console.log(`  one call each: ${COSTS.map((name, index) => `${name} ${marks[index + 1] - marks[index + 2] - cost}`).join(" · ")}`);
 	}
+	const economyCosts = await send(actData(5, scenario.engine, false));
+	if (!economyCosts.failed) {
+		const marks = remaining(economyCosts.logs);
+		const cost = marks[0] - marks[1];
+		const legal = logged(economyCosts.logs).pop();
+		console.log(`  doEconomy each (legal mask 0x${legal.toString(16)}): ${marks.slice(1, -1).map((value, index) => `${index} ${value - marks[index + 2] - cost}`).join(" · ")}`);
+	}
 	const split = await send(actData(0, scenario.engine, true));
 	if (split.failed) {
 		console.log(`split act: ${split.error}`);
