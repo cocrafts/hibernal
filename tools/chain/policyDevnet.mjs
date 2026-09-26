@@ -28,6 +28,9 @@ const MAGIC_CONTEXT = address("MagicContext1111111111111111111111111111111");
 const COMPUTE_UNIT_LIMIT = 1_400_000;
 const ENGINE = 16948401298924711931n;
 const HOST_CHECKSUM = process.env.HOST_CHECKSUM ?? "0xbcdd5dac7cb68f98";
+const REWRITTEN_CHECKSUM = process.env.REWRITTEN_CHECKSUM ?? "0x662e5ba1e8353f24";
+const REWRITE_OFFSET = 17;
+const REWRITE_BYTES = 46;
 const CHUNK_BYTES = 900;
 const ATTACK_TARGETS = 9;
 const NODE_CANDIDATES = 6;
@@ -158,9 +161,14 @@ async function waitFor(rpc, label, predicate, timeoutMs) {
 	throw new Error(`${label}: timed out after ${timeoutMs}ms`);
 }
 
-const sameBlob = (state) => state.data.length === blob.length && state.data.every((value, index) => value === blob[index]);
+const holds = (expected) => (state) => state.data.length === expected.length && state.data.every((value, index) => value === expected[index]);
+const sameBlob = holds(blob);
+const checksumIn = (logs) => {
+	const logged = logs.filter((line) => line.startsWith("Program log: 0x")).pop();
+	return logged ? `0x${BigInt(logged.split(", ").pop()).toString(16)}` : null;
+};
 
-function report(label, sent) {
+function report(label, sent, expected = HOST_CHECKSUM) {
 	if (sent.err) {
 		console.log(`${label}: FAILED ${json(sent.err)}`);
 		console.log(sent.logs.join("\n"));
@@ -172,8 +180,7 @@ function report(label, sent) {
 		console.log(sent.logs.join("\n"));
 		return;
 	}
-	const logged = sent.logs.filter((line) => line.startsWith("Program log: 0x")).pop();
-	const checksum = `0x${BigInt(logged.split(", ").pop()).toString(16)}`;
+	const checksum = checksumIn(sent.logs);
 	const [start, afterLog, afterCheck, afterEconomy, afterAttack, afterNode] = remaining;
 	const logCost = start - afterLog;
 	const sections = [
@@ -190,7 +197,7 @@ function report(label, sent) {
 	}
 	console.log(`  inference    ${String(afterLog - afterNode - 4 * logCost).padStart(7)} CU`);
 	console.log(`  transaction  ${String(sent.units).padStart(7)} CU`);
-	console.log(`  checksum ${checksum} · host ${HOST_CHECKSUM} · ${checksum === HOST_CHECKSUM ? "equal" : "DIFFERENT"}`);
+	console.log(`  checksum ${checksum} · host ${expected} · ${checksum === expected ? "equal" : "DIFFERENT"}`);
 }
 
 const runInstructions = () => [limitInstruction(COMPUTE_UNIT_LIMIT), program([readonly(policy)], withHeader(0, ENGINE))];
@@ -222,6 +229,31 @@ console.log(`policy on base: ${state.data.length} bytes, ${sameBlob(state) ? "eq
 if (!sameBlob(state)) process.exit(1);
 
 report("A. ER, policy on L1 not delegated", await send(ephemeral, "er", "run, policy not delegated", runInstructions()));
+
+async function untilErRuns(label, expected, timeoutMs) {
+	const started = Date.now();
+	let seen = null;
+	while (Date.now() - started < timeoutMs) {
+		const sent = await send(ephemeral, "er", label, runInstructions());
+		seen = sent.err ? null : checksumIn(sent.logs);
+		if (seen === expected) {
+			console.log(`${label}: ER runs on ${expected} after ${Date.now() - started}ms`);
+			return true;
+		}
+		await sleep(5000);
+	}
+	console.log(`${label}: ER still runs on ${seen} after ${timeoutMs}ms, expected ${expected}`);
+	return false;
+}
+
+const rewritten = blob.slice();
+for (let index = REWRITE_OFFSET; index < REWRITE_OFFSET + REWRITE_BYTES; index++) rewritten[index] ^= 0xff;
+await mustSend(base, "base", "rewrite weights on L1", [program([signerMeta, writable(policy)], withHeader(2, REWRITE_OFFSET, rewritten.subarray(REWRITE_OFFSET, REWRITE_OFFSET + REWRITE_BYTES)))]);
+const erView = await readPolicy(ephemeral);
+console.log(`C. ER account view right after the L1 rewrite: ${holds(rewritten)(erView) ? "new bytes" : "old bytes"}`);
+await untilErRuns("C. ER run after the L1 rewrite", REWRITTEN_CHECKSUM, 180000);
+await mustSend(base, "base", "restore weights on L1", [program([signerMeta, writable(policy)], withHeader(2, REWRITE_OFFSET, blob.subarray(REWRITE_OFFSET, REWRITE_OFFSET + REWRITE_BYTES)))]);
+await untilErRuns("C. ER run after the L1 restore", HOST_CHECKSUM, 180000);
 
 await mustSend(base, "base", "delegate policy", [program([
 	signerMeta,
