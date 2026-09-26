@@ -17,8 +17,7 @@ import {
 const COMPUTE_BUDGET_PROGRAM = address("ComputeBudget111111111111111111111111111111");
 const COMPUTE_UNIT_LIMIT = 1_400_000;
 const MEASURE_LIMIT = 20_000_000n;
-const COSTS = ["Stats.built", "pet.stats()", "pet.combatant()", "mate.combatantFacing()", "winChanceFromTable", "attackable", "dawnHearts", "ownStats().hungerPerDay()", "legalEconomy", "legalNodes", "foodCost"];
-const PET_BYTES = 168;
+const COSTS = ["Stats.built", "pet.stats()", "pet.combatant()", "mate.combatantFacing()", "winChanceFromTable", "attackable", "dawnHearts", "ownStats().hungerPerDay()", "legalEconomy", "legalNodes", "foodCost", "actor.combatantFacing()", "pressureBps", "log2Times32", "oddsKeyAgainst", "winChanceBps", "100 signed divisions", "100 unsigned divisions"];
 const SCENARIOS = ["typical", "busiest", "dawn"];
 const SECTIONS = [
 	"load accounts",
@@ -116,8 +115,9 @@ function loadScenario(scenario) {
 	put(holders[1], scenario.context);
 	put(holders[2], scenario.global);
 	put(holders[3], scenario.wilds);
+	const petBytes = scenario.pets.length / 10;
 	for (let slot = 0; slot < 10; slot++) {
-		put(holders[4 + slot], scenario.pets.slice(slot * PET_BYTES, (slot + 1) * PET_BYTES));
+		put(holders[4 + slot], scenario.pets.slice(slot * petBytes, (slot + 1) * petBytes));
 	}
 }
 
