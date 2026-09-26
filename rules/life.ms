@@ -61,6 +61,7 @@ export const MIGHT_APPETITE_BPS: int32 = 50;
 export const FORAGE_APPETITE_BPS: int32 = 30;
 export const GRIT_APPETITE_BPS: int32 = 40;
 export const MIN_APPETITE_BPS: int32 = 5000;
+export const MAX_APPETITE_BPS: int32 = 30000;
 export const BERSERKER_APPETITE_BPS: int32 = 2500;
 
 export enum TalentError {
@@ -266,7 +267,7 @@ export function appetiteBps(this stats: Stats): int32 {
 		(stats.forage - BASE_STAT) * FORAGE_APPETITE_BPS -
 		(stats.grit - BASE_STAT) * GRIT_APPETITE_BPS +
 		(stats.mods.has(Mod.Berserker) ? BERSERKER_APPETITE_BPS : 0);
-	return Math.max(appetite, MIN_APPETITE_BPS);
+	return Math.min(Math.max(appetite, MIN_APPETITE_BPS), MAX_APPETITE_BPS);
 }
 
 export function hungerPerDay(this stats: Stats): int32 {
@@ -480,18 +481,20 @@ test "the first tick pays the emission share and levels on work xp" {
 	assert firstTicked.pet.pointsUnspent == 3;
 }
 
-test "hunger is a share of max hearts that might and forage raise and grit lowers" {
+test "hunger is a share of max hearts that might and forage raise and grit lowers, within bounds" {
 	const pet: Stats = { ...Stats.base(), maxHearts: 40 };
 	const mighty: Stats = { ...pet, might: BASE_STAT + 100 };
 	const forager: Stats = { ...pet, forage: BASE_STAT + 100 };
 	const gritty: Stats = { ...pet, grit: BASE_STAT + 100 };
 	const stone: Stats = { ...pet, grit: BASE_STAT + 400 };
 	const tiny: Stats = { ...pet, maxHearts: 1 };
+	const titan: Stats = { ...pet, might: BASE_STAT + 900 };
 	assert pet.hungerPerDay() == 4;
 	assert mighty.hungerPerDay() == 6;
 	assert forager.hungerPerDay() == 5;
 	assert gritty.hungerPerDay() == 2;
 	assert stone.appetiteBps() == MIN_APPETITE_BPS;
+	assert titan.appetiteBps() == MAX_APPETITE_BPS && titan.hungerPerDay() == 12;
 	assert tiny.hungerPerDay() == 1;
 }
 
