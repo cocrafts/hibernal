@@ -19,6 +19,10 @@ import {
 	ATTACK_SELF_INPUTS,
 	nodeSelfInput,
 	attackSelfInput,
+	actorPet,
+	stats,
+	writeSelf,
+	writeSelfForNodeAndAttack,
 } from "../../rules/index";
 import {
 	ECONOMY_ACTIONS,
@@ -27,6 +31,8 @@ import {
 	actionCount,
 	zeros,
 } from "./observe";
+import { World, marketViewOf, surroundingsOf } from "../world";
+import { personaKindOf } from "../teacher";
 
 export struct Scratch {
 	input: int32[];
@@ -178,6 +184,40 @@ test "each head gathers its own inputs" {
 	assert scratch.input[11] == 3 + (SelfFeature.Round as int32);
 	assert scratch.input[12] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES;
 	assert scratch.input[24] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES + 12;
+}
+
+test "the node and attack heads read only what the short self observation writes" {
+	let world = World.create(1, 8);
+	for (let day = 1; day <= 6; day++) {
+		world = world.beginEpoch(day as uint64);
+		for (let index = 0; index < world.pets.length; index++) {
+			world = world.applyEconomy(index, EconomyAction.Bank);
+			world = world.applyEconomy(index, EconomyAction.BuyLarge);
+		}
+		world = world.endEpoch();
+	}
+	world = world.beginEpoch(7);
+	const full = zeros(SELF_FEATURES);
+	const short = zeros(SELF_FEATURES);
+	for (let index = 0; index < world.pets.length; index++) {
+		const around = world.surroundingsOf(index);
+		const persona = personaKindOf(index);
+		for (let position = 0; position < SELF_FEATURES; position++) {
+			full[position] = 0;
+			short[position] = 0;
+		}
+		around.writeSelf(persona, world.marketViewOf(index), full, 0);
+		around.writeSelfForNodeAndAttack(persona, around.actorPet().stats(), short, 0);
+		for (let position = 0; position < NODE_SELF_INPUTS; position++) {
+			const feature = selfInput(Head.Node, position) as int32;
+			assert short[feature] == full[feature];
+		}
+		for (let position = 0; position < ATTACK_SELF_INPUTS; position++) {
+			const feature = selfInput(Head.Attack, position) as int32;
+			assert short[feature] == full[feature];
+		}
+		assert short[SelfFeature.Might as int32] > 0;
+	}
 }
 
 test "the best legal action ignores illegal logits and falls back when nothing is legal" {
