@@ -3,8 +3,6 @@ import {
 	STAKE_LEVELS,
 	ATTACK_HOLD,
 	POLICY_WIDTH,
-	NODE_INPUTS,
-	ATTACK_INPUTS,
 	ATTACK_OUTPUTS,
 	EconomyAction,
 	economyLogits,
@@ -12,22 +10,23 @@ import {
 	foldEatIntoBuy,
 	nodeScore,
 	attackLogits,
-} from "../../rules/index";
-import {
-	ECONOMY_ACTIONS,
 	FEATURE_ONE,
-	Head,
 	SelfFeature,
 	SELF_FEATURES,
 	NODE_FEATURES,
-	NODE_CANDIDATES,
 	TARGET_FEATURES,
+	NODE_SELF_INPUTS,
+	ATTACK_SELF_INPUTS,
+	nodeSelfInput,
+	attackSelfInput,
+} from "../../rules/index";
+import {
+	ECONOMY_ACTIONS,
+	Head,
+	NODE_CANDIDATES,
 	actionCount,
 	zeros,
 } from "./observe";
-
-export const NODE_SELF_INPUTS: int32 = NODE_INPUTS - NODE_FEATURES;
-export const ATTACK_SELF_INPUTS: int32 = ATTACK_INPUTS - TARGET_FEATURES;
 
 export struct Scratch {
 	input: int32[];
@@ -50,36 +49,6 @@ export function selfInputs(head: Head): int32 {
 		Head.Economy => SELF_FEATURES,
 		Head.Node => NODE_SELF_INPUTS,
 		Head.Attack => ATTACK_SELF_INPUTS,
-	};
-}
-
-function nodeSelfInput(position: int32): SelfFeature {
-	return match (position) {
-		0 => SelfFeature.RegionWorker,
-		1 => SelfFeature.RegionFighter,
-		2 => SelfFeature.RegionSurvivor,
-		3 => SelfFeature.PersonaCautious,
-		4 => SelfFeature.PersonaGreedy,
-		5 => SelfFeature.PersonaVengeful,
-		6 => SelfFeature.Level,
-		_ => SelfFeature.PointsUnspent,
-	};
-}
-
-function attackSelfInput(position: int32): SelfFeature {
-	return match (position) {
-		0 => SelfFeature.Hearts,
-		1 => SelfFeature.MaxHearts,
-		2 => SelfFeature.Harvest,
-		3 => SelfFeature.Burrow,
-		4 => SelfFeature.Level,
-		5 => SelfFeature.AttacksLeft,
-		6 => SelfFeature.PersonaCautious,
-		7 => SelfFeature.PersonaGreedy,
-		8 => SelfFeature.PersonaVengeful,
-		9 => SelfFeature.Might,
-		10 => SelfFeature.Grit,
-		_ => SelfFeature.Round,
 	};
 }
 

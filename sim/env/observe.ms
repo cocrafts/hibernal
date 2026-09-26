@@ -4,51 +4,35 @@ import {
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
 	STAKE_LEVELS,
-	BPS,
 	BlockSlot,
-	Mod,
 	Food,
-	Stats,
-	Tree,
 	EconomyAction,
-	StakeLevel,
-	foodCost,
-	adjacent,
-	nodeKind,
-	nodeCost,
-	NodeKind,
-	log2Times32,
-	winChanceFromTable,
-	FOOD_BUYS_PER_DAY,
-	mintPrice,
-	totalBonusBps,
-	weakestSlot,
-	at,
-	bonusBps,
+	FEATURE_ONE,
+	SelfFeature,
+	TargetFeature,
+	SELF_FEATURES,
+	NODE_FEATURES,
+	TARGET_FEATURES,
+	moneyFeature,
+	signedMoneyFeature,
+	writeSelf,
+	writeNodes,
+	writeTargets,
 	hungerPerDay,
-	focusStat,
-	spareSlot,
-	listPrice,
-	listingGain,
-	nightMeals,
 	foodReserve,
 	GIFT_RESERVE_DAYS,
 	adding,
 	unstocked,
 	Pantry,
 } from "../../rules/index";
-import { has, touches, built, regionOf } from "../../rules/tree";
 import {
-	ACTS_PER_EPOCH,
 	World,
-	blockStart,
-	hasListing,
-	bestListingFor,
 	economyMaskFor,
+	surroundingsOf,
+	marketViewOf,
 } from "../world";
 import { personaKindOf } from "../teacher";
 
-export const FEATURE_ONE: int32 = 127;
 export const ECONOMY_ACTIONS: int32 = (EconomyAction.BuyItem as int32) + 1;
 export const NODE_ACTIONS: int32 = ALLOCATE_HOLD + 1;
 export const ATTACK_ACTIONS: int32 = ATTACK_HOLD + 1;
@@ -59,99 +43,6 @@ export enum Head {
 	Attack,
 }
 
-export enum SelfFeature {
-	Hearts,
-	MaxHearts,
-	MealsAfforded,
-	Harvest,
-	Burrow,
-	Level,
-	PointsUnspent,
-	RegionWorker,
-	RegionFighter,
-	RegionSurvivor,
-	PersonaCautious,
-	PersonaGreedy,
-	PersonaVengeful,
-	AttacksLeft,
-	Age,
-	Shielded,
-	Round,
-	FightsIn,
-	Might,
-	Grit,
-	Forage,
-	ModOvertime,
-	ModScavenger,
-	ModThickHide,
-	ModPacifist,
-	ModGlassCannon,
-	ModCannibal,
-	SmallMealCost,
-	LivingMates,
-	PantryHearts,
-	RichestHarvest,
-	Threat,
-	ModRelentless,
-	ModBerserker,
-	Bonding,
-	GearBonus,
-	WeakestItemBonus,
-	MintsAfforded,
-	HungerShare,
-	BuysLeft,
-	SpareItemPrice,
-	Listed,
-	MarketGain,
-	MarketPrice,
-	DawnHearts,
-	FoodDays,
-}
-
-export enum NodeFeature {
-	Hold,
-	OwnRegion,
-	Opens,
-	Notable,
-	Keystone,
-	Cost,
-	Forage,
-	Might,
-	Grit,
-	MaxHearts,
-	GainsOvertime,
-	GainsScavenger,
-	GainsThickHide,
-	GainsPacifist,
-	GainsGlassCannon,
-	GainsCannibal,
-	GainsRelentless,
-	GainsBerserker,
-	Food,
-	Experience,
-	Loot,
-	BiteGuard,
-}
-
-export enum TargetFeature {
-	Present,
-	Hold,
-	WinChance,
-	ValueQuarter,
-	ValueHalf,
-	ValueThreeQuarters,
-	ValueWhole,
-	Harvest,
-	Shielded,
-	FightsIn,
-	AttackedToday,
-	Hearts,
-	Grudge,
-}
-
-export const SELF_FEATURES: int32 = (SelfFeature.FoodDays as int32) + 1;
-export const NODE_FEATURES: int32 = (NodeFeature.BiteGuard as int32) + 1;
-export const TARGET_FEATURES: int32 = (TargetFeature.Grudge as int32) + 1;
 export const NODE_CANDIDATES: int32 = TREE_NODES + 1;
 export const TARGET_CANDIDATES: int32 = BLOCK_SLOTS + 1;
 
@@ -176,233 +67,10 @@ export function largestActionCount(): int32 {
 	return Math.max(actionCount(Head.Economy), widest);
 }
 
-export function moneyFeature(amount: uint64): int32 {
-	return Math.min(log2Times32(amount / 1000 + 1) / 8, FEATURE_ONE);
-}
-
-export function signedMoneyFeature(amount: int64): int32 {
-	return amount < 0 ? -moneyFeature((-amount) as uint64) : moneyFeature(amount as uint64);
-}
-
-function flag(on: boolean): int32 {
-	return on ? FEATURE_ONE : 0;
-}
-
-function put(features: int32[], position: int32, value: int32): void {
-	features[position] = Math.max(-FEATURE_ONE, Math.min(value, FEATURE_ONE));
-}
-
-function heartShare(hearts: uint8, maxHearts: uint8): int32 {
-	return (hearts as int32) * FEATURE_ONE / Math.max(maxHearts as int32, 1);
-}
-
 function clear(features: int32[], offset: int32, count: int32): void {
 	for (let position = offset; position < offset + count; position++) {
 		features[position] = 0;
 	}
-}
-
-function selfSlot(offset: int32, feature: SelfFeature): int32 {
-	return offset + (feature as int32);
-}
-
-function nodeSlot(offset: int32, feature: NodeFeature): int32 {
-	return offset + (feature as int32);
-}
-
-function targetSlot(offset: int32, feature: TargetFeature): int32 {
-	return offset + (feature as int32);
-}
-
-function writeSelf(this world: World, index: int32, features: int32[], offset: int32): void {
-	const pet = world.pets[index];
-	const stats = pet.stats();
-	const fighter = pet.combatant();
-	const level = pet.level as int32;
-	const meal = foodCost(Food.Small, level);
-	const attacksLeft = try fighter.attacksLeft(pet.fightsOutOn(world.epoch)) catch 0;
-	put(features, selfSlot(offset, SelfFeature.Hearts), heartShare(pet.hearts, pet.maxHearts));
-	put(features, selfSlot(offset, SelfFeature.MaxHearts), (pet.maxHearts as int32) * 2);
-	const mealsAfforded = Math.min(pet.wallet() / meal, 31 as uint64) as int32;
-	const age = Math.min(world.epoch - pet.bornEpoch, FEATURE_ONE as uint64) as int32;
-	put(features, selfSlot(offset, SelfFeature.MealsAfforded), mealsAfforded * 4);
-	put(features, selfSlot(offset, SelfFeature.Harvest), moneyFeature(pet.harvest));
-	put(features, selfSlot(offset, SelfFeature.Burrow), moneyFeature(pet.burrow));
-	put(features, selfSlot(offset, SelfFeature.Level), level * 6);
-	put(features, selfSlot(offset, SelfFeature.PointsUnspent), (pet.pointsUnspent as int32) * 6);
-	put(features, selfSlot(offset, SelfFeature.RegionWorker) + (pet.region as int32), FEATURE_ONE);
-	put(
-		features,
-		selfSlot(offset, SelfFeature.PersonaCautious) + (personaKindOf(index) as int32),
-		FEATURE_ONE,
-	);
-	put(features, selfSlot(offset, SelfFeature.AttacksLeft), attacksLeft * 40);
-	put(features, selfSlot(offset, SelfFeature.Age), age);
-	put(features, selfSlot(offset, SelfFeature.Shielded), flag(pet.shieldedAt(world.epoch)));
-	const roundShare = world.round * FEATURE_ONE / (ACTS_PER_EPOCH - 1);
-	put(features, selfSlot(offset, SelfFeature.Round), roundShare);
-	put(features, selfSlot(offset, SelfFeature.FightsIn), pet.fightsInOn(world.epoch) * 40);
-	put(features, selfSlot(offset, SelfFeature.Might), stats.might / 2);
-	put(features, selfSlot(offset, SelfFeature.Grit), stats.grit / 2);
-	put(features, selfSlot(offset, SelfFeature.Forage), stats.forage / 2);
-	for (let ordinal = 0; ordinal <= (Mod.Cannibal as int32); ordinal++) {
-		put(
-			features,
-			selfSlot(offset, SelfFeature.ModOvertime) + ordinal,
-			flag(stats.mods.has(ordinal as Mod)),
-		);
-	}
-	put(features, selfSlot(offset, SelfFeature.SmallMealCost), moneyFeature(meal));
-	put(features, selfSlot(offset, SelfFeature.LivingMates), world.livingMates(index) * 14);
-	put(features, selfSlot(offset, SelfFeature.PantryHearts), pet.pantry.storedHearts() * 4);
-	const base = blockStart(index);
-	let richest = 0;
-	let threat = 0;
-	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		const mate = world.pets[base + slot];
-		const target = world.defenderAt(base + slot);
-		if (base + slot == index || !target.alive) { continue; }
-		if (!target.shieldedAt(world.epoch)) {
-			richest = Math.max(richest, moneyFeature(target.harvest));
-		}
-		if (!mate.alive) { continue; }
-		if (mate.attackable(pet, world.epoch).ok) {
-			const odds = mate.combatantFacing(pet).winChanceFromTable(pet.combatantFacing(mate));
-			threat = Math.max(threat, odds);
-		}
-	}
-	put(features, selfSlot(offset, SelfFeature.RichestHarvest), richest);
-	put(features, selfSlot(offset, SelfFeature.Threat), threat * FEATURE_ONE / BPS);
-	const relentless = flag(stats.mods.has(Mod.Relentless));
-	put(features, selfSlot(offset, SelfFeature.ModRelentless), relentless);
-	put(features, selfSlot(offset, SelfFeature.ModBerserker), flag(stats.mods.has(Mod.Berserker)));
-	put(features, selfSlot(offset, SelfFeature.Bonding), pet.bonding as int32);
-	put(features, selfSlot(offset, SelfFeature.GearBonus), pet.gear.totalBonusBps() / 40);
-	const weakest = pet.gear.at(pet.gear.weakestSlot());
-	put(features, selfSlot(offset, SelfFeature.WeakestItemBonus), weakest.bonusBps() / 11);
-	const mintsAfforded = Math.min(pet.wallet() / mintPrice(level), 31 as uint64) as int32;
-	put(features, selfSlot(offset, SelfFeature.MintsAfforded), mintsAfforded * 4);
-	const hunger = pet.ownStats().hungerPerDay();
-	const hungerShare = hunger * FEATURE_ONE / Math.max(pet.maxHearts as int32, 1);
-	put(features, selfSlot(offset, SelfFeature.HungerShare), hungerShare);
-	const buysLeft = FOOD_BUYS_PER_DAY - (pet.foodBoughtToday as int32);
-	put(features, selfSlot(offset, SelfFeature.BuysLeft), buysLeft * 40);
-	const spare = pet.gear.spareSlot(pet.focusStat());
-	if (spare.ok) {
-		const price = pet.gear.at(spare.value).listPrice();
-		put(features, selfSlot(offset, SelfFeature.SpareItemPrice), moneyFeature(price));
-	}
-	put(features, selfSlot(offset, SelfFeature.Listed), flag(world.hasListing(index)));
-	const best = world.bestListingFor(index);
-	if (best.ok) {
-		const listing = world.market[best.value];
-		put(features, selfSlot(offset, SelfFeature.MarketGain), pet.listingGain(listing) / 11);
-		put(features, selfSlot(offset, SelfFeature.MarketPrice), moneyFeature(listing.price));
-	}
-	put(features, selfSlot(offset, SelfFeature.DawnHearts), pet.dawnHearts() * 8);
-	const perDay = Math.max(foodReserve(level, hunger) / GIFT_RESERVE_DAYS, 1 as uint64);
-	const foodDays = Math.min(pet.wallet() / perDay, 31 as uint64) as int32;
-	put(features, selfSlot(offset, SelfFeature.FoodDays), foodDays * 4);
-}
-
-function opensWith(this tree: Tree, id: int32): int32 {
-	let opened = 0;
-	for (let other = 0; other < TREE_NODES; other++) {
-		if (adjacent(id, other) && !tree.has(other) && !tree.touches(other)) { opened += 1; }
-	}
-	return opened;
-}
-
-function writeNodes(this world: World, index: int32, features: int32[], offset: int32): void {
-	const pet = world.pets[index];
-	const legal = pet.legalNodes(world.global);
-	const level = pet.level as int32;
-	const before = Stats.built(pet.tree, level, pet.talent());
-	for (let id = 0; id < TREE_NODES; id++) {
-		if (!legal.allowsNode(id)) { continue; }
-		const row = offset + id * NODE_FEATURES;
-		const after = Stats.built(pet.tree.withNode(id), level, pet.talent());
-		const gained = after.mods.difference(before.mods);
-		const kind = nodeKind(id);
-		const home = regionOf(id);
-		const ownRegion = home.ok && home.value == pet.startRegion();
-		put(features, nodeSlot(row, NodeFeature.OwnRegion), flag(ownRegion));
-		put(features, nodeSlot(row, NodeFeature.Opens), pet.tree.opensWith(id) * 40);
-		put(features, nodeSlot(row, NodeFeature.Notable), flag(kind == NodeKind.Notable));
-		put(features, nodeSlot(row, NodeFeature.Keystone), flag(kind == NodeKind.Keystone));
-		put(features, nodeSlot(row, NodeFeature.Cost), nodeCost(id) * 40);
-		put(features, nodeSlot(row, NodeFeature.Forage), (after.forage - before.forage) * 6);
-		put(features, nodeSlot(row, NodeFeature.Might), (after.might - before.might) * 6);
-		put(features, nodeSlot(row, NodeFeature.Grit), (after.grit - before.grit) * 6);
-		const heartsGained = after.maxHearts - before.maxHearts;
-		put(features, nodeSlot(row, NodeFeature.MaxHearts), heartsGained * 30);
-		for (let ordinal = 0; ordinal <= (Mod.Berserker as int32); ordinal++) {
-			put(
-				features,
-				nodeSlot(row, NodeFeature.GainsOvertime) + ordinal,
-				flag(gained.has(ordinal as Mod)),
-			);
-		}
-		put(features, nodeSlot(row, NodeFeature.Food), (after.foodBps - before.foodBps) / 50);
-		const experience = after.experienceBps - before.experienceBps;
-		put(features, nodeSlot(row, NodeFeature.Experience), experience / 50);
-		put(features, nodeSlot(row, NodeFeature.Loot), (after.lootBps - before.lootBps) / 50);
-		const guard = after.biteGuardBps - before.biteGuardBps;
-		put(features, nodeSlot(row, NodeFeature.BiteGuard), guard / 50);
-	}
-	put(features, nodeSlot(offset + ALLOCATE_HOLD * NODE_FEATURES, NodeFeature.Hold), FEATURE_ONE);
-}
-
-function writeTargets(this world: World, index: int32, features: int32[], offset: int32): void {
-	const pet = world.pets[index];
-	const fighter = pet.combatant();
-	const base = blockStart(index);
-	const robber = world.robberOf(index);
-	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		const target = world.defenderAt(base + slot);
-		if (base + slot == index || !target.alive) { continue; }
-		const row = offset + slot * TARGET_FEATURES;
-		put(features, targetSlot(row, TargetFeature.Present), FEATURE_ONE);
-		put(features, targetSlot(row, TargetFeature.Harvest), moneyFeature(target.harvest));
-		const shielded = target.shieldedAt(world.epoch);
-		put(features, targetSlot(row, TargetFeature.Shielded), flag(shielded));
-		put(features, targetSlot(row, TargetFeature.FightsIn), target.fightsInOn(world.epoch) * 40);
-		put(
-			features,
-			targetSlot(row, TargetFeature.AttackedToday),
-			flag(pet.attackedOn(target.blockSlot(), world.epoch)),
-		);
-		put(features, targetSlot(row, TargetFeature.Hearts), heartShare(target.hearts, target.maxHearts));
-		put(
-			features,
-			targetSlot(row, TargetFeature.Grudge),
-			flag(robber.ok && robber.value == target.blockSlot()),
-		);
-		const stakeCap = pet.attackable(target, world.epoch);
-		if (!stakeCap.ok) { continue; }
-		const defender = target.combatantFacing(pet);
-		const attacker = pet.combatantFacing(target);
-		const winChance = attacker.winChanceFromTable(defender);
-		put(features, targetSlot(row, TargetFeature.WinChance), winChance * FEATURE_ONE / BPS);
-		for (let ordinal = 0; ordinal < STAKE_LEVELS; ordinal++) {
-			const stake = pet.stakeAt(stakeCap.value, ordinal as StakeLevel);
-			if (!stake.ok) { continue; }
-			const value = defender.attackExpectedValue(
-				attacker,
-				winChance,
-				stake.value,
-				target.harvest,
-				target.fightsInOn(world.epoch),
-			);
-			put(
-				features,
-				targetSlot(row, TargetFeature.ValueQuarter) + ordinal,
-				signedMoneyFeature(value),
-			);
-		}
-	}
-	const holdRow = offset + BLOCK_SLOTS * TARGET_FEATURES;
-	put(features, targetSlot(holdRow, TargetFeature.Hold), FEATURE_ONE);
 }
 
 export function observeInto(
@@ -414,9 +82,10 @@ export function observeInto(
 ): void {
 	clear(features, offset, observationSize(head));
 	if (!world.pets[index].alive) { return; }
-	world.writeSelf(index, features, offset);
-	if (head == Head.Node) { world.writeNodes(index, features, offset + SELF_FEATURES); }
-	if (head == Head.Attack) { world.writeTargets(index, features, offset + SELF_FEATURES); }
+	const around = world.surroundingsOf(index);
+	around.writeSelf(personaKindOf(index), world.marketViewOf(index), features, offset);
+	if (head == Head.Node) { around.writeNodes(features, offset + SELF_FEATURES); }
+	if (head == Head.Attack) { around.writeTargets(features, offset + SELF_FEATURES); }
 }
 
 export function legalInto(

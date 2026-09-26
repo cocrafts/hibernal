@@ -15,7 +15,6 @@ import {
 	Dice,
 	mixSeeds,
 	fightSeed,
-	attackHoldMask,
 	attackChoice,
 	HBRN_UNIT,
 	EPOCH_SECONDS,
@@ -37,8 +36,6 @@ import {
 	settle,
 	Listing,
 	MarketError,
-	focusStat,
-	spareSlot,
 	listingGain,
 	listedItem,
 	boughtListing,
@@ -55,6 +52,12 @@ import {
 	bare,
 	with,
 	sellPrice,
+	ACTS_PER_EPOCH,
+	GrudgeError,
+	Surroundings,
+	MarketView,
+	economyMask,
+	attackMask,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -63,8 +66,9 @@ import { Pantry } from "../rules/pantry";
 import { Gear, Item } from "../rules/items";
 import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited, openDraw, opens } from "./owner";
 
+export { ACTS_PER_EPOCH, GrudgeError } from "../rules/index";
+
 export const WORLD_BLOCKS: int32 = 20;
-export const ACTS_PER_EPOCH: int32 = 4;
 export const EPISODE_EPOCHS: int32 = 120;
 export const INITIAL_CLAIM_DAYS: int32 = 30;
 export const GRUDGE_EPOCHS: uint64 = 3;
@@ -74,11 +78,6 @@ export const NO_KEYSTONE: int32 = -1;
 export struct Grudge {
 	robber: BlockSlot;
 	epoch: uint64;
-}
-
-export enum GrudgeError {
-	None,
-	Stale,
 }
 
 export function none(this typeof Grudge): Grudge {
@@ -459,16 +458,29 @@ export function endEpoch(this world: World): World {
 	return { ...world, global: global, stats: { ...world.stats, deaths: deaths } };
 }
 
+export function surroundingsOf(this world: World, index: int32): Surroundings {
+	return {
+		pets: world.pets,
+		wilds: world.wilds,
+		base: blockStart(index),
+		actor: (index % BLOCK_SLOTS) as BlockSlot,
+		global: world.global,
+		epoch: world.epoch,
+		round: world.round,
+		robber: world.robberOf(index),
+	};
+}
+
+export function marketViewOf(this world: World, index: int32): MarketView {
+	const best = world.bestListingFor(index);
+	const offer: Result<Listing, MarketError> = best.ok
+		? Result.ok(world.market[best.value])
+		: Result.err(best.error);
+	return { listed: world.hasListing(index), offer: offer };
+}
+
 export function attackMaskFor(this world: World, index: int32): AttackMask {
-	const pet = world.pets[index];
-	if (!pet.alive) { return { bits: 0 }; }
-	const base = blockStart(index);
-	let attacks = attackHoldMask();
-	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		if (base + slot == index) { continue; }
-		attacks = attacks.attacksOn(pet, world.defenderAt(base + slot), world.epoch);
-	}
-	return attacks;
+	return world.surroundingsOf(index).attackMask();
 }
 
 export function hasListing(this world: World, index: int32): boolean {
@@ -507,13 +519,7 @@ export function bestListingFor(this world: World, index: int32): Result<int32, M
 }
 
 export function economyMaskFor(this world: World, index: int32): BitSet<EconomyAction> {
-	const pet = world.pets[index];
-	const legal = pet.legalEconomy(world.global);
-	if (!pet.alive) { return legal; }
-	const spare = pet.gear.spareSlot(pet.focusStat()).ok;
-	const listable = spare && !world.hasListing(index) ? legal.incl(EconomyAction.ListItem) : legal;
-	const wanted = world.bestListingFor(index).ok;
-	return wanted ? listable.incl(EconomyAction.BuyItem) : listable;
+	return world.surroundingsOf(index).economyMask(world.marketViewOf(index));
 }
 
 export function masksFor(this world: World, index: int32): Masks {
