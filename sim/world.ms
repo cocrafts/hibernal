@@ -492,21 +492,7 @@ export function economyMaskFor(this world: World, index: int32): BitSet<EconomyA
 	const spare = pet.gear.spareSlot(pet.focusStat()).ok;
 	const listable = spare && !world.hasListing(index) ? legal.incl(EconomyAction.ListItem) : legal;
 	const wanted = world.bestListingFor(index).ok;
-	const open = wanted ? listable.incl(EconomyAction.BuyItem) : listable;
-	return world.round == ACTS_PER_EPOCH - 1 ? pet.survivalMask(open) : open;
-}
-
-function survivalMask(this pet: Pet, legal: BitSet<EconomyAction>): BitSet<EconomyAction> {
-	if (pet.dawnHearts() > 0) { return legal; }
-	let food = 0 as BitSet<EconomyAction>;
-	let fed = false;
-	for (let ordinal = EconomyAction.BuySmall as int32; ordinal <= (EconomyAction.EatLarge as int32); ordinal++) {
-		const action = ordinal as EconomyAction;
-		if (!legal.has(action)) { continue; }
-		food = food.incl(action);
-		fed = true;
-	}
-	return fed ? food : legal;
+	return wanted ? listable.incl(EconomyAction.BuyItem) : listable;
 }
 
 export function masksFor(this world: World, index: int32): Masks {
@@ -762,22 +748,6 @@ test "hold applies nothing and stays legal" {
 	assert after.stats.illegal == 0;
 	assert after.pets[4].lastTickEpoch == 1;
 	assert after.pets[4].harvest > 0;
-}
-
-test "on its last turn, a pet that will not see dawn may only eat or buy food" {
-	const morning = World.create(1, 3).beginEpoch(1);
-	const pet = morning.pets[4];
-	const hunger = pet.ownStats().hungerPerDay();
-	morning.pets[4] = { ...pet, hearts: hunger as uint8, pantry: Pantry.unstocked(), burrow: 5000 * HBRN_UNIT };
-	assert morning.masksFor(4).economy.has(EconomyAction.Rest);
-	const world = morning.inRound(ACTS_PER_EPOCH - 1);
-	const doomed = world.masksFor(4).economy;
-	assert !doomed.has(EconomyAction.Rest) && !doomed.has(EconomyAction.Mint) && !doomed.has(EconomyAction.Bank);
-	assert doomed.has(EconomyAction.BuySmall) && doomed.has(EconomyAction.BuyLarge);
-	world.pets[4] = { ...world.pets[4], hearts: (hunger + 3) as uint8 };
-	assert world.masksFor(4).economy.has(EconomyAction.Rest);
-	world.pets[4] = { ...world.pets[4], hearts: hunger as uint8, harvest: 0, burrow: 0, gear: Gear.bare() };
-	assert world.masksFor(4).economy.has(EconomyAction.Rest);
 }
 
 test "an illegal action counts and changes nothing" {
