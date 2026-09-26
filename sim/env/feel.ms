@@ -45,7 +45,7 @@ export enum FeelCounter {
 	LivingEpochs,
 	HeartsSum,
 	Starved,
-	StarvedStocked,
+	StarvedFunded,
 	Bitten,
 	Wealth,
 	Living,
@@ -96,8 +96,8 @@ export enum Milestone {
 
 export enum Larder {
 	Dead,
-	Empty,
-	Stocked,
+	Broke,
+	Funded,
 }
 
 export struct Grudge {
@@ -166,7 +166,7 @@ function tally(this feel: Feel, key: int32, counter: FeelCounter, amount: int32)
 export function larderOf(this pet: Pet): Larder {
 	if (!pet.alive) { return Larder.Dead; }
 	const meal = foodCost(Food.Small, pet.level as int32);
-	return pet.pantry.stored() > 0 || pet.wallet() >= meal ? Larder.Stocked : Larder.Empty;
+	return pet.wallet() >= meal ? Larder.Funded : Larder.Broke;
 }
 
 export function momentOf(
@@ -373,7 +373,7 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 			continue;
 		}
 		feel.tally(key, FeelCounter.Starved, 1);
-		if (larder == Larder.Stocked) { feel.tally(key, FeelCounter.StarvedStocked, 1); }
+		if (larder == Larder.Funded) { feel.tally(key, FeelCounter.StarvedFunded, 1); }
 	}
 }
 
@@ -476,16 +476,16 @@ test "an attack under forty percent is reckless and under every persona" {
 	assert feel.tallied(2, FeelCounter.StakeShareSum) == 5000;
 }
 
-test "a starved pet is sorted by what it could still have eaten" {
+test "a starved pet counts against its brain only if it could still buy a meal" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
 	const meal = foodCost(Food.Small, pets[0].level as int32);
-	pets[0] = { ...pets[0], harvest: 0, burrow: 0, pantry: Pantry.unstocked() };
+	pets[0] = { ...pets[0], harvest: 0, burrow: 0, pantry: Pantry.unstocked().adding(Food.Small, 1) };
 	pets[1] = { ...pets[1], harvest: meal, burrow: 0, pantry: Pantry.unstocked() };
 	pets[2] = { ...pets[2], harvest: 0, burrow: meal, pantry: Pantry.unstocked() };
-	assert pets[0].larderOf() == Larder.Empty;
-	assert pets[1].larderOf() == Larder.Stocked;
-	assert pets[2].larderOf() == Larder.Stocked;
+	assert pets[0].larderOf() == Larder.Broke;
+	assert pets[1].larderOf() == Larder.Funded;
+	assert pets[2].larderOf() == Larder.Funded;
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.closeEpoch(0, world);
 	for (let index = 0; index < 3; index++) {
@@ -495,9 +495,9 @@ test "a starved pet is sorted by what it could still have eaten" {
 	feel.closeEpoch(0, world);
 	feel.openEpoch(0, world);
 	assert feel.tallied(0, FeelCounter.Starved) == 1;
-	assert feel.tallied(0, FeelCounter.StarvedStocked) == 0;
-	assert feel.tallied(1, FeelCounter.StarvedStocked) == 1;
-	assert feel.tallied(2, FeelCounter.StarvedStocked) == 1;
+	assert feel.tallied(0, FeelCounter.StarvedFunded) == 0;
+	assert feel.tallied(1, FeelCounter.StarvedFunded) == 1;
+	assert feel.tallied(2, FeelCounter.StarvedFunded) == 1;
 	assert feel.tallied(3, FeelCounter.Starved) == 0;
 	assert feel.tallied(3, FeelCounter.LivingEpochs) == 2;
 	assert feel.tallied(3, FeelCounter.HeartsSum) == 2 * (pets[3].hearts as int32);

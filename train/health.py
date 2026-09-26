@@ -102,7 +102,7 @@ def scorecard(counters, stats, epochs):
     dailyIncome = earned[days > 0] / days[days > 0]
     rows = [
         ("illegal actions", stats["illegal"], 0, 0, "gate"),
-        ("starved with food or money", field(counters, "starvedStocked").sum(), 0, 0, "SIM A7"),
+        ("starved with money for a meal", field(counters, "starvedFunded").sum(), 0, 0, "SIM A7"),
         ("starved, any", starved, None, None, "SIM A7"),
         ("early deaths per 100 lives", 100 * ratio(early, lives), None, None, "SIM A7"),
         ("age at level 10, mean", ratio(field(counters, "earlyLevelAgeSum").sum(), field(counters, "earlyLevelLives").sum()), 5, 10, "BRIEF 6.1"),
