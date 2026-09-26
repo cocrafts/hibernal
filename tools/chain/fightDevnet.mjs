@@ -17,6 +17,7 @@ import {
 } from "@solana/kit";
 
 const BASE_RPC = process.env.BASE_RPC ?? "https://rpc.magicblock.app/devnet";
+const BASE_READ_RPC = process.env.BASE_READ_RPC ?? BASE_RPC;
 const ER_RPC = process.env.ER_RPC ?? "https://devnet-as.magicblock.app";
 const VALIDATOR = address(process.env.VALIDATOR ?? "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
 const PROGRAM = address(process.argv[2]);
@@ -37,6 +38,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const addressEncoder = getAddressEncoder();
 const payer = await createKeyPairSignerFromBytes(Uint8Array.from(JSON.parse(readFileSync(`${process.env.HOME}/.config/solana/id.json`, "utf8"))));
 const base = createSolanaRpc(BASE_RPC);
+const baseRead = createSolanaRpc(BASE_READ_RPC);
 const ephemeral = createSolanaRpc(ER_RPC);
 const [arena] = await getProgramDerivedAddress({ programAddress: PROGRAM, seeds: ["arena", addressEncoder.encode(payer.address)] });
 const arenaBytes = addressEncoder.encode(arena);
@@ -70,9 +72,20 @@ function fightUnits(logs) {
 	return remaining.length >= 2 ? remaining[0] - remaining[1] : null;
 }
 
+async function patiently(call) {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return await call();
+		} catch (error) {
+			if (!String(error.message).includes("429") || attempt >= 10) throw error;
+			await sleep(2000 * attempt);
+		}
+	}
+}
+
 async function fetchTransaction(rpc, signature) {
 	for (let attempt = 0; attempt < 30; attempt++) {
-		const found = await rpc.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed", encoding: "json" }).send();
+		const found = await patiently(() => rpc.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed", encoding: "json" }).send());
 		if (found) return found;
 		await sleep(500);
 	}
@@ -96,7 +109,7 @@ async function send(rpc, layer, step, accounts, data) {
 		const status = value[0];
 		if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
 			const elapsed = Date.now() - started;
-			const details = await fetchTransaction(rpc, signature);
+			const details = await fetchTransaction(rpc === base ? baseRead : rpc, signature);
 			const logs = details?.meta?.logMessages ?? [];
 			const units = details?.meta?.computeUnitsConsumed !== undefined ? Number(details.meta.computeUnitsConsumed) : null;
 			console.log(`[${layer}] ${step}: ${status.err ? "FAILED " + JSON.stringify(status.err, (_, v) => typeof v === "bigint" ? v.toString() : v) : "ok"} ${elapsed}ms ${units} CU ${signature}`);
@@ -112,7 +125,7 @@ async function send(rpc, layer, step, accounts, data) {
 }
 
 async function readArena(rpc) {
-	const { value } = await rpc.getAccountInfo(arena, { encoding: "base64", commitment: "confirmed" }).send();
+	const { value } = await patiently(() => rpc.getAccountInfo(arena, { encoding: "base64", commitment: "confirmed" }).send());
 	if (!value) return null;
 	const bytes = Buffer.from(value.data[0], "base64");
 	return {
@@ -146,12 +159,12 @@ async function waitFor(rpc, label, predicate, timeoutMs) {
 const describe = (state) => `seed=${state.seed} outcome=${state.outcome} rounds=${state.rounds} attackerHp=${state.attackerHp} defenderHp=${state.defenderHp}`;
 console.log(`program ${PROGRAM} arena ${arena} identity ${programIdentity}`);
 
-const existing = await readArena(base);
+const existing = await readArena(baseRead);
 if (existing === null || existing.owner === SYSTEM_PROGRAM) {
 	await send(base, "base", "initialize arena", [signerMeta, writable(arena), readonly(SYSTEM_PROGRAM)], u64Bytes(0));
 }
 const baseFight = await send(base, "base", "fight 0", [signerMeta, writable(arena)], matchupData(1, matchups[0], "seed"));
-console.log(`  fight CU ${fightUnits(baseFight.logs)} | ${describe(await readArena(base))}`);
+console.log(`  fight CU ${fightUnits(baseFight.logs)} | ${describe(await readArena(baseRead))}`);
 
 await send(base, "base", "delegate arena", [
 	signerMeta,
@@ -200,5 +213,5 @@ if (process.env.SKIP_CRANK !== "1") {
 
 const finalEphemeral = await readArena(ephemeral);
 await send(ephemeral, "er", "commit and undelegate", [signerMeta, writable(arena), readonly(MAGIC_PROGRAM), writable(MAGIC_CONTEXT)], u64Bytes(3));
-const landed = await waitFor(base, "undelegated on base", (state) => state.owner === PROGRAM && state.fights === finalEphemeral.fights, 120000);
+const landed = await waitFor(baseRead, "undelegated on base", (state) => state.owner === PROGRAM && state.fights === finalEphemeral.fights, 120000);
 console.log(`final base arena: fights=${landed?.fights} mode=${landed?.mode} owner=${landed?.owner === PROGRAM ? "program" : landed?.owner}`);
