@@ -51,8 +51,7 @@ export function policyBytes(): int32 {
 }
 
 function signedByte(policy: Span<uint8>, position: int32): int32 {
-	const raw = policy[position] as int32;
-	return raw >= 128 ? raw - 256 : raw;
+	return ((policy[position] as int32) ^ 128) - 128;
 }
 
 function wordAt(policy: Span<uint8>, position: int32): int32 {
