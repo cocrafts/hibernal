@@ -14,6 +14,7 @@ import {
 	Food,
 	Persona,
 	PersonaKind,
+	Skip,
 	EconomyAction,
 	StakeLevel,
 	CLUSTERS,
@@ -98,13 +99,19 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	if (starving && shortOfLarge && turnLeft && masks.economy.has(EconomyAction.SellItem)) {
 		return EconomyAction.SellItem;
 	}
-	const purchase = persona.pickPurchase(
+	const fromWallet = persona.pickPurchase(
 		hearts,
 		pet.maxHearts as int32,
 		pet.pantry,
 		pet.wallet(),
 		pet.level as int32,
 	);
+	const sellable = pet.gear.weakestItemSlot();
+	const spareGear = sellable.ok ? pet.gear.at(sellable.value).sellPrice() : 0;
+	const broke = !fromWallet.ok && fromWallet.error == Skip.Broke;
+	const purchase = broke
+		? persona.pickPurchase(hearts, pet.maxHearts as int32, pet.pantry, pet.wallet() + spareGear, pet.level as int32)
+		: fromWallet;
 	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
 		return buyAction(purchase.value);
 	}
