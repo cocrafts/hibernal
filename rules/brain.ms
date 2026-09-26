@@ -178,6 +178,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		ownerBankedAt: 0,
 		gear: Gear.bare(),
 		grudgeSlot: 0,
 		rage: 0,

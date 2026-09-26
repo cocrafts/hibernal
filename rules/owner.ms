@@ -22,6 +22,8 @@ export const GROWTH_STEP_BPS: int32 = 500;
 export const GROWTH_STEPS_MAX: int32 = 3;
 export const INSURANCE_REVIVE_BPS: int32 = 3000;
 export const INSURANCE_BURN_PERCENT: uint64 = 50;
+export const OWNER_BANK_PERCENT: uint64 = 50;
+export const OWNER_BANK_COOLDOWN_SECONDS: uint64 = 8 * 3600;
 
 export enum OwnerError {
 	Dead,
@@ -31,6 +33,8 @@ export enum OwnerError {
 	TalkedOut,
 	Insured,
 	NoSuchTier,
+	EmptyHarvest,
+	CoolingDown,
 }
 
 export function bondedBy(this pet: Pet, amount: int32): Pet {
@@ -49,6 +53,21 @@ export function ownerFed(this pet: Pet, food: Food): Result<Pet, OwnerError> {
 	const hearts = Math.min((pet.hearts as int32) + restored, pet.maxHearts as int32);
 	const fed: Pet = { ...pet, hearts: hearts as uint8, ownerFedToday: pet.ownerFedToday + 1 };
 	return Result.ok(fed.bondedBy(FEED_BONDING));
+}
+
+export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError> {
+	if (!pet.alive) { return Result.err(OwnerError.Dead); }
+	if (pet.harvest == 0) { return Result.err(OwnerError.EmptyHarvest); }
+	if (now < pet.ownerBankedAt + OWNER_BANK_COOLDOWN_SECONDS) {
+		return Result.err(OwnerError.CoolingDown);
+	}
+	const moved = pet.harvest * OWNER_BANK_PERCENT / 100;
+	return Result.ok({
+		...pet,
+		harvest: pet.harvest - moved,
+		burrow: pet.burrow + moved,
+		ownerBankedAt: now,
+	});
 }
 
 export function talkedTo(this pet: Pet): Result<Pet, OwnerError> {
@@ -220,6 +239,23 @@ test "a devoted pet gifts a capped share and keeps its food reserve" {
 	assert cool.giftFor(reserve) == 0;
 }
 
+test "the owner banks half the harvest once per cooldown" {
+	const now: uint64 = 100 * 86400;
+	const exposed: Pet = { ...testPet(), harvest: 900, burrow: 100 };
+	const banked = exposed.ownerBanked(now);
+	assert banked.ok;
+	if (!banked.ok) { return; }
+	assert banked.value.harvest == 450 && banked.value.burrow == 550;
+	const refilled: Pet = { ...banked.value, harvest: 900 };
+	const early = refilled.ownerBanked(now + OWNER_BANK_COOLDOWN_SECONDS - 1);
+	assert !early.ok;
+	if (!early.ok) { assert early.error == OwnerError.CoolingDown; }
+	assert refilled.ownerBanked(now + OWNER_BANK_COOLDOWN_SECONDS).ok;
+	const empty = testPet().ownerBanked(now);
+	assert !empty.ok;
+	if (!empty.ok) { assert empty.error == OwnerError.EmptyHarvest; }
+}
+
 function testPet(): Pet {
 	return {
 		blockId: 0,
@@ -259,6 +295,7 @@ function testPet(): Pet {
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		ownerBankedAt: 0,
 		gear: Gear.bare(),
 		grudgeSlot: 0,
 		rage: 0,

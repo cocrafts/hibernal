@@ -149,7 +149,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		const slot = index % BLOCK_SLOTS;
 		turns.push(index);
 		owners.push(ownerKindFor(seed, index));
-		ownerLedgers.push({ visits: 0, skr: 0, refusals: 0 });
+		ownerLedgers.push({ visits: 0, skr: 0, refusals: 0, banked: 0 });
 		grudges.push(Grudge.none());
 		buildTargets.push(PERSONA_BUILD);
 		const hatched = Pet.born(
@@ -374,6 +374,7 @@ export function ownersVisited(this world: World): World {
 			visits: ledger.visits + 1,
 			skr: ledger.skr + visit.skr,
 			refusals: ledger.refusals + (visit.refused ? 1 : 0),
+			banked: ledger.banked + visit.banked,
 		};
 	}
 	return world;

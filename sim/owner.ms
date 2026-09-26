@@ -1,5 +1,6 @@
 import {
 	BPS,
+	EPOCH_SECONDS,
 	Food,
 	Pet,
 	Insurance,
@@ -8,6 +9,7 @@ import {
 	mixSeeds,
 	talkedTo,
 	ownerFed,
+	ownerBanked,
 	grownBy,
 	insured,
 } from "../rules/index";
@@ -36,12 +38,14 @@ export struct OwnerLedger {
 	visits: int32;
 	skr: int32;
 	refusals: int32;
+	banked: uint64;
 }
 
 export struct Visit {
 	pet: Pet;
 	skr: int32;
 	refused: boolean;
+	banked: uint64;
 }
 
 export function habitOf(kind: OwnerKind): OwnerHabit {
@@ -96,6 +100,12 @@ export function visited(this pet: Pet, habit: OwnerHabit, draw: uint64, epoch: u
 	let cared = pet;
 	let skr = 0;
 	let refused = false;
+	let banked: uint64 = 0;
+	const secured = cared.ownerBanked(epoch * EPOCH_SECONDS);
+	if (secured.ok) {
+		banked = secured.value.burrow - cared.burrow;
+		cared = secured.value;
+	}
 	const talked = cared.talkedTo();
 	if (talked.ok) { cared = talked.value; }
 	const feedBelow = (cared.maxHearts as int64) * (habit.feedBelowBps as int64);
@@ -123,7 +133,7 @@ export function visited(this pet: Pet, habit: OwnerHabit, draw: uint64, epoch: u
 			skr += INSURANCE_SKR;
 		}
 	}
-	return { pet: cared, skr: skr, refused: refused };
+	return { pet: cared, skr: skr, refused: refused, banked: banked };
 }
 
 export function visitDraw(seed: uint64, index: int32, epoch: uint64): uint64 {

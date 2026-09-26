@@ -318,7 +318,7 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 		feel.tally(key, FeelCounter.FightsInSum, fightsIn);
 		if (fightsIn >= INCOMING_CAP) { feel.tally(key, FeelCounter.FightsInCapDays, 1); }
 		feel.noteMilestones(key, pet, world.epoch);
-		harvests[key] = pet.harvest;
+		harvests[key] = pet.harvest + world.ownerLedgers[index].banked;
 	}
 }
 
@@ -359,8 +359,9 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 			grudges[key] = { robber: BlockSlot.First, epoch: 0 };
 		}
 		const sameLife = feel.lifeBorns[key] == pet.bornEpoch + 1;
-		if (pet.alive && sameLife && pet.harvest >= feel.harvests[key]) {
-			const earned = ((pet.harvest - feel.harvests[key]) / HBRN_UNIT) as int32;
+		const reached = pet.harvest + world.ownerLedgers[index].banked;
+		if (pet.alive && sameLife && reached >= feel.harvests[key]) {
+			const earned = ((reached - feel.harvests[key]) / HBRN_UNIT) as int32;
 			feel.tally(key, FeelCounter.Earned, earned);
 			if ((pet.level as int32) >= LEVEL_CAP) {
 				feel.tally(key, FeelCounter.EarnedAtCap, earned);

@@ -68,6 +68,7 @@ export struct Pet {
 	talksToday: uint8;
 	ownerFedToday: uint8;
 	giftOwed: uint64;
+	ownerBankedAt: uint64;
 	gear: Gear;
 	grudgeSlot: uint8;
 	rage: uint8;
