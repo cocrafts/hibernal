@@ -372,7 +372,7 @@ Measured on engine `12482136861935123128`, commit `a516f20` (`~/metacraft/hibern
 - The learned pets eat far more cheaply than the teacher (a third of income against a half) and still die a little more often, mostly pets whose owner never visits (4.6–5.0 early deaths per 100 lives against 0 for devoted owners).
 - Persona recall falls further under PPO than in 5b (0.61–0.67); the reward does not ask for it (`docs/SIM.md` D2).
 
-### Package 5d: market, lineage and a brain that sees tonight — Measured, superseded by 5e
+### Package 5d: market, lineage and a brain that sees tonight — Measured, superseded by 5f
 
 Rules added since 5c, each measured in `docs/SIM.md`: loot by D26 (attacker might against defender grit), the heir package (two heirlooms, a rarer talent roll per generation), a block market (`rules/market.ms`: `ListItem`, `BuyItem`, buyback after three days, 5% to the pot), hunger read from the pet's own stats so gear adds power without hunger, and a teacher that stops re-minting a worn item that still beats an average roll. The policy blob is format 5, 4,731 bytes: 45 self features, economy head 45 → 32 → 12.
 
@@ -400,28 +400,31 @@ Measured on engine `17847782851134087884`, commit `52ce235` (`~/metacraft/hibern
 - PPO barely buys gear, and is right to: a teacher that never mints or buys gear dies half as often and ends richer (`docs/SIM.md` I2). Item value is a design question.
 - On the step19 engine, where gear still raised hunger, PPO drove poor neighbours to broke starvation (60–77 per ~2,900 lives): their whole daily income was robbed before their first bank, day after day (`docs/SIM.md` C6). On this engine it is 1.5–2.2 early deaths per 100 lives, still concentrated on pets whose owner never visits.
 
-### Package 5e: whole-stat talent and gear that pays — Measured
+### Package 5f: owner bank, small gifts and a pet that will not starve with money — Measured
 
-The user chose two changes on 2026-09-25 so that every tier shows in a 10-pet block, not only the elite: a talent multiplies its whole stat (A), and gear pays its buyer (D: bonus ×2, mint price 300, items last 200 days, chosen by `train/payback.py`). Adapted on the way, each measured in `docs/SIM.md` G1 and I2: reward weight offset 40 → 50 (at 40, A and D took Workers to 3.8× a Survivor's income and early deaths to 2.7 per 100 lives), an item priced by the level it was minted at (PPO found that buying a low-level pet's listing and selling it back at its own level paid, and did it while starving), a teacher that does not attack when one lost fight would kill it, and a `FoodDays` feature (days of food the burrow can pay at the pet's hunger). The policy blob is format 6, 4,763 bytes: 46 self features, economy head 46 → 32 → 12.
+The user decided on 2026-09-26 (`docs/SIM.md`): death must be very bad (reward death penalty 500 → 30k `$HBRN`, Cautious 90k; I2), an owner who opens the app banks 50% of the harvest with an 8-hour cooldown (C6), a pet gifts its owner at most 5% of the day's income out of affection (B2), the food bill share is not a target and prices stay (H), Fighters and Survivors must keep pace without a Worker running away (F2), persona recall ≥ 0.8 is reported, not gated (D2). Decided by the agent under the user's delegation, each measured first: purchases spend the harvest before the burrow; a talent on a Fighter's might or a Survivor's grit multiplies its reward weight (Common → Epic wealth per day lived: Worker 385 → 707, Fighter 364 → 517, Survivor 262 → 570 in the teacher world); a food purchase the wallet cannot cover even for a Small portion sells the weakest item; and a survival reflex in `act`: on its last economy turn a pet that would not wake up (`dawnHearts` ≤ 0) and can eat or buy may only eat or buy. The policy blob is unchanged: format 6, 4,763 bytes.
 
-Measured on engine `2583165197786226676`, commit `9ce9e54` (`~/metacraft/hibernal-train/step24`): `bc.py --envs 8 --steps 4000 --studentRounds 2` (label balance 0.5), `ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7; `evaluate.py` (16 worlds) and `health.py` (8 worlds, every slot one controller):
+Measured on engine `9237392065831878773`, commit `3e52998` (`~/metacraft/hibernal-train/step28`): `bc.py --envs 8 --steps 4000 --studentRounds 2` (label balance 0.5), `ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7; `evaluate.py` (16 worlds) and `health.py` (8 worlds, every slot one controller):
 
 | | Teacher | Clone | PPO seeds 5 / 6 / 7 |
 |---|---|---|---|
 | Illegal actions | 0 | 0 | 0 / 0 / 0 |
 | Starved with food or money (evaluate, all groups; health) | 0; 0 | 0; 0 | 0 / 0 / 0; 0 / 0 / 0 |
-| Early deaths per 100 lives (health; absent owners) | 1.87; 3.69 | 3.78; 7.99 | 4.69 / 4.98 / 5.09; 8.97 / 10.40 / 10.89 |
-| Starved without money, per ~3,000 lives | 47 | 66 | 122 / 134 / 135 |
-| Own-world wealth, `$HBRN` per pet | 27,424 | 27,316 | 36,119 / 34,582 / 34,268 |
-| Mixed world against the teacher | +3.1% (seat noise) | +6.0% | +21.6 / +13.3 / +7.3% |
-| Food bill at level 20, % of work income | 54 | 53 | 41 / 41 / 42 |
-| % of income on mints; on the market | 9.0; 5.1 | 10.1; 6.0 | 6.3–7.6; 3.4–3.8 |
-| Income p90 / p99 / top against the median | 3.5 / 4.6 / 6.7 | 3.6 / 4.8 / 6.8 | 2.3–2.4 / 3.8–4.4 / 6.0–6.2 |
-| Start-region wealth, richest over poorest | 4.0 | 3.3 | 3.9 / 4.1 / 4.1 |
-| Persona told from one log, with revenge | 0.84 | 0.84 | 0.75 / 0.68 / 0.72 |
+| Early deaths per 100 lives (health; absent owners) | 2.00; 5.15 | 4.11; 9.90 | 3.55 / 3.87 / 3.92; 9.32 / 10.50 / 9.46 |
+| Starved without money, per ~3,000 lives | 50 | 68 | 101 / 113 / 95 |
+| Own-world wealth, `$HBRN` per pet | 31,711 | 31,929 | 42,647 / 41,190 / 43,043 |
+| Mixed world against the teacher | −1.7% (seat noise) | +1.5% | +27.5 / +24.6 / +36.1% |
+| Food bill at level 20, % of work income | 53 | 52 | 37 / 35 / 35 |
+| % of income on mints; on the market | 8.8; 5.0 | 10.0; 5.9 | 6.5–7.5; 3.1–3.7 |
+| Income p90 / p99 / top against the median | 3.3 / 4.4 / 6.1 | 3.4 / 4.6 / 7.1 | 3.0–3.1 / 3.9–4.3 / 6.1–6.8 |
+| Start-region wealth, richest over poorest | 3.3 | 3.4 | 1.36 / 1.56 / 1.42 |
+| Gift to a devoted owner, `$HBRN` a day | 36 | 37 | 30 |
+| Persona told from one log, with revenge | 0.83 | 0.85 | 0.77 / 0.62 / 0.66 |
 
-- Gear now pays, and the learned brains buy it (6–8% of income on mints against 2–4% in 5d).
-- The learned brains let poor pets starve without money two to three times as often as the teacher, mostly pets whose owner never visits, while ending richer on average. The reward is the change in a pet's wealth, so a poor pet's death costs little. `FoodDays` did not change it (step23 without it: 77–91 per ~3,000 lives). A reward term for death is the user's call (`docs/SIM.md` I2).
+- Package 5e (step24, engine `2583165197786226676`) for comparison: PPO starved without money 122–135 per ~3,000 lives, early deaths 4.7–5.1 per 100, start-region wealth spread 3.9–4.1.
+- The death penalty alone barely moved starvation (PPO seed 5 from `bc24`: 122 at 500, 146 / 145 / 113 at 10k / 30k / 100k; at 100k the critic's explained variance fell to 0.69). In PPO worlds the starved are Workers farmed by PPO robbers: robbed 0.6 times a day against 0.3 for the rest, half their income lost, still minting; in mixed worlds PPO pets die no more often than the teacher's. Learned brains still let poor pets starve without money about twice as often as the teacher.
+- Every starvation with money on the way (step26: one; step27: three) was a pet that knew it would not wake up (`DawnHearts` = 0) and had money, and did not buy: Fighters with might talent eating 45–55% of their hearts a day who lived on the owner's breakfast, and a bled Worker that kept fighting. The last-turn reflex removes the class; the step27 policies replayed under it starve with money 0 times. Applied on every turn it cost the teacher 50 → 65 starved (it forbade banking while hungry).
+- Persona recall of PPO seeds 6 and 7 sits under the 0.8 the user set; reported, not gated.
 
 ## 7. Blocker: C-ABI export from a MetaScript library — Measured
 
