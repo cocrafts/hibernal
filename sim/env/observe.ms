@@ -223,7 +223,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	const attacksLeft = try fighter.attacksLeft(pet.fightsOutOn(world.epoch)) catch 0;
 	put(features, selfSlot(offset, SelfFeature.Hearts), heartShare(pet.hearts, pet.maxHearts));
 	put(features, selfSlot(offset, SelfFeature.MaxHearts), (pet.maxHearts as int32) * 2);
-	const mealsAfforded = Math.min(pet.burrow / meal, 31 as uint64) as int32;
+	const mealsAfforded = Math.min(pet.wallet() / meal, 31 as uint64) as int32;
 	const age = Math.min(world.epoch - pet.bornEpoch, FEATURE_ONE as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.MealsAfforded), mealsAfforded * 4);
 	put(features, selfSlot(offset, SelfFeature.Harvest), moneyFeature(pet.harvest));
@@ -280,7 +280,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	put(features, selfSlot(offset, SelfFeature.GearBonus), pet.gear.totalBonusBps() / 40);
 	const weakest = pet.gear.at(pet.gear.weakestSlot());
 	put(features, selfSlot(offset, SelfFeature.WeakestItemBonus), weakest.bonusBps() / 11);
-	const mintsAfforded = Math.min(pet.burrow / mintPrice(level), 31 as uint64) as int32;
+	const mintsAfforded = Math.min(pet.wallet() / mintPrice(level), 31 as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.MintsAfforded), mintsAfforded * 4);
 	const hunger = pet.ownStats().hungerPerDay();
 	const hungerShare = hunger * FEATURE_ONE / Math.max(pet.maxHearts as int32, 1);
@@ -304,7 +304,7 @@ function writeSelf(this world: World, index: int32, features: int32[], offset: i
 	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, stats.foodBps);
 	put(features, selfSlot(offset, SelfFeature.DawnHearts), dawn * 8);
 	const perDay = Math.max(foodReserve(level, hunger) / GIFT_RESERVE_DAYS, 1 as uint64);
-	const foodDays = Math.min(pet.burrow / perDay, 31 as uint64) as int32;
+	const foodDays = Math.min(pet.wallet() / perDay, 31 as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.FoodDays), foodDays * 4);
 }
 
@@ -494,7 +494,7 @@ test "a pet sees the hearts it will wake up with, pantry meals included" {
 	pets[4] = { ...pets[4], pantry: Pantry.unstocked().adding(Food.Large, 1) };
 	world.observeInto(4, Head.Economy, features, 0);
 	assert features[SelfFeature.DawnHearts as int32] > 0;
-	pets[4] = { ...pets[4], burrow: 0 };
+	pets[4] = { ...pets[4], harvest: 0, burrow: 0 };
 	world.observeInto(4, Head.Economy, features, 0);
 	assert features[SelfFeature.FoodDays as int32] == 0;
 	const perDay = foodReserve(pets[4].level as int32, hunger) / GIFT_RESERVE_DAYS;

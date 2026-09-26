@@ -178,11 +178,10 @@ export function buy(
 		return Result.err(EconomyError.QuotaSpent);
 	}
 	const cost = foodCost(food, pet.level as int32);
-	if (pet.burrow < cost) { return Result.err(EconomyError.Broke); }
+	if (pet.wallet() < cost) { return Result.err(EconomyError.Broke); }
 	return Result.ok({
 		pet: {
-			...pet,
-			burrow: pet.burrow - cost,
+			...pet.charged(cost),
 			pantry: pet.pantry.adding(food, 1),
 			foodBoughtToday: pet.foodBoughtToday + 1,
 		},
@@ -214,7 +213,7 @@ export function mintItem(
 	if (!pet.alive) { return Result.err(EconomyError.Dead); }
 	const level = pet.level as int32;
 	const price = mintPrice(level);
-	if (pet.burrow < price) { return Result.err(EconomyError.Broke); }
+	if (pet.wallet() < price) { return Result.err(EconomyError.Broke); }
 	const slot = pet.gear.weakestSlot();
 	const worn = pet.gear.at(slot);
 	const grade = rolledGrade(seed);
@@ -223,8 +222,7 @@ export function mintItem(
 	const sold = upgrade ? worn : fresh;
 	const spent = price - sold.sellPrice();
 	const geared: Pet = {
-		...pet,
-		burrow: pet.burrow - spent,
+		...pet.charged(spent),
 		gear: upgrade ? pet.gear.with(slot, fresh) : pet.gear,
 	};
 	return Result.ok({

@@ -93,7 +93,7 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	if (masks.economy.has(EconomyAction.Bank)) { return EconomyAction.Bank; }
 	const level = pet.level as int32;
 	const starving = persona.hungry(hearts, pet.maxHearts as int32) && pet.pantry.stored() == 0;
-	const shortOfLarge = pet.burrow < foodCost(Food.Large, level);
+	const shortOfLarge = pet.wallet() < foodCost(Food.Large, level);
 	const turnLeft = world.round < ACTS_PER_EPOCH - 1;
 	if (starving && shortOfLarge && turnLeft && masks.economy.has(EconomyAction.SellItem)) {
 		return EconomyAction.SellItem;
@@ -102,25 +102,25 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 		hearts,
 		pet.maxHearts as int32,
 		pet.pantry,
-		pet.burrow,
+		pet.wallet(),
 		pet.level as int32,
 	);
 	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
 		return buyAction(purchase.value);
 	}
-	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
+	const spare = pet.wallet() * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
 	const reserve = foodReserve(level, pet.ownStats().hungerPerDay());
 	const gear = ((TEACHER_GEAR_SLOTS >> (index % BLOCK_SLOTS)) & 1) == 1;
 	const listing = world.bestListingFor(index);
 	if (gear && listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
 		const asked = world.market[listing.value].price;
-		if (pet.burrow >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
+		if (pet.wallet() >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
 	}
 	const price = mintPrice(level);
 	const weakest = pet.gear.at(pet.gear.weakestSlot());
 	const worn = (weakest.wear as int32) >= ITEM_REPLACE_WEAR && weakest.score() < FAIR_SCORE_BPS;
 	const due = weakest.isEmpty() || worn;
-	const affordable = pet.burrow >= price + reserve && price <= spare;
+	const affordable = pet.wallet() >= price + reserve && price <= spare;
 	if (gear && due && affordable && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
 	}

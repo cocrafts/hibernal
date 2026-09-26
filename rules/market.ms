@@ -134,12 +134,13 @@ export function boughtListing(
 	if (!pet.alive) { return Result.err(MarketError.Dead); }
 	if (listing.seller == buyer) { return Result.err(MarketError.OwnListing); }
 	if (pet.listingGain(listing) <= 0) { return Result.err(MarketError.NotWanted); }
-	if (pet.burrow < listing.price) { return Result.err(MarketError.Broke); }
+	if (pet.wallet() < listing.price) { return Result.err(MarketError.Broke); }
 	const slot = pet.gear.replacedSlot(pet.focusStat());
 	const displaced = pet.gear.at(slot).sellPrice();
+	const paid = pet.charged(listing.price);
 	const geared: Pet = {
-		...pet,
-		burrow: pet.burrow - listing.price + displaced,
+		...paid,
+		burrow: paid.burrow + displaced,
 		gear: pet.gear.with(slot, listing.item),
 	};
 	const fee = listing.price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);

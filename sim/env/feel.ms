@@ -45,7 +45,6 @@ export enum FeelCounter {
 	LivingEpochs,
 	HeartsSum,
 	Starved,
-	StarvedUnbanked,
 	StarvedStocked,
 	Bitten,
 	Wealth,
@@ -98,7 +97,6 @@ export enum Milestone {
 export enum Larder {
 	Dead,
 	Empty,
-	Unbanked,
 	Stocked,
 }
 
@@ -168,8 +166,7 @@ function tally(this feel: Feel, key: int32, counter: FeelCounter, amount: int32)
 export function larderOf(this pet: Pet): Larder {
 	if (!pet.alive) { return Larder.Dead; }
 	const meal = foodCost(Food.Small, pet.level as int32);
-	if (pet.pantry.stored() > 0 || pet.burrow >= meal) { return Larder.Stocked; }
-	return pet.harvest + pet.burrow >= meal ? Larder.Unbanked : Larder.Empty;
+	return pet.pantry.stored() > 0 || pet.wallet() >= meal ? Larder.Stocked : Larder.Empty;
 }
 
 export function momentOf(
@@ -194,16 +191,16 @@ export function momentOf(
 }
 
 function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, after: Pet): void {
-	if (action == (EconomyAction.SellItem as int32) && after.burrow > actor.burrow) {
+	if (action == (EconomyAction.SellItem as int32) && after.wallet() > actor.wallet()) {
 		feel.tally(key, FeelCounter.Sells, 1);
 	}
-	if (action == (EconomyAction.Mint as int32) && after.burrow < actor.burrow) {
+	if (action == (EconomyAction.Mint as int32) && after.wallet() < actor.wallet()) {
 		feel.tally(key, FeelCounter.Mints, 1);
-		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
+		const spent = ((actor.wallet() - after.wallet()) / HBRN_UNIT) as int32;
 		feel.tally(key, FeelCounter.MintSpent, spent);
 	}
 	if (after.pantry.stored() > actor.pantry.stored()) {
-		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
+		const spent = ((actor.wallet() - after.wallet()) / HBRN_UNIT) as int32;
 		feel.tally(key, FeelCounter.FoodSpent, spent);
 		if ((actor.level as int32) >= LEVEL_CAP) {
 			feel.tally(key, FeelCounter.FoodSpentAtCap, spent);
@@ -374,7 +371,6 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 			continue;
 		}
 		feel.tally(key, FeelCounter.Starved, 1);
-		if (larder == Larder.Unbanked) { feel.tally(key, FeelCounter.StarvedUnbanked, 1); }
 		if (larder == Larder.Stocked) { feel.tally(key, FeelCounter.StarvedStocked, 1); }
 	}
 }
@@ -486,7 +482,7 @@ test "a starved pet is sorted by what it could still have eaten" {
 	pets[1] = { ...pets[1], harvest: meal, burrow: 0, pantry: Pantry.unstocked() };
 	pets[2] = { ...pets[2], harvest: 0, burrow: meal, pantry: Pantry.unstocked() };
 	assert pets[0].larderOf() == Larder.Empty;
-	assert pets[1].larderOf() == Larder.Unbanked;
+	assert pets[1].larderOf() == Larder.Stocked;
 	assert pets[2].larderOf() == Larder.Stocked;
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.closeEpoch(0, world);
@@ -497,8 +493,8 @@ test "a starved pet is sorted by what it could still have eaten" {
 	feel.closeEpoch(0, world);
 	feel.openEpoch(0, world);
 	assert feel.tallied(0, FeelCounter.Starved) == 1;
-	assert feel.tallied(0, FeelCounter.StarvedUnbanked) == 0;
-	assert feel.tallied(1, FeelCounter.StarvedUnbanked) == 1;
+	assert feel.tallied(0, FeelCounter.StarvedStocked) == 0;
+	assert feel.tallied(1, FeelCounter.StarvedStocked) == 1;
 	assert feel.tallied(2, FeelCounter.StarvedStocked) == 1;
 	assert feel.tallied(3, FeelCounter.Starved) == 0;
 	assert feel.tallied(3, FeelCounter.LivingEpochs) == 2;

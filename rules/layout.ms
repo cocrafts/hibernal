@@ -159,6 +159,15 @@ export function calmedAgainst(this pet: Pet, foe: Pet): Pet {
 	return { ...pet, rage: 0 };
 }
 
+export function wallet(this pet: Pet): uint64 {
+	return pet.harvest + pet.burrow;
+}
+
+export function charged(this pet: Pet, amount: uint64): Pet {
+	const fromHarvest = Math.min(pet.harvest, amount);
+	return { ...pet, harvest: pet.harvest - fromHarvest, burrow: pet.burrow - (amount - fromHarvest) };
+}
+
 export function startRegion(this pet: Pet): Region {
 	return (pet.region as int32) as Region;
 }
