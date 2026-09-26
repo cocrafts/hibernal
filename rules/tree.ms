@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import { START_BONUS, BASE_MAX_HEARTS, BASE_STAT, Stats, Region, Mod, grown, talented } from "./stats";
 import { Talent } from "./talent";
@@ -166,7 +167,7 @@ function keystoneMask(): uint64 {
 function lowestNode(bits: uint64): int32 {
 	let id = 0;
 	let rest = bits;
-	for (let width = 32; width > 0; width = width / 2) {
+	for (let width = 32; width > 0; width = width >> 1) {
 		const low = ((1 as uint64) << (width as uint64)) - 1;
 		if ((rest & low) == 0) {
 			rest = rest >> (width as uint64);
