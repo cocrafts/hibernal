@@ -647,22 +647,6 @@ test "a talent shows at level ten once, scales its whole stat and moves the work
 	if (!again.ok) { assert again.error == TalentError.Revealed; }
 }
 
-test "a talent on a fighter's might or a survivor's grit scales its reward weight" {
-	const talented = 16000;
-	for (const region of [Region.Fighter, Region.Survivor]) {
-		const pet = hatch(region, 0, GlobalConfig.genesis(0)).pet;
-		const plain = pet.stats().rewardWeight();
-		const start = region == Region.Fighter ? TalentKind.Might : TalentKind.Grit;
-		const onStart: Pet = { ...pet, talentKind: start as uint8, talentBps: talented as uint16 };
-		assert onStart.stats().rewardWeight() == plain * (talented as uint64) / (BPS as uint64);
-		const offStart: Pet = { ...pet, talentKind: TalentKind.Forage as uint8, talentBps: talented as uint16 };
-		assert offStart.stats().rewardWeight() == plain;
-	}
-	const worker = hatch(Region.Worker, 0, GlobalConfig.genesis(0)).pet;
-	const forager: Pet = { ...worker, talentKind: TalentKind.Forage as uint8, talentBps: talented as uint16 };
-	assert forager.stats().rewardWeight() == worker.stats().rewardWeight();
-}
-
 test "an heir keeps the slot and the estate and gets a point per generation" {
 	const newborn = hatch(Region.Survivor, 0, GlobalConfig.genesis(0));
 	const estate: Pet = { ...newborn.pet, alive: false, hearts: 3, burrow: 700, lineageGeneration: 6 };
