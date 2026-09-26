@@ -91,7 +91,7 @@ function firstChanged(before: Pet, after: Pet): GearSlot {
 }
 
 function gearNote(before: Pet, after: Pet): string {
-	const cost = money(before.burrow - after.burrow);
+	const cost = money(before.wallet() - after.wallet());
 	for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
 		const slot = ordinal as GearSlot;
 		const item = after.gear.at(slot);
@@ -134,7 +134,7 @@ function economyStep(this world: World, index: int32, diary: Diary): World {
 		EconomyAction.Bank => { diary.note(index, `bank ${money(before.harvest)}`); },
 		EconomyAction.Mint => { diary.note(index, gearNote(before, pet)); },
 		EconomyAction.SellItem => {
-			diary.note(index, `sold gear for ${money(pet.burrow - before.burrow)} to buy food`);
+			diary.note(index, `sold gear for ${money(pet.wallet() - before.wallet())} to buy food`);
 		},
 		EconomyAction.ListItem => { after.marketNote(index, before, diary); },
 		EconomyAction.BuyItem => {
@@ -142,7 +142,7 @@ function economyStep(this world: World, index: int32, diary: Diary): World {
 			after.purchaseNote(index, pet.gear.at(slot), diary);
 		},
 		_ => {
-			const cost = money(before.burrow - pet.burrow);
+			const cost = money(before.wallet() - pet.wallet());
 			diary.note(index, `${action.toString()} hearts ${before.hearts}->${pet.hearts} cost ${cost}`);
 		},
 	}
