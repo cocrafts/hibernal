@@ -3,8 +3,9 @@ import { STAKE_LEVELS, EconomyAction } from "./actions";
 import { Food } from "./emission";
 
 export const POLICY_MAGIC: int32 = 0x4e524248;
-export const POLICY_FORMAT: int32 = 6;
+export const POLICY_FORMAT: int32 = 7;
 export const POLICY_HEADER_BYTES: int32 = 16;
+export const WEIGHT_ZERO_POINT: int32 = 128;
 export const POLICY_WIDTH: int32 = 46;
 export const ACTIVATION_MAX: int32 = 127;
 
@@ -88,10 +89,13 @@ export function dense(
 	const shift = policy[offset] as int32;
 	const weights = offset + 1;
 	const biases = weights + inputs * outputs;
+	let inputSum = 0;
+	for (let column = 0; column < inputs; column++) { inputSum += input[column]; }
+	const zeroPointSum = WEIGHT_ZERO_POINT * inputSum;
 	for (let row = 0; row < outputs; row++) {
-		let sum = wordAt(policy, biases + row * 4);
+		let sum = wordAt(policy, biases + row * 4) - zeroPointSum;
 		for (let column = 0; column < inputs; column++) {
-			sum += signedByte(policy, weights + row * inputs + column) * input[column];
+			sum += (policy[weights + row * inputs + column] as int32) * input[column];
 		}
 		const scaled = sum >> shift;
 		output[row] = activate ? Math.max(0, Math.min(scaled, ACTIVATION_MAX)) : scaled;
@@ -185,22 +189,22 @@ test "the policy fits one account and the heads follow each other" {
 	assert policyBytes() <= 10240;
 }
 
-test "a dense layer multiplies signed bytes, adds the bias, shifts and clamps" {
-	const layer: uint8[] = [2, 1, 255, 2, 254, 3, 253, 0xf6, 0xff, 0xff, 0xff, 100, 0, 0, 0];
+test "a dense layer multiplies weights stored as byte minus 128, adds the bias, shifts and clamps" {
+	const layer: uint8[] = [2, 129, 127, 130, 126, 131, 125, 0xf6, 0xff, 0xff, 0xff, 100, 0, 0, 0];
 	const input: int32[] = [10, 20, 30];
 	const output: int32[] = [0, 0];
 	const end = dense(layer, 0, input, 3, output, 2, false);
 	assert end == 15;
 	assert output[0] == 10;
 	assert output[1] == 12;
-	const negative: uint8[] = [1, 255, 0xfd, 0xff, 0xff, 0xff];
+	const negative: uint8[] = [1, 127, 0xfd, 0xff, 0xff, 0xff];
 	const one: int32[] = [4];
 	const out: int32[] = [0];
 	const _raw = dense(negative, 0, one, 1, out, 1, false);
 	assert out[0] == -4;
 	const _clamped = dense(negative, 0, one, 1, out, 1, true);
 	assert out[0] == 0;
-	const large: uint8[] = [0, 127, 0, 0, 0, 0];
+	const large: uint8[] = [0, 255, 0, 0, 0, 0];
 	const big: int32[] = [127];
 	const _high = dense(large, 0, big, 1, out, 1, true);
 	assert out[0] == ACTIVATION_MAX;
