@@ -77,6 +77,14 @@ export function checkPolicy(policy: Span<uint8>, engine: uint64): Result<int32, 
 	return Result.ok(policyBytes());
 }
 
+// Math.min/Math.max are calls into another C file under --os=solana, never inlined (ld.lld, no LTO):
+// ~30 CU a row here, measured with tools/chain/policyLiteSvm.mjs.
+function activation(value: int32): int32 {
+	if (value < 0) { return 0; }
+	if (value > ACTIVATION_MAX) { return ACTIVATION_MAX; }
+	return value;
+}
+
 export function dense(
 	policy: Span<uint8>,
 	offset: int32,
@@ -98,7 +106,7 @@ export function dense(
 			sum += (policy[weights + row * inputs + column] as int32) * input[column];
 		}
 		const scaled = sum >> shift;
-		output[row] = activate ? Math.max(0, Math.min(scaled, ACTIVATION_MAX)) : scaled;
+		output[row] = activate ? activation(scaled) : scaled;
 	}
 	return biases + outputs * 4;
 }
