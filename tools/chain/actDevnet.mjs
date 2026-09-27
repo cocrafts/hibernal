@@ -35,6 +35,7 @@ const SCENARIOS = (process.env.SCENARIOS ?? "typical,busiest").split(",");
 const BURST = Number(process.env.BURST ?? 0);
 const CRANK = process.env.CRANK === "1";
 const HYDRA = process.env.HYDRA === "1";
+const HYDRA_WRITE = HYDRA && process.env.HYDRA_WRITE === "1";
 const HYDRA_PROGRAM = address("eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf");
 const MAGIC_VAULT = address("MagicVau1t999999999999999999999999999999999");
 const INSTRUCTIONS_SYSVAR = address("Sysvar1nstructions1111111111111111111111111");
@@ -79,7 +80,7 @@ const payer = await createKeyPairSignerFromBytes(Uint8Array.from(JSON.parse(read
 const base = createSolanaRpc(BASE_RPC);
 const baseRead = createSolanaRpc(BASE_READ_RPC);
 const ephemeral = createSolanaRpc(ER_RPC);
-const router = createSolanaRpc(ROUTER_RPC);
+const router = ROUTER_RPC ? createSolanaRpc(ROUTER_RPC) : null;
 const holders = [];
 for (const id of IDS) {
 	const [key] = await getProgramDerivedAddress({ programAddress: PROGRAM, seeds: ["act", Uint8Array.of(id)] });
@@ -452,8 +453,8 @@ async function hydraTriggered(scenario, crank, act, units) {
 	return sent;
 }
 
-async function hydraCranked(scenario, sponsor) {
-	const act = program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, false));
+async function hydraCranked(scenario, sponsor, write) {
+	const act = program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, write));
 	const seed = new Uint8Array(randomBytes(32));
 	const [crank] = await getProgramDerivedAddress({ programAddress: HYDRA_PROGRAM, seeds: ["crank", seed] });
 	const sponsorMeta = { address: sponsor.address, role: AccountRole.WRITABLE_SIGNER, signer: sponsor };
@@ -558,10 +559,10 @@ for (const name of SCENARIOS) {
 		await cranked(scenario, "act accounts read-only", []);
 		await cranked(scenario, "a digest, then the act, in one task", WRITTEN_BY_ACT, [{ accounts: actAccounts([]), data: words(2) }]);
 	}
+	const sponsor = HYDRA ? await keypairAt("hydraSponsor") : null;
 	if (HYDRA) {
-		const sponsor = await keypairAt("hydraSponsor");
 		await walletDelegated(sponsor);
-		await hydraCranked(scenario, sponsor);
+		if (!HYDRA_WRITE) await hydraCranked(scenario, sponsor, false);
 	}
 	const split = await send(ephemeral, "er", "split act, no write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(0, scenario.engine, false))]);
 	reportSplit(scenario, split);
@@ -569,14 +570,18 @@ for (const name of SCENARIOS) {
 	const watch = watched(holders[actorId].key);
 	await watch.subscribed;
 	const sentAt = Date.now();
-	const plain = await send(ephemeral, "er", "act with write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, true))]);
-	console.log(`act ${plain.err ? `FAILED ${json(plain.err)}` : `${plain.units} CU in ${plain.elapsed}ms`} · choice match ${same(logged(plain.logs), scenario.choice)}`);
+	if (HYDRA_WRITE) {
+		await hydraCranked(scenario, sponsor, true);
+	} else {
+		const plain = await send(ephemeral, "er", "act with write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, true))]);
+		console.log(`act ${plain.err ? `FAILED ${json(plain.err)}` : `${plain.units} CU in ${plain.elapsed}ms`} · choice match ${same(logged(plain.logs), scenario.choice)}`);
+	}
 	while (watch.seen.length === 0 && Date.now() - sentAt < 5000) await sleep(20);
 	watch.close();
 	const note = watch.seen[0];
 	console.log(`websocket ${ER_WS}: actor pet notified ${note ? `${note.at - sentAt} ms after the send, ${differing(scenario.expected.get(actorId), note.data)} of ${note.data.length} bytes differing from the host's` : "not within 5 s"}`);
 	const inEr = await send(ephemeral, "er", "digest in ER", [program(actAccounts([]), words(2))]);
-	console.log(`ER accounts after the act: digest match ${logged(inEr.logs).pop() === scenario.digest} · bytes differing from the host's, read from the ER ${await differingOn(ephemeral, scenario)}, through the router ${await differingOn(router, scenario)}, of ${[...scenario.expected.values()].reduce((sum, bytes) => sum + bytes.length, 0)}`);
+	console.log(`ER accounts after the act: digest match ${logged(inEr.logs).pop() === scenario.digest} · bytes differing from the host's, read from the ER ${await differingOn(ephemeral, scenario)}, through the router ${router ? await differingOn(router, scenario) : "(none)"}, of ${[...scenario.expected.values()].reduce((sum, bytes) => sum + bytes.length, 0)}`);
 	if (BURST > 0) {
 		await burst(scenario, "act accounts writable, one fee payer", WRITTEN_BY_ACT, false);
 		await burst(scenario, "act accounts read-only, one fee payer", [], false);
