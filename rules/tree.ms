@@ -253,6 +253,17 @@ export function allocate(
 	return Result.ok(tree.withNode(id));
 }
 
+export function opensWith(this tree: Tree, id: int32): int32 {
+	let opened = 0;
+	let candidates = neighbors(id) & ~tree.bits;
+	while (candidates != 0) {
+		const other = lowestNode(candidates);
+		candidates = candidates & (candidates - 1);
+		if (!tree.touches(other)) { opened += 1; }
+	}
+	return opened;
+}
+
 export function nodeCount(this tree: Tree): int32 {
 	let count = 0;
 	let remaining = tree.bits;
@@ -456,6 +467,25 @@ test "every node is reachable from every start" {
 		}
 		assert seen.nodeCount() == TREE_NODES;
 	}
+}
+
+test "a node opens exactly the neighbours no allocated node touches yet" {
+	let tree = Tree.empty().withNode(1);
+	let grew = true;
+	while (grew) {
+		for (let id = 0; id < TREE_NODES; id++) {
+			let opened = 0;
+			for (let other = 0; other < TREE_NODES; other++) {
+				if (adjacent(id, other) && !tree.has(other) && !tree.touches(other)) { opened += 1; }
+			}
+			assert tree.opensWith(id) == opened;
+		}
+		grew = false;
+		for (let id = 0; id < TREE_NODES; id++) {
+			if (!grew && !tree.has(id) && tree.touches(id)) { tree = tree.withNode(id); grew = true; }
+		}
+	}
+	assert tree.nodeCount() == TREE_NODES;
 }
 
 test "a direction is an entry, a fork and four clusters of three small nodes and a notable" {

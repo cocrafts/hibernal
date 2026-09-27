@@ -5,13 +5,11 @@ import {
 	TREE_NODES,
 	NodeKind,
 	Tree,
-	adjacent,
 	built,
-	has,
 	nodeCost,
 	nodeKind,
+	opensWith,
 	regionOf,
-	touches,
 	withNode,
 } from "./tree";
 import { Food, foodCost } from "./emission";
@@ -380,14 +378,6 @@ export function writeSelf(
 	const perDay = Math.max(foodReserve(level, hunger) / GIFT_RESERVE_DAYS, 1 as uint64);
 	const foodDays = Math.min(pet.wallet() / perDay, 31 as uint64) as int32;
 	put(features, selfSlot(offset, SelfFeature.FoodDays), foodDays * 4);
-}
-
-function opensWith(this tree: Tree, id: int32): int32 {
-	let opened = 0;
-	for (let other = 0; other < TREE_NODES; other++) {
-		if (adjacent(id, other) && !tree.has(other) && !tree.touches(other)) { opened += 1; }
-	}
-	return opened;
 }
 
 export function writeNode(
