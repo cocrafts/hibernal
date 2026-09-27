@@ -201,11 +201,11 @@ function contextLine(context: ActContext): string {
 	return line("context", bytes);
 }
 
-function globalLine(global: GlobalConfig): string {
+function globalLine(name: string, global: GlobalConfig): string {
 	const bytes = zeroBytes(sizeof GlobalConfig as int32);
 	const globals: GlobalConfig[] = [global];
 	hibernalGlobalBytes(bytes, globals, sizeof GlobalConfig as int64);
-	return line("global", bytes);
+	return line(name, bytes);
 }
 
 function policyChoice(
@@ -250,7 +250,7 @@ function written(
 	const pets = copied(world.pets);
 	const wilds = copied(world.wilds);
 	const before = petLine("pets", pets) + petLine("wilds", wilds) + contextLine(context) +
-		globalLine(world.global);
+		globalLine("global", world.global);
 	const outcome = context.actOnce(policy, pets, wilds, world.global);
 	if (!outcome.ok) { return Result.err(HostError.Tick); }
 	const choice = outcome.value.choice;
@@ -264,7 +264,8 @@ function written(
 	}
 	const header = `scenario ${name} day ${moment.day} round ${moment.round} actor ${context.actor as int32}\n`;
 	const tail = `choice ${choice.economy as int32} ${choice.node} ${choice.attack}\n` +
-		`digest ${digest}\nengine ${engineVersion()}\n`;
+		`digest ${digest}\nengine ${engineVersion()}\n` +
+		petLine("after", pets) + globalLine("afterGlobal", outcome.value.global);
 	const saved = writeFile(`${PROBE_DIRECTORY}/${name}.txt`, header + before + tail);
 	if (!saved.ok) { return Result.err(HostError.Write); }
 	console.log(`${name}: day ${moment.day} round ${moment.round} slot ${context.actor as int32} · points ${pets[context.actor as int32].pointsUnspent} · choice ${choice.economy as int32} ${choice.node} ${choice.attack} · digest 0x${digest.toString(16)}`);

@@ -61,6 +61,8 @@ function scenarioOf(name) {
 		wilds: bytes("wilds"),
 		context: bytes("context"),
 		global: bytes("global"),
+		after: bytes("after"),
+		afterGlobal: bytes("afterGlobal"),
 		choice: fields.choice.map(Number),
 		digest: BigInt(fields.digest[0]),
 		engine: BigInt(fields.engine[0]),
@@ -146,6 +148,13 @@ const logged = (logs) => logs.filter((line) => line.startsWith("Program log: 0x"
 const remaining = (logs) => logs.filter((line) => line.startsWith("Program consumption:")).map((line) => Number(line.split(" ")[2]));
 const same = (left, right) => left.length === right.length && left.every((value, index) => Number(value) === right[index]);
 
+function differingBytes(scenario) {
+	const petBytes = scenario.after.length / 10;
+	const expected = [scenario.afterGlobal, ...Array.from({ length: 10 }, (_, slot) => scenario.after.slice(slot * petBytes, (slot + 1) * petBytes))];
+	const actual = [holders[2], ...holders.slice(4)].map((key) => svm.getAccount(key).data);
+	return expected.reduce((count, bytes, index) => count + bytes.reduce((differ, value, position) => differ + (actual[index][position] === value ? 0 : 1), 0) + Math.abs(bytes.length - actual[index].length), 0);
+}
+
 for (const name of SCENARIOS) {
 	const scenario = scenarioOf(name);
 	console.log(`\n${scenario.header} · expected choice ${scenario.choice.join(" ")} digest 0x${scenario.digest.toString(16)}`);
@@ -190,7 +199,7 @@ for (const name of SCENARIOS) {
 	const plainChoice = logged(plain.logs);
 	const check = await send(actData(2, scenario.engine, false));
 	const written = logged(check.logs).pop();
-	console.log(`plain act ${plain.failed ? plain.error : `${plain.units} CU`} · choice match ${same(plainChoice, scenario.choice)} · written digest match ${written === scenario.digest}`);
+	console.log(`plain act ${plain.failed ? plain.error : `${plain.units} CU`} · choice match ${same(plainChoice, scenario.choice)} · written digest match ${written === scenario.digest} · written bytes differing from the host's ${differingBytes(scenario)} of ${scenario.after.length + scenario.afterGlobal.length}`);
 	loadScenario(scenario);
 	const dry = await send(actData(1, scenario.engine, false));
 	console.log(`plain act without write-back ${dry.failed ? dry.error : `${dry.units} CU`}`);
