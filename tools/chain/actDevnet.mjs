@@ -30,6 +30,7 @@ const COMPUTE_UNIT_LIMIT = 1_400_000;
 const CHUNK_BYTES = 900;
 const SCENARIOS = (process.env.SCENARIOS ?? "typical,busiest").split(",");
 const BURST = Number(process.env.BURST ?? 0);
+const CRANK = process.env.CRANK === "1";
 const POLICY = 0;
 const CONTEXT = 1;
 const CONFIG = 2;
@@ -99,6 +100,13 @@ function joined(head, tail) {
 
 function actData(discriminator, engine, write) {
 	return joined(words(discriminator, engine), Uint8Array.of(write ? 1 : 0));
+}
+
+function taskInstruction(taskId, accounts, data) {
+	const parts = [Uint8Array.of(6, 0, 0, 0), words(taskId, 1000, 1, 1), addressEncoder.encode(PROGRAM), words(accounts.length)];
+	for (const meta of accounts) parts.push(addressEncoder.encode(meta.address), Uint8Array.of(0, meta.role === AccountRole.WRITABLE ? 1 : 0));
+	parts.push(words(data.length), data);
+	return { programAddress: MAGIC_PROGRAM, accounts: [signerMeta, ...accounts], data: parts.reduce(joined) };
 }
 
 function limitInstruction(units) {
@@ -295,6 +303,33 @@ async function burst(scenario, label, writableIds, ownPayers) {
 	console.log(`burst ${label}: ${results.length}/${BURST} landed, ${failed} failed${firstError ? ` (${json(firstError)})` : ""}, sent in ${sentIn}ms, last landed ${last}ms, ${slots} slots, ${detail?.meta?.computeUnitsConsumed ?? "-"} CU each`);
 }
 
+async function cranked(scenario, label, writableIds) {
+	const accounts = actAccounts(writableIds);
+	const watched = holders[CONFIG].key;
+	const scheduled = await send(ephemeral, "er", `schedule the act as a crank task, ${label}`, [taskInstruction(BigInt(Date.now()), accounts, actData(1, scenario.engine, false))]);
+	if (scheduled.err) {
+		console.log(scheduled.logs.join("\n"));
+		return;
+	}
+	const started = Date.now();
+	while (Date.now() - started < 30000) {
+		const history = await patiently(() => ephemeral.getSignaturesForAddress(watched, { limit: 20 }).send());
+		const after = history.slice(0, history.findIndex((entry) => entry.signature === scheduled.signature));
+		const executed = after.reverse().find(() => true);
+		if (executed) {
+			const detail = await fetchTransaction(ephemeral, executed.signature);
+			const logs = detail?.meta?.logMessages ?? [];
+			const budget = logs.find((line) => line.includes(`${PROGRAM} consumed`));
+			const choice = logged(logs);
+			console.log(`crank act, ${label}: ${executed.err ? `FAILED ${json(executed.err)}` : "ok"} ${detail?.meta?.computeUnitsConsumed} CU · ${budget ?? "no consumption line"} · signer ${detail?.transaction?.message?.accountKeys?.[0]} · choice ${choice.length ? `${choice.join(" ")} match ${same(choice, scenario.choice)}` : "none"}`);
+			if (executed.err) console.log(logs.filter((line) => line.includes("failed") || line.includes("exceeded") || line.includes("consumed")).join("\n"));
+			return;
+		}
+		await sleep(500);
+	}
+	console.log(`crank act, ${label}: no execution within 30 s`);
+}
+
 function reportSplit(scenario, sent) {
 	if (sent.err) {
 		console.log(`split act: FAILED ${json(sent.err)}`);
@@ -325,6 +360,10 @@ for (const name of SCENARIOS) {
 	const before = logged((await fetchTransaction(baseRead, onL1.signature))?.meta?.logMessages ?? []).pop();
 	console.log(`L1 accounts hold the scenario: digest ${before === undefined ? "unread" : `0x${before.toString(16)}`}`);
 	for (const id of WRITTEN_BY_ACT) await delegated(holders[id]);
+	if (CRANK) {
+		await cranked(scenario, "act accounts writable", WRITTEN_BY_ACT);
+		await cranked(scenario, "act accounts read-only", []);
+	}
 	const split = await send(ephemeral, "er", "split act, no write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(0, scenario.engine, false))]);
 	reportSplit(scenario, split);
 	const plain = await send(ephemeral, "er", "act with write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, true))]);
