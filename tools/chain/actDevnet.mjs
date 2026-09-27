@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import {
 	AccountRole,
 	address,
@@ -33,6 +34,14 @@ const CHUNK_BYTES = 900;
 const SCENARIOS = (process.env.SCENARIOS ?? "typical,busiest").split(",");
 const BURST = Number(process.env.BURST ?? 0);
 const CRANK = process.env.CRANK === "1";
+const HYDRA = process.env.HYDRA === "1";
+const HYDRA_PROGRAM = address("eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf");
+const MAGIC_VAULT = address("MagicVau1t999999999999999999999999999999999");
+const INSTRUCTIONS_SYSVAR = address("Sysvar1nstructions1111111111111111111111111");
+const SPONSOR_LAMPORTS = 20_000_000n;
+const HYDRA_WAIT_MS = Number(process.env.HYDRA_WAIT_MS ?? 60000);
+const HYDRA_RUNS = Number(process.env.HYDRA_RUNS ?? 3);
+const HYDRA_INTERVAL_SLOTS = Number(process.env.HYDRA_INTERVAL_SLOTS ?? 1);
 const POLICY = 0;
 const CONTEXT = 1;
 const CONFIG = 2;
@@ -105,11 +114,18 @@ function actData(discriminator, engine, write) {
 	return joined(words(discriminator, engine), Uint8Array.of(write ? 1 : 0));
 }
 
-function taskInstruction(taskId, accounts, data) {
-	const parts = [Uint8Array.of(6, 0, 0, 0), words(taskId, 1000, 1, 1), addressEncoder.encode(PROGRAM), words(accounts.length)];
-	for (const meta of accounts) parts.push(addressEncoder.encode(meta.address), Uint8Array.of(0, meta.role === AccountRole.WRITABLE ? 1 : 0));
-	parts.push(words(data.length), data);
-	return { programAddress: MAGIC_PROGRAM, accounts: [signerMeta, ...accounts], data: parts.reduce(joined) };
+function taskInstruction(taskId, tasks) {
+	const parts = [Uint8Array.of(6, 0, 0, 0), words(taskId, 1000, 1, tasks.length)];
+	const outer = new Map();
+	for (const { accounts, data } of tasks) {
+		parts.push(addressEncoder.encode(PROGRAM), words(accounts.length));
+		for (const meta of accounts) {
+			parts.push(addressEncoder.encode(meta.address), Uint8Array.of(0, meta.role === AccountRole.WRITABLE ? 1 : 0));
+			if (outer.get(meta.address)?.role !== AccountRole.WRITABLE) outer.set(meta.address, meta);
+		}
+		parts.push(words(data.length), data);
+	}
+	return { programAddress: MAGIC_PROGRAM, accounts: [signerMeta, ...outer.values()], data: parts.reduce(joined) };
 }
 
 function limitInstruction(units) {
@@ -166,11 +182,11 @@ async function fetchTransaction(rpc, signature) {
 	return null;
 }
 
-async function send(rpc, layer, step, instructions) {
+async function send(rpc, layer, step, instructions, feePayer = payer) {
 	const { value: blockhash } = await patiently(() => rpc.getLatestBlockhash().send());
 	const message = pipe(
 		createTransactionMessage({ version: 0 }),
-		(m) => setTransactionMessageFeePayerSigner(payer, m),
+		(m) => setTransactionMessageFeePayerSigner(feePayer, m),
 		(m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
 		(m) => appendTransactionMessageInstructions(instructions, m),
 	);
@@ -335,10 +351,11 @@ async function burst(scenario, label, writableIds, ownPayers) {
 	console.log(`burst ${label}: ${results.length}/${BURST} landed, ${failed} failed${firstError ? ` (${json(firstError)})` : ""}, sent in ${sentIn}ms, last landed ${last}ms, ${slots} slots, ${detail?.meta?.computeUnitsConsumed ?? "-"} CU each`);
 }
 
-async function cranked(scenario, label, writableIds) {
+async function cranked(scenario, label, writableIds, before = []) {
 	const accounts = actAccounts(writableIds);
 	const watched = holders[CONFIG].key;
-	const scheduled = await send(ephemeral, "er", `schedule the act as a crank task, ${label}`, [taskInstruction(BigInt(Date.now()), accounts, actData(1, scenario.engine, false))]);
+	const tasks = [...before, { accounts, data: actData(1, scenario.engine, false) }];
+	const scheduled = await send(ephemeral, "er", `schedule the act as a crank task, ${label}`, [taskInstruction(BigInt(Date.now()), tasks)]);
 	if (scheduled.err) {
 		console.log(scheduled.logs.join("\n"));
 		return;
@@ -351,7 +368,7 @@ async function cranked(scenario, label, writableIds) {
 		if (executed) {
 			const detail = await fetchTransaction(ephemeral, executed.signature);
 			const logs = detail?.meta?.logMessages ?? [];
-			const budget = logs.find((line) => line.includes(`${PROGRAM} consumed`));
+			const budget = logs.filter((line) => line.includes(`${PROGRAM} consumed`)).join(" · ");
 			const choice = logged(logs);
 			console.log(`crank act, ${label}: ${executed.err ? `FAILED ${json(executed.err)}` : "ok"} ${detail?.meta?.computeUnitsConsumed} CU · ${budget ?? "no consumption line"} · signer ${detail?.transaction?.message?.accountKeys?.[0]} · choice ${choice.length ? `${choice.join(" ")} match ${same(choice, scenario.choice)}` : "none"}`);
 			if (executed.err) console.log(logs.filter((line) => line.includes("failed") || line.includes("exceeded") || line.includes("consumed")).join("\n"));
@@ -360,6 +377,150 @@ async function cranked(scenario, label, writableIds) {
 		await sleep(500);
 	}
 	console.log(`crank act, ${label}: no execution within 30 s`);
+}
+
+function keypairAt(name) {
+	const path = new URL(`../../out/${name}.json`, import.meta.url);
+	if (!existsSync(path)) {
+		const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+		writeFileSync(path, JSON.stringify([...privateKey.export({ format: "der", type: "pkcs8" }).subarray(-32), ...publicKey.export({ format: "der", type: "spki" }).subarray(-32)]));
+	}
+	return createKeyPairSignerFromBytes(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
+}
+
+function systemInstruction(index, accounts, tail) {
+	return { programAddress: SYSTEM_PROGRAM, accounts, data: joined(Uint8Array.of(index, 0, 0, 0), tail) };
+}
+
+async function rpcCall(url, method, params) {
+	const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+	return (await response.json()).result;
+}
+
+async function balanceIn(rpc, key) {
+	return (await patiently(() => rpc.getBalance(key).send())).value;
+}
+
+async function walletDelegated(sponsor) {
+	if ((await rpcCall(ER_RPC, "getDelegationStatus", [sponsor.address]))?.isDelegated) return;
+	const sponsorBytes = addressEncoder.encode(sponsor.address);
+	const [record] = await getProgramDerivedAddress({ programAddress: DELEGATION_PROGRAM, seeds: ["delegation", sponsorBytes] });
+	const [metadata] = await getProgramDerivedAddress({ programAddress: DELEGATION_PROGRAM, seeds: ["delegation-metadata", sponsorBytes] });
+	const [buffer] = await getProgramDerivedAddress({ programAddress: SYSTEM_PROGRAM, seeds: ["buffer", sponsorBytes] });
+	const rent = BigInt(await rpcCall(BASE_RPC, "getMinimumBalanceForRentExemption", [256]));
+	const onL1 = await balanceIn(base, sponsor.address);
+	if (onL1 < SPONSOR_LAMPORTS) {
+		await mustSend(base, "base", "fund the Hydra sponsor", [systemInstruction(2, [signerMeta, writable(sponsor.address)], words(SPONSOR_LAMPORTS - onL1))]);
+	}
+	const sponsorMeta = { address: sponsor.address, role: AccountRole.WRITABLE_SIGNER, signer: sponsor };
+	const delegateData = joined(joined(words(0), Uint8Array.of(0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0, 1)), addressEncoder.encode(VALIDATOR));
+	await mustSend(base, "base", "delegate the Hydra sponsor wallet", [
+		systemInstruction(2, [sponsorMeta, writable(record)], words(rent)),
+		systemInstruction(2, [sponsorMeta, writable(metadata)], words(rent)),
+		systemInstruction(1, [sponsorMeta], addressEncoder.encode(DELEGATION_PROGRAM)),
+		{ programAddress: DELEGATION_PROGRAM, accounts: [sponsorMeta, sponsorMeta, readonly(SYSTEM_PROGRAM), writable(buffer), writable(record), writable(metadata), readonly(SYSTEM_PROGRAM)], data: delegateData },
+	]);
+	const started = Date.now();
+	while (!(await rpcCall(ER_RPC, "getDelegationStatus", [sponsor.address]))?.isDelegated) {
+		if (Date.now() - started > 60000) throw new Error("the Hydra sponsor is not delegated after 60 s");
+		await sleep(1000);
+	}
+	console.log(`Hydra sponsor ${sponsor.address} delegated, seen by the ER after ${Date.now() - started}ms`);
+}
+
+function hydraCreateData(seed, authority, startSlot, remaining, cuLimit, scheduled) {
+	const head = joined(joined(Uint8Array.of(0), seed), addressEncoder.encode(authority));
+	const limit = new Uint8Array(4);
+	new DataView(limit.buffer).setUint32(0, cuLimit, true);
+	const parts = [head, words(startSlot, HYDRA_INTERVAL_SLOTS, remaining, 0), limit];
+	const size = new Uint8Array(3);
+	size[0] = scheduled.accounts.length;
+	new DataView(size.buffer).setUint16(1, scheduled.data.length, true);
+	parts.push(size, addressEncoder.encode(scheduled.programAddress));
+	for (const meta of scheduled.accounts) parts.push(Uint8Array.of(meta.role === AccountRole.WRITABLE ? 2 : 0), addressEncoder.encode(meta.address));
+	parts.push(scheduled.data);
+	return parts.reduce(joined);
+}
+
+async function hydraTriggered(scenario, crank, act, units) {
+	const trigger = { programAddress: HYDRA_PROGRAM, accounts: [writable(crank), signerMeta, readonly(INSTRUCTIONS_SYSVAR)], data: Uint8Array.of(1) };
+	const label = units ? `trigger with SetComputeUnitLimit ${units}` : "trigger without SetComputeUnitLimit";
+	const sent = await send(ephemeral, "er", `Hydra ${label}`, [...(units ? [limitInstruction(units)] : []), trigger, act]);
+	const budget = sent.logs.filter((line) => line.includes(`${PROGRAM} consumed`)).join(" · ");
+	const choice = logged(sent.logs);
+	console.log(`  ${sent.err ? `FAILED ${json(sent.err)}` : "ok"} · ${budget || "no act consumption line"} · choice ${choice.length ? `${choice.join(" ")} match ${same(choice, scenario.choice)}` : "none"}`);
+	return sent;
+}
+
+async function hydraCranked(scenario, sponsor) {
+	const act = program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, false));
+	const seed = new Uint8Array(randomBytes(32));
+	const [crank] = await getProgramDerivedAddress({ programAddress: HYDRA_PROGRAM, seeds: ["crank", seed] });
+	const sponsorMeta = { address: sponsor.address, role: AccountRole.WRITABLE_SIGNER, signer: sponsor };
+	const slot = BigInt(await ephemeral.getSlot().send());
+	const sponsorBefore = await balanceIn(ephemeral, sponsor.address);
+	const payerBefore = await balanceIn(ephemeral, payer.address);
+	const created = await send(ephemeral, "er", `create a Hydra crank for the act (cu_limit 1.4M, tip 0, ${HYDRA_RUNS} runs every ${HYDRA_INTERVAL_SLOTS} slots)`, [
+		{ programAddress: HYDRA_PROGRAM, accounts: [sponsorMeta, writable(crank), writable(MAGIC_VAULT), readonly(MAGIC_PROGRAM)], data: hydraCreateData(seed, sponsor.address, slot, HYDRA_RUNS, COMPUTE_UNIT_LIMIT, act) },
+	]);
+	if (created.err) {
+		console.log(created.logs.join("\n"));
+		return;
+	}
+	const crankState = await read(ephemeral, { key: crank });
+	const sponsorAfterCreate = await balanceIn(ephemeral, sponsor.address);
+	console.log(`  crank ${crank}: ${crankState?.data.length} bytes owned by ${crankState?.owner} · sponsor paid ${sponsorBefore - sponsorAfterCreate} lamports`);
+	const waitStarted = Date.now();
+	const seen = new Map();
+	let triggers = [];
+	while (Date.now() - waitStarted < HYDRA_WAIT_MS && triggers.length < HYDRA_RUNS) {
+		await sleep(2000);
+		const history = await patiently(() => ephemeral.getSignaturesForAddress(crank, { limit: 20 }).send());
+		for (const entry of history) {
+			if (entry.signature === created.signature || seen.has(entry.signature)) continue;
+			const detail = await fetchTransaction(ephemeral, entry.signature);
+			seen.set(entry.signature, { entry, detail, trigger: (detail?.transaction?.message?.accountKeys ?? []).includes(HYDRA_PROGRAM) });
+		}
+		triggers = [...seen.values()].filter((item) => item.trigger);
+	}
+	const others = [...seen.values()].filter((item) => !item.trigger);
+	console.log(`  after ${Math.round((Date.now() - waitStarted) / 1000)} s: ${triggers.length} Hydra triggers by anyone else, ${others.length} other transactions on the crank (${others.map((item) => (item.detail?.meta?.logMessages ?? []).find((line) => !line.startsWith("Program ")) ?? "no log").join("; ")})`);
+	const createdSlot = Number((await fetchTransaction(ephemeral, created.signature))?.slot ?? 0);
+	for (const item of triggers.sort((left, right) => Number(left.entry.slot) - Number(right.entry.slot))) {
+		const logs = item.detail?.meta?.logMessages ?? [];
+		const choice = logged(logs);
+		console.log(`  foreign trigger at +${Number(item.entry.slot) - createdSlot} slots: ${item.entry.err ? `FAILED ${json(item.entry.err)}` : "ok"} · fee payer ${item.detail?.transaction?.message?.accountKeys?.[0]} · ${item.detail?.meta?.computeUnitsConsumed} CU · ${logs.filter((line) => line.includes(`${PROGRAM} consumed`)).join(" ")} · choice ${choice.length ? `${choice.join(" ")} match ${same(choice, scenario.choice)}` : "none"}`);
+	}
+	if (triggers.length === 0) {
+		await hydraTriggered(scenario, crank, act, 0);
+		await hydraTriggered(scenario, crank, act, COMPUTE_UNIT_LIMIT);
+	}
+	const sponsorAfterRuns = await balanceIn(ephemeral, sponsor.address);
+	const payerAfterRuns = await balanceIn(ephemeral, payer.address);
+	console.log(`  after the runs: sponsor ${sponsorAfterRuns - sponsorAfterCreate} lamports, cranker (payer) ${payerAfterRuns - payerBefore} lamports`);
+	await send(ephemeral, "er", "cancel the Hydra crank", [
+		{ programAddress: HYDRA_PROGRAM, accounts: [sponsorMeta, writable(crank), writable(sponsor.address), writable(MAGIC_VAULT), readonly(MAGIC_PROGRAM)], data: Uint8Array.of(2) },
+	]);
+	const sponsorAfterCancel = await balanceIn(ephemeral, sponsor.address);
+	console.log(`  after cancel: sponsor back to ${sponsorAfterCancel} (net ${sponsorAfterCancel - sponsorBefore} lamports over create, runs and cancel)`);
+}
+
+async function walletReturned(sponsor) {
+	const throwaway = await generateKeyPairSigner();
+	const sponsorMeta = { address: sponsor.address, role: AccountRole.WRITABLE_SIGNER, signer: sponsor };
+	await send(ephemeral, "er", "undelegate the Hydra sponsor wallet", [
+		{ programAddress: MAGIC_PROGRAM, accounts: [{ address: throwaway.address, role: AccountRole.READONLY_SIGNER, signer: throwaway }, writable(MAGIC_CONTEXT), sponsorMeta], data: Uint8Array.of(2, 0, 0, 0) },
+	], sponsor);
+	const started = Date.now();
+	while (Date.now() - started < 120000) {
+		const info = (await patiently(() => baseRead.getAccountInfo(sponsor.address, { encoding: "base64" }).send())).value;
+		if (info?.owner === SYSTEM_PROGRAM) {
+			console.log(`Hydra sponsor back on L1 after ${Date.now() - started}ms holding ${info.lamports} lamports`);
+			return;
+		}
+		await sleep(2000);
+	}
+	console.log("Hydra sponsor not back on L1 within 120 s");
 }
 
 function reportSplit(scenario, sent) {
@@ -395,6 +556,12 @@ for (const name of SCENARIOS) {
 	if (CRANK) {
 		await cranked(scenario, "act accounts writable", WRITTEN_BY_ACT);
 		await cranked(scenario, "act accounts read-only", []);
+		await cranked(scenario, "a digest, then the act, in one task", WRITTEN_BY_ACT, [{ accounts: actAccounts([]), data: words(2) }]);
+	}
+	if (HYDRA) {
+		const sponsor = await keypairAt("hydraSponsor");
+		await walletDelegated(sponsor);
+		await hydraCranked(scenario, sponsor);
 	}
 	const split = await send(ephemeral, "er", "split act, no write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(0, scenario.engine, false))]);
 	reportSplit(scenario, split);
@@ -425,5 +592,6 @@ for (const name of SCENARIOS) {
 	console.log(`L1 accounts after commit: digest match ${after === scenario.digest} · bytes differing from the host's ${await differingOn(baseRead, scenario)}`);
 }
 
+if (HYDRA) await walletReturned(await keypairAt("hydraSponsor"));
 const lamportsAfter = (await base.getBalance(payer.address).send()).value;
 console.log(`\npayer spent ${lamportsBefore - lamportsAfter} lamports on L1 during this run`);
