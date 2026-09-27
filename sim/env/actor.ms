@@ -1,5 +1,7 @@
 import {
+	ACTS_PER_EPOCH,
 	BLOCK_SLOTS,
+	TREE_NODES,
 	STAKE_LEVELS,
 	ATTACK_HOLD,
 	POLICY_WIDTH,
@@ -20,6 +22,9 @@ import {
 	nodeSelfInput,
 	attackSelfInput,
 	actorPet,
+	allowsNode,
+	Combatant,
+	legalNodes,
 	stats,
 	writeSelf,
 	writeSelfForNodeAndAttack,
@@ -29,10 +34,23 @@ import {
 	Head,
 	NODE_CANDIDATES,
 	actionCount,
+	rivalsAround,
 	zeros,
 } from "./observe";
-import { World, marketViewOf, surroundingsOf } from "../world";
-import { personaKindOf } from "../teacher";
+import {
+	World,
+	actorAt,
+	applyEconomy,
+	applyNode,
+	beginEpoch,
+	economyMaskFor,
+	endEpoch,
+	inRound,
+	marketViewOf,
+	staggered,
+	surroundingsOf,
+} from "../world";
+import { act, personaKindOf } from "../teacher";
 
 export struct Scratch {
 	input: int32[];
@@ -167,6 +185,41 @@ export function bestLegal(
 	return best;
 }
 
+function sameRivals(before: Combatant[], after: Combatant[], index: int32): boolean {
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		if (slot != index % BLOCK_SLOTS && !(before[slot] == after[slot])) { return false; }
+	}
+	return true;
+}
+
+test "an actor's economy and node leave the rivals it observed at dawn unchanged" {
+	let world = World.staggered(1, 11);
+	for (let day = 1; day <= 20; day++) {
+		world = world.beginEpoch(day as uint64);
+		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				const index = world.actorAt(turn);
+				const rivals = rivalsAround(world.surroundingsOf(index));
+				const economy = world.economyMaskFor(index);
+				for (let ordinal = 0; ordinal <= (EconomyAction.BuyItem as int32); ordinal++) {
+					if (!economy.has(ordinal as EconomyAction)) { continue; }
+					const spent = world.applyEconomy(index, ordinal as EconomyAction);
+					assert sameRivals(rivals, rivalsAround(spent.surroundingsOf(index)), index);
+					const nodes = spent.pets[index].legalNodes(spent.global);
+					for (let node = 0; node < TREE_NODES; node++) {
+						if (!nodes.allowsNode(node)) { continue; }
+						const grown = spent.applyNode(index, node);
+						assert sameRivals(rivals, rivalsAround(grown.surroundingsOf(index)), index);
+					}
+				}
+				world = world.act(index);
+			}
+		}
+		world = world.endEpoch();
+	}
+}
+
 test "each head gathers its own inputs" {
 	assert selfInputs(Head.Economy) == 46;
 	assert NODE_SELF_INPUTS == 8;
@@ -206,7 +259,7 @@ test "the node and attack heads read only what the short self observation writes
 			full[position] = 0;
 			short[position] = 0;
 		}
-		around.writeSelf(persona, world.marketViewOf(index), full, 0);
+		around.writeSelf(persona, world.marketViewOf(index), rivalsAround(around), full, 0);
 		around.writeSelfForNodeAndAttack(persona, around.actorPet().stats(), short, 0);
 		for (let position = 0; position < NODE_SELF_INPUTS; position++) {
 			const feature = selfInput(Head.Node, position) as int32;

@@ -18,6 +18,10 @@ import {
 	writeSelf,
 	writeNodes,
 	writeTargets,
+	Combatant,
+	Surroundings,
+	plain,
+	rivalsInto,
 	hungerPerDay,
 	foodReserve,
 	GIFT_RESERVE_DAYS,
@@ -73,6 +77,14 @@ function clear(features: int32[], offset: int32, count: int32): void {
 	}
 }
 
+export function rivalsAround(around: Surroundings): Combatant[] {
+	const idle = Combatant.plain(0, 0, 0);
+	const rivals: Combatant[] = [];
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) { rivals.push(idle); }
+	around.rivalsInto(rivals);
+	return rivals;
+}
+
 export function observeInto(
 	this world: World,
 	index: int32,
@@ -83,9 +95,10 @@ export function observeInto(
 	clear(features, offset, observationSize(head));
 	if (!world.pets[index].alive) { return; }
 	const around = world.surroundingsOf(index);
-	around.writeSelf(personaKindOf(index), world.marketViewOf(index), features, offset);
+	const rivals = rivalsAround(around);
+	around.writeSelf(personaKindOf(index), world.marketViewOf(index), rivals, features, offset);
 	if (head == Head.Node) { around.writeNodes(features, offset + SELF_FEATURES); }
-	if (head == Head.Attack) { around.writeTargets(features, offset + SELF_FEATURES); }
+	if (head == Head.Attack) { around.writeTargets(rivals, features, offset + SELF_FEATURES); }
 }
 
 export function legalInto(

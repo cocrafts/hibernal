@@ -28,7 +28,6 @@ import {
 	attackedOn,
 	blockSlot,
 	combatant,
-	combatantFacing,
 	enragedAgainst,
 	fightsInOn,
 	fightsOutOn,
@@ -307,10 +306,19 @@ export function writeSelfForNodeAndAttack(
 	put(features, selfSlot(offset, SelfFeature.Grit), stats.grit / 2);
 }
 
+export function rivalsInto(this around: Surroundings, rivals: Span<Combatant>): void {
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		const rival = around.defenderAt(slot);
+		if (slot == (around.actor as int32) || !rival.alive) { continue; }
+		rivals[slot] = rival.combatant();
+	}
+}
+
 export function writeSelf(
 	this around: Surroundings,
 	persona: PersonaKind,
 	market: MarketView,
+	rivals: Span<Combatant>,
 	features: Span<int32>,
 	offset: int32,
 ): void {
@@ -348,7 +356,7 @@ export function writeSelf(
 			richest = Math.max(richest, moneyFeature(target.harvest));
 		}
 		if (!mate.alive) { continue; }
-		const rival = mate.combatant();
+		const rival = rivals[slot];
 		if (mate.attackableAs(rival, pet, epoch).ok) {
 			const facing = pet.enragedAgainst(own, mate);
 			const odds = mate.enragedAgainst(rival, pet).winChanceFromTable(facing);
@@ -446,6 +454,7 @@ export function writeTarget(
 	this around: Surroundings,
 	slot: int32,
 	own: Combatant,
+	rivals: Span<Combatant>,
 	features: Span<int32>,
 	row: int32,
 ): void {
@@ -472,7 +481,7 @@ export function writeTarget(
 	);
 	const stakeCap = pet.attackableAs(own, target, epoch);
 	if (!stakeCap.ok) { return; }
-	const defender = target.combatantFacing(pet);
+	const defender = target.enragedAgainst(rivals[slot], pet);
 	const attacker = pet.enragedAgainst(own, target);
 	const winChance = attacker.winChanceFromTable(defender);
 	put(features, targetSlot(row, TargetFeature.WinChance), winChance * FEATURE_ONE / BPS);
@@ -498,10 +507,15 @@ export function writeTargetHold(features: Span<int32>, row: int32): void {
 	put(features, targetSlot(row, TargetFeature.Hold), FEATURE_ONE);
 }
 
-export function writeTargets(this around: Surroundings, features: Span<int32>, offset: int32): void {
+export function writeTargets(
+	this around: Surroundings,
+	rivals: Span<Combatant>,
+	features: Span<int32>,
+	offset: int32,
+): void {
 	const own = around.actorPet().combatant();
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		around.writeTarget(slot, own, features, offset + slot * TARGET_FEATURES);
+		around.writeTarget(slot, own, rivals, features, offset + slot * TARGET_FEATURES);
 	}
 	writeTargetHold(features, offset + BLOCK_SLOTS * TARGET_FEATURES);
 }
