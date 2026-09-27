@@ -49,6 +49,7 @@ import {
 	foldEatIntoBuy,
 	foldPortionSizes,
 	legalNodes,
+	NodeMask,
 	listedItem,
 	nodeScore,
 	nodeSelfInput,
@@ -218,9 +219,8 @@ export function appliedEconomy(
 	return economy.value.global;
 }
 
-export function nodeRows(around: Surroundings): int32 {
+export function nodeRows(around: Surroundings, legal: NodeMask): int32 {
 	const pet = around.actorPet();
-	const legal = pet.legalNodes(around.global);
 	if (legal.bits == 0) { return 0; }
 	const before = Stats.built(pet.tree, pet.level as int32, pet.talent());
 	let row: int32[22] = [];
@@ -234,9 +234,13 @@ export function nodeRows(around: Surroundings): int32 {
 	return rows;
 }
 
-export function nodeChoice(policy: Span<uint8>, around: Surroundings, self: Span<int32>): int32 {
+export function nodeChoice(
+	policy: Span<uint8>,
+	around: Surroundings,
+	legal: NodeMask,
+	self: Span<int32>,
+): int32 {
 	const pet = around.actorPet();
-	const legal = pet.legalNodes(around.global);
 	if (legal.bits == 0) { return ALLOCATE_HOLD; }
 	const before = Stats.built(pet.tree, pet.level as int32, pet.talent());
 	let input: int32[30] = [];
@@ -443,9 +447,10 @@ export function actTicked(
 	const afterEconomy = context.appliedEconomy(pets, settled, economy);
 	const growing = context.surroundingsIn(pets, wilds, afterEconomy);
 	let node = ALLOCATE_HOLD;
-	if (growing.actorPet().legalNodes(afterEconomy).bits != 0) {
+	const growable = growing.actorPet().legalNodes(afterEconomy);
+	if (growable.bits != 0) {
 		context.observedSelfForNodeAndAttack(growing, self);
-		node = nodeChoice(policy, growing, self);
+		node = nodeChoice(policy, growing, growable, self);
 	}
 	const afterNode = context.appliedNode(pets, afterEconomy, node);
 	const armed = context.surroundingsIn(pets, wilds, afterNode);

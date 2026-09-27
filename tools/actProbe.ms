@@ -222,12 +222,13 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	const afterEconomy = context.appliedEconomy(block.pets, settled, economy);
 	logComputeUnits();
 	const growing = context.surroundingsIn(block.pets, wilds.pets, afterEconomy);
-	const growable = growing.actorPet().legalNodes(afterEconomy).bits != 0;
+	const legal = growing.actorPet().legalNodes(afterEconomy);
+	const growable = legal.bits != 0;
 	if (growable) { context.observedSelfForNodeAndAttack(growing, self); }
 	logComputeUnits();
-	const nodes = growable ? nodeRows(growing) : 0;
+	const nodes = growable ? nodeRows(growing, legal) : 0;
 	logComputeUnits();
-	const node = growable ? nodeChoice(blob.bytes, growing, self) : ALLOCATE_HOLD;
+	const node = growable ? nodeChoice(blob.bytes, growing, legal, self) : ALLOCATE_HOLD;
 	logComputeUnits();
 	const afterNode = context.appliedNode(block.pets, afterEconomy, node);
 	logComputeUnits();
