@@ -20,6 +20,8 @@ import {
 const BASE_RPC = process.env.BASE_RPC ?? "https://api.devnet.solana.com";
 const BASE_READ_RPC = process.env.BASE_READ_RPC ?? BASE_RPC;
 const ER_RPC = process.env.ER_RPC ?? "https://devnet-as.magicblock.app";
+const ER_WS = process.env.ER_WS ?? ER_RPC.replace(/^http/, "ws");
+const ROUTER_RPC = process.env.ROUTER_RPC ?? "https://devnet-router.magicblock.app";
 const VALIDATOR = address(process.env.VALIDATOR ?? "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57");
 const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
 const COMPUTE_BUDGET_PROGRAM = address("ComputeBudget111111111111111111111111111111");
@@ -68,6 +70,7 @@ const payer = await createKeyPairSignerFromBytes(Uint8Array.from(JSON.parse(read
 const base = createSolanaRpc(BASE_RPC);
 const baseRead = createSolanaRpc(BASE_READ_RPC);
 const ephemeral = createSolanaRpc(ER_RPC);
+const router = createSolanaRpc(ROUTER_RPC);
 const holders = [];
 for (const id of IDS) {
 	const [key] = await getProgramDerivedAddress({ programAddress: PROGRAM, seeds: ["act", Uint8Array.of(id)] });
@@ -128,6 +131,9 @@ function scenarioOf(name) {
 	const petBytes = pets.length / PETS;
 	const contents = [policy, bytes("context"), bytes("global"), bytes("wilds")];
 	for (let slot = 0; slot < PETS; slot++) contents.push(pets.slice(slot * petBytes, (slot + 1) * petBytes));
+	const after = bytes("after");
+	const expected = new Map([[CONFIG, bytes("afterGlobal")]]);
+	for (let slot = 0; slot < PETS; slot++) expected.set(FIRST_PET + slot, after.slice(slot * petBytes, (slot + 1) * petBytes));
 	return {
 		name,
 		contents,
@@ -135,6 +141,8 @@ function scenarioOf(name) {
 		digest: BigInt(fields.digest[0]),
 		engine: BigInt(fields.engine[0]),
 		header: fields.scenario.join(" "),
+		actor: Number(fields.scenario[fields.scenario.length - 1]),
+		expected,
 	};
 }
 
@@ -209,6 +217,30 @@ async function waitFor(rpc, label, holder, predicate, timeoutMs) {
 		await sleep(2000);
 	}
 	throw new Error(`${label}: timed out after ${timeoutMs}ms`);
+}
+
+function differing(expected, actual) {
+	return expected.reduce((count, value, position) => count + (actual[position] === value ? 0 : 1), Math.abs(expected.length - actual.length));
+}
+
+async function differingOn(rpc, scenario) {
+	const { value } = await patiently(() => rpc.getMultipleAccounts(WRITTEN_BY_ACT.map((id) => holders[id].key), { encoding: "base64", commitment: "confirmed" }).send());
+	return WRITTEN_BY_ACT.reduce((count, id, index) => count + differing(scenario.expected.get(id), value[index] ? new Uint8Array(Buffer.from(value[index].data[0], "base64")) : new Uint8Array()), 0);
+}
+
+function watched(key) {
+	const socket = new WebSocket(ER_WS);
+	const seen = [];
+	const subscribed = new Promise((resolve, reject) => {
+		socket.addEventListener("open", () => socket.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "accountSubscribe", params: [key, { encoding: "base64", commitment: "confirmed" }] })));
+		socket.addEventListener("error", reject);
+		socket.addEventListener("message", (event) => {
+			const message = JSON.parse(event.data);
+			if (message.id === 1) resolve(message.result);
+			if (message.method === "accountNotification") seen.push({ at: Date.now(), data: new Uint8Array(Buffer.from(message.params.result.value.data[0], "base64")) });
+		});
+	});
+	return { subscribed, seen, close: () => socket.close() };
 }
 
 const holds = (expected) => (state) => state.data.length === expected.length && state.data.every((value, index) => value === expected[index]);
@@ -366,10 +398,18 @@ for (const name of SCENARIOS) {
 	}
 	const split = await send(ephemeral, "er", "split act, no write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(0, scenario.engine, false))]);
 	reportSplit(scenario, split);
+	const actorId = FIRST_PET + scenario.actor;
+	const watch = watched(holders[actorId].key);
+	await watch.subscribed;
+	const sentAt = Date.now();
 	const plain = await send(ephemeral, "er", "act with write-back", [limitInstruction(COMPUTE_UNIT_LIMIT), program(actAccounts(WRITTEN_BY_ACT), actData(1, scenario.engine, true))]);
 	console.log(`act ${plain.err ? `FAILED ${json(plain.err)}` : `${plain.units} CU in ${plain.elapsed}ms`} · choice match ${same(logged(plain.logs), scenario.choice)}`);
+	while (watch.seen.length === 0 && Date.now() - sentAt < 5000) await sleep(20);
+	watch.close();
+	const note = watch.seen[0];
+	console.log(`websocket ${ER_WS}: actor pet notified ${note ? `${note.at - sentAt} ms after the send, ${differing(scenario.expected.get(actorId), note.data)} of ${note.data.length} bytes differing from the host's` : "not within 5 s"}`);
 	const inEr = await send(ephemeral, "er", "digest in ER", [program(actAccounts([]), words(2))]);
-	console.log(`ER accounts after the act: digest match ${logged(inEr.logs).pop() === scenario.digest}`);
+	console.log(`ER accounts after the act: digest match ${logged(inEr.logs).pop() === scenario.digest} · bytes differing from the host's, read from the ER ${await differingOn(ephemeral, scenario)}, through the router ${await differingOn(router, scenario)}, of ${[...scenario.expected.values()].reduce((sum, bytes) => sum + bytes.length, 0)}`);
 	if (BURST > 0) {
 		await burst(scenario, "act accounts writable, one fee payer", WRITTEN_BY_ACT, false);
 		await burst(scenario, "act accounts read-only, one fee payer", [], false);
@@ -382,7 +422,7 @@ for (const name of SCENARIOS) {
 	console.log(`written accounts back on L1 ${Date.now() - returnStarted}ms after the first return`);
 	const landed = await send(base, "base", "digest on L1 after", [program(actAccounts([]), words(2))]);
 	const after = logged((await fetchTransaction(baseRead, landed.signature))?.meta?.logMessages ?? []).pop();
-	console.log(`L1 accounts after commit: digest match ${after === scenario.digest}`);
+	console.log(`L1 accounts after commit: digest match ${after === scenario.digest} · bytes differing from the host's ${await differingOn(baseRead, scenario)}`);
 }
 
 const lamportsAfter = (await base.getBalance(payer.address).send()).value;
