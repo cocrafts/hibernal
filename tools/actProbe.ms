@@ -26,6 +26,7 @@ import {
 } from "std/solana/magicblock";
 import {
 	BLOCK_SLOTS,
+	Combatant,
 	Food,
 	GlobalConfig,
 	Pet,
@@ -58,6 +59,7 @@ import {
 	summed,
 	has,
 	touches,
+	rivalsInto,
 } from "../rules/index";
 import { POLICY_BLOB_BYTES, PolicyBlob, buffersMatchPolicy } from "./policyBench";
 import {
@@ -215,8 +217,10 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	if (!context.ticked(block.pets)) { return Result.err(failed(ProbeError.Unticked)); }
 	logComputeUnits();
 	let self: int32[46] = [];
+	let rivals: Combatant[10] = [];
 	const morning = context.surroundingsIn(block.pets, wilds.pets, settled);
-	context.observedSelf(morning, self);
+	morning.rivalsInto(rivals);
+	context.observedSelf(morning, rivals, self);
 	logComputeUnits();
 	const economy = context.economyChoice(blob.bytes, morning, self);
 	logComputeUnits();
@@ -245,9 +249,9 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	const armed = context.surroundingsIn(block.pets, wilds.pets, afterNode);
 	context.observedSelfForNodeAndAttack(armed, self);
 	logComputeUnits();
-	const targets = targetRows(armed);
+	const targets = targetRows(armed, rivals);
 	logComputeUnits();
-	const attack = attackChoice(blob.bytes, armed, self);
+	const attack = attackChoice(blob.bytes, armed, rivals, self);
 	logComputeUnits();
 	if (write) {
 		const _pets = try petsWritten(block);
@@ -331,14 +335,16 @@ function costsLogged(): Result<uint64, ProgramError> {
 	const around = context.surroundingsIn(block.pets, wilds.pets, global);
 	let self: int32[46] = [];
 	let row: int32[22] = [];
+	let rivals: Combatant[10] = [];
+	around.rivalsInto(rivals);
 	let frontier = 0;
 	while (actor.tree.has(frontier) || !actor.tree.touches(frontier)) { frontier += 1; }
 	logComputeUnits();
-	context.observedSelf(around, self);
+	context.observedSelf(around, rivals, self);
 	logComputeUnits();
 	const attacks = around.attackMask(fighter);
 	logComputeUnits();
-	around.writeTarget(((context.actor as int32) + 1) % BLOCK_SLOTS, fighter, row, 0);
+	around.writeTarget(((context.actor as int32) + 1) % BLOCK_SLOTS, fighter, rivals, row, 0);
 	logComputeUnits();
 	const sums = actor.tree.summed(actor.level as int32);
 	logComputeUnits();

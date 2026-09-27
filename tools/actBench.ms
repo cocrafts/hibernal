@@ -21,6 +21,7 @@ import {
 	ATTACK_OUTPUTS,
 	AttackMask,
 	BlockSlot,
+	Combatant,
 	EconomyAction,
 	Item,
 	GlobalConfig,
@@ -66,6 +67,7 @@ import {
 	writeSelfForNodeAndAttack,
 	writeTarget,
 	writeTargetHold,
+	rivalsInto,
 } from "../rules/index";
 
 export struct BlockPets {
@@ -151,9 +153,14 @@ export function tickedNeighbours(
 	return Result.ok(settled);
 }
 
-export function observedSelf(this context: ActContext, around: Surroundings, self: Span<int32>): void {
+export function observedSelf(
+	this context: ActContext,
+	around: Surroundings,
+	rivals: Span<Combatant>,
+	self: Span<int32>,
+): void {
 	for (let position = 0; position < self.length; position++) { self[position] = 0; }
-	around.writeSelf(context.persona, context.market, self, 0);
+	around.writeSelf(context.persona, context.market, rivals, self, 0);
 }
 
 export function observedSelfForNodeAndAttack(
@@ -297,7 +304,7 @@ function wantsSlot(mask: AttackMask, slot: int32): boolean {
 	return false;
 }
 
-export function targetRows(around: Surroundings): int32 {
+export function targetRows(around: Surroundings, rivals: Span<Combatant>): int32 {
 	const own = around.actorPet().combatant();
 	const mask = around.attackMask(own);
 	if (mask.bits == attackHoldMask().bits) { return 0; }
@@ -306,13 +313,18 @@ export function targetRows(around: Surroundings): int32 {
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		if (!wantsSlot(mask, slot)) { continue; }
 		for (let position = 0; position < TARGET_FEATURES; position++) { row[position] = 0; }
-		around.writeTarget(slot, own, row, 0);
+		around.writeTarget(slot, own, rivals, row, 0);
 		rows += 1;
 	}
 	return rows;
 }
 
-export function attackChoice(policy: Span<uint8>, around: Surroundings, self: Span<int32>): int32 {
+export function attackChoice(
+	policy: Span<uint8>,
+	around: Surroundings,
+	rivals: Span<Combatant>,
+	self: Span<int32>,
+): int32 {
 	const own = around.actorPet().combatant();
 	const mask = around.attackMask(own);
 	if (mask.bits == attackHoldMask().bits) { return ATTACK_HOLD; }
@@ -332,7 +344,7 @@ export function attackChoice(policy: Span<uint8>, around: Surroundings, self: Sp
 		if (slot == BLOCK_SLOTS) {
 			writeTargetHold(input, ATTACK_SELF_INPUTS);
 		} else {
-			around.writeTarget(slot, own, input, ATTACK_SELF_INPUTS);
+			around.writeTarget(slot, own, rivals, input, ATTACK_SELF_INPUTS);
 		}
 		attackLogits(policy, input, hidden, narrow, out);
 		if (slot == BLOCK_SLOTS) {
@@ -445,8 +457,10 @@ export function actTicked(
 	settled: GlobalConfig,
 ): ActOutcome {
 	let self: int32[46] = [];
+	let rivals: Combatant[10] = [];
 	const morning = context.surroundingsIn(pets, wilds, settled);
-	context.observedSelf(morning, self);
+	morning.rivalsInto(rivals);
+	context.observedSelf(morning, rivals, self);
 	const economy = context.economyChoice(policy, morning, self);
 	const afterEconomy = context.appliedEconomy(pets, settled, economy);
 	const growing = context.surroundingsIn(pets, wilds, afterEconomy);
@@ -461,7 +475,7 @@ export function actTicked(
 	}
 	const armed = context.surroundingsIn(pets, wilds, afterNode);
 	context.observedSelfForNodeAndAttack(armed, self);
-	const attack = attackChoice(policy, armed, self);
+	const attack = attackChoice(policy, armed, rivals, self);
 	return { choice: { economy: economy, node: node, attack: attack }, global: afterNode };
 }
 
