@@ -3,12 +3,27 @@ import {
 	Account,
 	Bytes,
 	ProgramError,
+	Seeds,
 	account,
+	accountCount,
+	signerAccount,
 	instructionData,
+	programId,
+	createProgramAccount,
 	failWith,
 	logU64,
 	logComputeUnits,
 } from "std/solana";
+import {
+	DelegationAccounts,
+	DelegationConfig,
+	anyValidator,
+	onValidator,
+	delegate,
+	commitAndUndelegate,
+	undelegate,
+	isUndelegateCallback,
+} from "std/solana/magicblock";
 import {
 	BLOCK_SLOTS,
 	Food,
@@ -331,16 +346,90 @@ function digestLogged(): Result<uint64, ProgramError> {
 	return Result.ok(digest);
 }
 
+function actSeeds(id: uint8): Seeds {
+	return Seeds.empty(2).addText("act").addU8(id);
+}
+
+function idIn(data: Bytes): Result<uint8, ProgramError> {
+	const id = try data.readU64(8);
+	if (id >= (FIRST_PET_ACCOUNT + BLOCK_SLOTS) as uint64) { return Result.err(ProgramError.invalidArgument()); }
+	return Result.ok(id as uint8);
+}
+
+function verifiedBump(holder: Account, id: uint8): Result<uint8, ProgramError> {
+	const expected = try actSeeds(id).findProgramAddress(programId());
+	if (!expected.key.equals(holder.key())) { return Result.err(ProgramError.invalidSeeds()); }
+	return Result.ok(expected.bump);
+}
+
+function initialized(data: Bytes): Result<uint64, ProgramError> {
+	const payer = try signerAccount(0);
+	const holder = try account(1);
+	const id = try idIn(data);
+	const size = try data.readU64(16);
+	const bump = try verifiedBump(holder, id);
+	if (holder.lamports() == 0) {
+		const _created = try createProgramAccount(payer, holder, size, programId(), actSeeds(id).withBump(bump));
+	}
+	return Result.ok(holder.dataLength());
+}
+
 function written(data: Bytes): Result<uint64, ProgramError> {
-	const holder = try account(0);
-	const offset = try data.readU64(8);
-	const chunk = try data.range(16, data.length - 16);
+	const _payer = try signerAccount(0);
+	const holder = try account(1);
+	const id = try idIn(data);
+	const _bump = try verifiedBump(holder, id);
+	if (!holder.isOwnedBy(programId())) { return Result.err(ProgramError.illegalOwner()); }
+	const offset = try data.readU64(16);
+	const chunk = try data.range(24, data.length - 24);
 	const target = try holder.data().range(offset, chunk.length);
 	return target.copyFrom(chunk);
 }
 
+function delegated(data: Bytes): Result<uint64, ProgramError> {
+	const payer = try signerAccount(0);
+	const systemProgram = try account(1);
+	const holder = try account(2);
+	const ownerProgram = try account(3);
+	const buffer = try account(4);
+	const delegationRecord = try account(5);
+	const delegationMetadata = try account(6);
+	const id = try idIn(data);
+	const bump = try verifiedBump(holder, id);
+	let config = DelegationConfig.anyValidator();
+	if (accountCount() > 8) {
+		const validator = try account(8);
+		config = DelegationConfig.onValidator(validator.key());
+	}
+	const accounts: DelegationAccounts = {
+		payer: payer,
+		delegated: holder,
+		ownerProgram: ownerProgram,
+		buffer: buffer,
+		delegationRecord: delegationRecord,
+		delegationMetadata: delegationMetadata,
+		systemProgram: systemProgram,
+	};
+	return delegate(accounts, actSeeds(id), bump, config);
+}
+
+function returned(): Result<uint64, ProgramError> {
+	const payer = try signerAccount(0);
+	const holder = try account(1);
+	const magicContext = try account(3);
+	return commitAndUndelegate(payer, holder, magicContext);
+}
+
+function undelegated(data: Bytes): Result<uint64, ProgramError> {
+	const holder = try account(0);
+	const buffer = try account(1);
+	const payer = try account(2);
+	return undelegate(holder, buffer, payer, programId(), data);
+}
+
 function dispatch(): Result<uint64, ProgramError> {
 	const data = instructionData();
+	if (isUndelegateCallback(data)) { return undelegated(data); }
 	const discriminator = try data.readU64(0);
 	return match (discriminator) {
 		0 => {
@@ -357,6 +446,9 @@ function dispatch(): Result<uint64, ProgramError> {
 		4 => costsLogged(),
 		5 => economyCostsLogged(),
 		3 => written(data),
+		7 => initialized(data),
+		8 => delegated(data),
+		9 => returned(),
 		_ => Result.err(ProgramError.invalidInstructionData()),
 	};
 }
