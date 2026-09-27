@@ -227,11 +227,20 @@ function actSplit(engine: uint64, write: boolean): Result<uint64, ProgramError> 
 	const growable = legal.bits != 0;
 	if (growable) { context.observedSelfForNodeAndAttack(growing, self); }
 	logComputeUnits();
-	const nodes = growable ? nodeRows(growing, legal) : 0;
-	logComputeUnits();
-	const node = growable ? nodeChoice(blob.bytes, growing, legal, self) : ALLOCATE_HOLD;
-	logComputeUnits();
-	const afterNode = context.appliedNode(block.pets, afterEconomy, node);
+	let nodes = 0;
+	let node = ALLOCATE_HOLD;
+	let afterNode = afterEconomy;
+	if (growable) {
+		const sums = growing.actorPet().tree.summed(growing.actorPet().level as int32);
+		nodes = nodeRows(growing, legal, sums);
+		logComputeUnits();
+		node = nodeChoice(blob.bytes, growing, legal, self, sums);
+		logComputeUnits();
+		afterNode = context.appliedNode(block.pets, afterEconomy, node, sums);
+	} else {
+		logComputeUnits();
+		logComputeUnits();
+	}
 	logComputeUnits();
 	const armed = context.surroundingsIn(block.pets, wilds.pets, afterNode);
 	context.observedSelfForNodeAndAttack(armed, self);

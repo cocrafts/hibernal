@@ -32,9 +32,10 @@ import {
 	Stats,
 	Surroundings,
 	TickError,
+	TreeSums,
 	allowsChoice,
 	allowsNode,
-	allocateNode,
+	allocateNodeWithSums,
 	actorPet,
 	attackHoldMask,
 	attackLogits,
@@ -220,10 +221,9 @@ export function appliedEconomy(
 	return economy.value.global;
 }
 
-export function nodeRows(around: Surroundings, legal: NodeMask): int32 {
+export function nodeRows(around: Surroundings, legal: NodeMask, sums: TreeSums): int32 {
 	const pet = around.actorPet();
 	if (legal.bits == 0) { return 0; }
-	const sums = pet.tree.summed(pet.level as int32);
 	const before = sums.finished(pet.tree, pet.talent());
 	let row: int32[22] = [];
 	let rows = 0;
@@ -241,10 +241,10 @@ export function nodeChoice(
 	around: Surroundings,
 	legal: NodeMask,
 	self: Span<int32>,
+	sums: TreeSums,
 ): int32 {
 	const pet = around.actorPet();
 	if (legal.bits == 0) { return ALLOCATE_HOLD; }
-	const sums = pet.tree.summed(pet.level as int32);
 	const before = sums.finished(pet.tree, pet.talent());
 	let input: int32[30] = [];
 	let hidden: int32[32] = [];
@@ -278,11 +278,12 @@ export function appliedNode(
 	pets: Span<Pet>,
 	global: GlobalConfig,
 	node: int32,
+	sums: TreeSums,
 ): GlobalConfig {
 	const slot = context.actor as int32;
 	const pet = pets[slot];
 	if (!pet.alive || node == ALLOCATE_HOLD) { return global; }
-	const grown = pet.allocateNode(node, global);
+	const grown = pet.allocateNodeWithSums(node, global, sums);
 	if (!grown.ok) { return global; }
 	pets[slot] = grown.value.pet;
 	return grown.value.global;
@@ -450,12 +451,14 @@ export function actTicked(
 	const afterEconomy = context.appliedEconomy(pets, settled, economy);
 	const growing = context.surroundingsIn(pets, wilds, afterEconomy);
 	let node = ALLOCATE_HOLD;
+	let afterNode = afterEconomy;
 	const growable = growing.actorPet().legalNodes(afterEconomy);
 	if (growable.bits != 0) {
 		context.observedSelfForNodeAndAttack(growing, self);
-		node = nodeChoice(policy, growing, growable, self);
+		const sums = growing.actorPet().tree.summed(growing.actorPet().level as int32);
+		node = nodeChoice(policy, growing, growable, self, sums);
+		afterNode = context.appliedNode(pets, afterEconomy, node, sums);
 	}
-	const afterNode = context.appliedNode(pets, afterEconomy, node);
 	const armed = context.surroundingsIn(pets, wilds, afterNode);
 	context.observedSelfForNodeAndAttack(armed, self);
 	const attack = attackChoice(policy, armed, self);
