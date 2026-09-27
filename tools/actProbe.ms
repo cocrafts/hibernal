@@ -52,6 +52,11 @@ import {
 	log2Times32,
 	oddsKeyAgainst,
 	winChanceBps,
+	attackMask,
+	writeTarget,
+	writeNode,
+	has,
+	touches,
 } from "../rules/index";
 import { POLICY_BLOB_BYTES, PolicyBlob, buffersMatchPolicy } from "./policyBench";
 import {
@@ -311,11 +316,27 @@ function costsLogged(): Result<uint64, ProgramError> {
 		unsignedSum += ((actor.might as uint32) + (step as uint32)) / (7 + (context.round as uint32));
 	}
 	logComputeUnits();
+	const wilds = try wildsAt();
+	const around = context.surroundingsIn(block.pets, wilds.pets, global);
+	let self: int32[46] = [];
+	let row: int32[22] = [];
+	let frontier = 0;
+	while (actor.tree.has(frontier) || !actor.tree.touches(frontier)) { frontier += 1; }
+	logComputeUnits();
+	context.observedSelf(around, self);
+	logComputeUnits();
+	const attacks = around.attackMask();
+	logComputeUnits();
+	around.writeTarget(((context.actor as int32) + 1) % BLOCK_SLOTS, row, 0);
+	logComputeUnits();
+	block.pets[context.actor as int32].writeNode(frontier, built, row, 0);
+	logComputeUnits();
 	logU64((built.might as uint64) + (derived.grit as uint64) + (fighter.hearts as uint64) +
 		(odds as uint64) + (reachable.ok ? 1 : 0) + (dawn as uint64) + (hunger as uint64) +
 		(nodes.bits & 1) + meal + ((economy as uint16) as uint64) +
 		(pressure as uint64) + (logged as uint64) + (key.ratio as uint64) + (cell as uint64) +
-		(signedSum as uint64) + (unsignedSum as uint64));
+		(signedSum as uint64) + (unsignedSum as uint64) + (self[0] as uint64) + attacks.bits +
+		(row[0] as uint64));
 	return Result.ok(0);
 }
 
