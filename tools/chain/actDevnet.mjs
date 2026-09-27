@@ -6,6 +6,7 @@ import {
 	createKeyPairSignerFromBytes,
 	createSolanaRpc,
 	createTransactionMessage,
+	generateKeyPairSigner,
 	getAddressEncoder,
 	getBase64EncodedWireTransaction,
 	getProgramDerivedAddress,
@@ -28,6 +29,7 @@ const MAGIC_CONTEXT = address("MagicContext1111111111111111111111111111111");
 const COMPUTE_UNIT_LIMIT = 1_400_000;
 const CHUNK_BYTES = 900;
 const SCENARIOS = (process.env.SCENARIOS ?? "typical,busiest").split(",");
+const BURST = Number(process.env.BURST ?? 0);
 const POLICY = 0;
 const CONTEXT = 1;
 const CONFIG = 2;
@@ -253,6 +255,46 @@ async function delegated(holder) {
 	], words(8, holder.id))]);
 }
 
+async function burst(scenario, label, writableIds, ownPayers) {
+	const { value: blockhash } = await patiently(() => ephemeral.getLatestBlockhash().send());
+	const transactions = [];
+	for (let index = 0; index < BURST; index++) {
+		const feePayer = ownPayers ? await generateKeyPairSigner() : payer;
+		const message = pipe(
+			createTransactionMessage({ version: 0 }),
+			(m) => setTransactionMessageFeePayerSigner(feePayer, m),
+			(m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+			(m) => appendTransactionMessageInstructions([
+				limitInstruction(COMPUTE_UNIT_LIMIT - index),
+				program(actAccounts(writableIds), actData(1, scenario.engine, false)),
+			], m),
+		);
+		transactions.push(await signTransactionMessageWithSigners(message));
+	}
+	const signatures = transactions.map((transaction) => getSignatureFromTransaction(transaction));
+	const started = Date.now();
+	await Promise.all(transactions.map((transaction) => patiently(() => ephemeral.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send())));
+	const sentIn = Date.now() - started;
+	const landed = new Map();
+	while (landed.size < BURST && Date.now() - started < 60000) {
+		const { value } = await patiently(() => ephemeral.getSignatureStatuses(signatures).send());
+		value.forEach((status, index) => {
+			if (status && !landed.has(index) && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
+				landed.set(index, { ms: Date.now() - started, slot: Number(status.slot), err: status.err });
+			}
+		});
+		await sleep(40);
+	}
+	const results = [...landed.values()];
+	const failed = results.filter((result) => result.err).length;
+	const slots = new Set(results.map((result) => result.slot)).size;
+	const last = Math.max(...results.map((result) => result.ms));
+	const sample = results.find((result) => !result.err);
+	const detail = sample ? await fetchTransaction(ephemeral, signatures[[...landed.entries()].find(([, result]) => result === sample)[0]]) : null;
+	const firstError = results.find((result) => result.err)?.err;
+	console.log(`burst ${label}: ${results.length}/${BURST} landed, ${failed} failed${firstError ? ` (${json(firstError)})` : ""}, sent in ${sentIn}ms, last landed ${last}ms, ${slots} slots, ${detail?.meta?.computeUnitsConsumed ?? "-"} CU each`);
+}
+
 function reportSplit(scenario, sent) {
 	if (sent.err) {
 		console.log(`split act: FAILED ${json(sent.err)}`);
@@ -289,6 +331,12 @@ for (const name of SCENARIOS) {
 	console.log(`act ${plain.err ? `FAILED ${json(plain.err)}` : `${plain.units} CU in ${plain.elapsed}ms`} · choice match ${same(logged(plain.logs), scenario.choice)}`);
 	const inEr = await send(ephemeral, "er", "digest in ER", [program(actAccounts([]), words(2))]);
 	console.log(`ER accounts after the act: digest match ${logged(inEr.logs).pop() === scenario.digest}`);
+	if (BURST > 0) {
+		await burst(scenario, "act accounts writable, one fee payer", WRITTEN_BY_ACT, false);
+		await burst(scenario, "act accounts read-only, one fee payer", [], false);
+		await burst(scenario, "act accounts read-only, own fee payers", [], true);
+		await burst(scenario, "act accounts writable, own fee payers", WRITTEN_BY_ACT, true);
+	}
 	const returnStarted = Date.now();
 	for (const id of WRITTEN_BY_ACT) await returned(holders[id]);
 	for (const id of WRITTEN_BY_ACT) await onBase(holders[id]);
