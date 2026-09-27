@@ -150,6 +150,10 @@ If step 3 or 4 does not pass inside the agreed timebox, do not rewrite everythin
 10. Creating accounts inside the ER (item accounts for unequipped and listed items), or whether they must be created on L1 and delegated.
 11. Paying an owner from the ER: a token transfer to a wallet on L1 while the pet is delegated (gifts), queued to the next commit or requiring undelegation.
 12. Program upgrades: how fast the ER picks up new bytecode deployed on L1, and whether upgrading while accounts are delegated is safe when a layout `version` changes.
+13. The client's read of ER state, and one account layout on SBF, arm64 and JS. Measured 2026-09-27 with the act probe (`tools/actHost.ms` writes the ten pets and `GlobalConfig` as the native arm64 build holds them after the act; `actLiteSvm.mjs` and `actDevnet.mjs` compare the accounts the program wrote against them, byte for byte, 1,984 bytes per scenario):
+   - SBF writes the host's bytes: 0 bytes differ in LiteSVM and in the ER, for the typical and the busiest act, every field and padding byte of `Pet` (192 bytes) and `GlobalConfig` (64) included.
+   - Every read path a client has returns them: `getMultipleAccounts` on the ER, the same through the Magic Router while the accounts are delegated, an ER websocket `accountSubscribe` on the actor's pet (notified 105–106 ms after the send, where polling saw the confirmation at 172–218 ms), and L1 after commit-and-undelegate (back 4.6–5.0 s after the first return): 0 bytes differ on each.
+   - `sizeof` gives the same sizes on native arm64 and under `--target=js` (`Pet` 192, `GlobalConfig` 64, `FightRecord` 120), and the SBF probe accepts 192-byte pet accounts through its `sizeof` check. Reading account bytes into a struct under `--target=js` was not tried: the JS build has no byte view of a struct here, so a JS client needs a decoder derived from the struct (std/solana, not built).
 
 ## 8. Toolchain on the dev machine — Measured
 
