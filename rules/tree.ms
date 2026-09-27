@@ -1,7 +1,7 @@
 import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import { START_BONUS, BASE_MAX_HEARTS, BASE_STAT, Stats, Region, Mod, grown, talented } from "./stats";
-import { Talent } from "./talent";
+import { Talent, TalentKind } from "./talent";
 
 export const TREE_NODES: int32 = 64;
 export const KEYSTONE_COST: int32 = 3;
@@ -67,6 +67,19 @@ export enum AllocationError {
 export enum HomeError {
 	Shared,
 	Border,
+}
+
+export struct TreeSums {
+	flat: Stats;
+	forageBps: int32;
+	mightBps: int32;
+	gritBps: int32;
+	heartsBps: int32;
+	foodBps: int32;
+	experienceBps: int32;
+	lootBps: int32;
+	biteGuardBps: int32;
+	mods: BitSet<Mod>;
 }
 
 export struct Tree {
@@ -367,15 +380,10 @@ function scaledBy(value: int32, bps: int32): int32 {
 	return ((value as int64) * (bps as int64) / (BPS as int64)) as int32;
 }
 
-export function built(this typeof Stats, tree: Tree, level: int32, talent: Talent): Stats {
+export function summed(this tree: Tree, level: int32): TreeSums {
 	let flat = Stats.base();
 	for (let region = 0; region < 3; region++) {
-		if (!tree.has(region)) { continue; }
-		flat = match (region as Region) {
-			Region.Worker => ({ ...flat, forage: flat.forage + START_BONUS }),
-			Region.Fighter => ({ ...flat, might: flat.might + START_BONUS }),
-			Region.Survivor => ({ ...flat, grit: flat.grit + START_BONUS }),
-		};
+		if (tree.has(region)) { flat = flat.withStartBonus(region as Region); }
 	}
 	flat = flat.grown(level);
 	let forageBps = 0;
@@ -407,17 +415,61 @@ export function built(this typeof Stats, tree: Tree, level: int32, talent: Talen
 		const granted = notableMod(id);
 		if (granted.ok) { mods = mods.incl(granted.value); }
 	}
-	let stats: Stats = {
-		...flat,
-		forage: percentOf(flat.forage, forageBps),
-		might: percentOf(flat.might, mightBps),
-		grit: percentOf(flat.grit, gritBps),
-		maxHearts: percentOf(flat.maxHearts, heartsBps),
+	return {
+		flat: flat,
+		forageBps: forageBps,
+		mightBps: mightBps,
+		gritBps: gritBps,
+		heartsBps: heartsBps,
 		foodBps: foodBps,
 		experienceBps: experienceBps,
 		lootBps: lootBps,
 		biteGuardBps: biteGuardBps,
 		mods: mods,
+	};
+}
+
+function withStartBonus(this flat: Stats, region: Region): Stats {
+	return match (region) {
+		Region.Worker => ({ ...flat, forage: flat.forage + START_BONUS }),
+		Region.Fighter => ({ ...flat, might: flat.might + START_BONUS }),
+		Region.Survivor => ({ ...flat, grit: flat.grit + START_BONUS }),
+	};
+}
+
+export function plusNode(this sums: TreeSums, tree: Tree, id: int32): TreeSums {
+	if (tree.has(id) || id >= KEYSTONE_GLASS_CANNON) { return sums; }
+	if (id < GATE) { return { ...sums, flat: sums.flat.withStartBonus(id as Region) }; }
+	const bonus = nodeBonusBps(id);
+	const added: TreeSums = match (nodeFamily(id)) {
+		Family.Forage => ({ ...sums, forageBps: sums.forageBps + bonus }),
+		Family.Food => ({ ...sums, foodBps: sums.foodBps + bonus }),
+		Family.Experience => ({ ...sums, experienceBps: sums.experienceBps + bonus }),
+		Family.Might => ({ ...sums, mightBps: sums.mightBps + bonus }),
+		Family.Loot => ({ ...sums, lootBps: sums.lootBps + bonus }),
+		Family.Attacks => ({ ...sums, mightBps: sums.mightBps + bonus }),
+		Family.Grit => ({ ...sums, gritBps: sums.gritBps + bonus }),
+		Family.Hearts => ({ ...sums, heartsBps: sums.heartsBps + bonus }),
+		Family.BiteGuard => ({ ...sums, biteGuardBps: sums.biteGuardBps + bonus }),
+	};
+	if (nodeKind(id) != NodeKind.Notable) { return added; }
+	const granted = notableMod(id);
+	return granted.ok ? { ...added, mods: added.mods.incl(granted.value) } : added;
+}
+
+export function finished(this sums: TreeSums, tree: Tree, talent: Talent): Stats {
+	const flat = sums.flat;
+	let stats: Stats = {
+		...flat,
+		forage: percentOf(flat.forage, sums.forageBps),
+		might: percentOf(flat.might, sums.mightBps),
+		grit: percentOf(flat.grit, sums.gritBps),
+		maxHearts: percentOf(flat.maxHearts, sums.heartsBps),
+		foodBps: sums.foodBps,
+		experienceBps: sums.experienceBps,
+		lootBps: sums.lootBps,
+		biteGuardBps: sums.biteGuardBps,
+		mods: sums.mods,
 	};
 	for (let id = KEYSTONE_GLASS_CANNON; id < TREE_NODES; id++) {
 		if (!tree.has(id)) { continue; }
@@ -440,6 +492,10 @@ export function built(this typeof Stats, tree: Tree, level: int32, talent: Talen
 		}
 	}
 	return stats.talented(talent);
+}
+
+export function built(this typeof Stats, tree: Tree, level: int32, talent: Talent): Stats {
+	return tree.summed(level).finished(tree, talent);
 }
 
 export function fromTree(this typeof Stats, tree: Tree): Stats {
@@ -477,6 +533,35 @@ test "every node is reachable from every start" {
 			}
 		}
 		assert seen.nodeCount() == TREE_NODES;
+	}
+}
+
+test "a candidate node adds to the tree's sums exactly what a rebuild of the grown tree gives" {
+	const talents: Talent[] = [Talent.unrevealed(), { kind: TalentKind.Might, multiplierBps: 13500 }];
+	for (let start = 0; start < 3; start++) {
+		for (let highestFirst = 0; highestFirst < 2; highestFirst++) {
+			let tree = Tree.empty();
+			let open = tree.allocatable(start as Region);
+			while (open != 0) {
+				for (const talent of talents) {
+					const level = 1 + tree.nodeCount();
+					const sums = tree.summed(level);
+					assert sums.finished(tree, talent) == Stats.built(tree, level, talent);
+					for (let id = 0; id < TREE_NODES; id++) {
+						const grown = tree.withNode(id);
+						assert sums.plusNode(tree, id).finished(grown, talent) == Stats.built(grown, level, talent);
+					}
+				}
+				let next = lowestNode(open);
+				if (highestFirst == 1) {
+					for (let id = 0; id < TREE_NODES; id++) {
+						if ((open & nodeBit(id)) != 0) { next = id; }
+					}
+				}
+				tree = tree.withNode(next);
+				open = tree.allocatable(start as Region);
+			}
+		}
 	}
 }
 

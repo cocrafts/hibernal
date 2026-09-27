@@ -5,7 +5,10 @@ import {
 	TREE_NODES,
 	NodeKind,
 	Tree,
-	built,
+	TreeSums,
+	finished,
+	plusNode,
+	summed,
 	nodeCost,
 	nodeKind,
 	opensWith,
@@ -388,12 +391,12 @@ export function writeSelf(
 export function writeNode(
 	this pet: Pet,
 	id: int32,
+	sums: TreeSums,
 	before: Stats,
 	features: Span<int32>,
 	row: int32,
 ): void {
-	const level = pet.level as int32;
-	const after = Stats.built(pet.tree.withNode(id), level, pet.talent());
+	const after = sums.plusNode(pet.tree, id).finished(pet.tree.withNode(id), pet.talent());
 	const gained = after.mods.difference(before.mods);
 	const kind = nodeKind(id);
 	const home = regionOf(id);
@@ -430,10 +433,11 @@ export function writeNodeHold(features: Span<int32>, row: int32): void {
 export function writeNodes(this around: Surroundings, features: Span<int32>, offset: int32): void {
 	const pet = around.actorPet();
 	const legal = pet.legalNodes(around.global);
-	const before = Stats.built(pet.tree, pet.level as int32, pet.talent());
+	const sums = pet.tree.summed(pet.level as int32);
+	const before = sums.finished(pet.tree, pet.talent());
 	for (let id = 0; id < TREE_NODES; id++) {
 		if (!legal.allowsNode(id)) { continue; }
-		pet.writeNode(id, before, features, offset + id * NODE_FEATURES);
+		pet.writeNode(id, sums, before, features, offset + id * NODE_FEATURES);
 	}
 	writeNodeHold(features, offset + ALLOCATE_HOLD * NODE_FEATURES);
 }

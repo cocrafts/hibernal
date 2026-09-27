@@ -17,7 +17,7 @@ import {
 const COMPUTE_BUDGET_PROGRAM = address("ComputeBudget111111111111111111111111111111");
 const COMPUTE_UNIT_LIMIT = 1_400_000;
 const MEASURE_LIMIT = 20_000_000n;
-const COSTS = ["Stats.built", "pet.stats()", "pet.combatant()", "mate.combatantFacing()", "winChanceFromTable", "attackable", "dawnHearts", "ownStats().hungerPerDay()", "legalEconomy", "legalNodes", "foodCost", "actor.combatantFacing()", "pressureBps", "log2Times32", "oddsKeyAgainst", "winChanceBps", "100 signed divisions", "100 unsigned divisions", "(setup)", "writeSelf", "attackMask", "writeTarget", "writeNode"];
+const COSTS = ["Stats.built", "pet.stats()", "pet.combatant()", "mate.combatantFacing()", "winChanceFromTable", "attackable", "dawnHearts", "ownStats().hungerPerDay()", "legalEconomy", "legalNodes", "foodCost", "actor.combatantFacing()", "pressureBps", "log2Times32", "oddsKeyAgainst", "winChanceBps", "100 signed divisions", "100 unsigned divisions", "(setup)", "writeSelf", "attackMask", "writeTarget", "tree.summed", "writeNode"];
 const SCENARIOS = ["typical", "busiest", "dawn"];
 const SECTIONS = [
 	"load accounts",

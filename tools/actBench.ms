@@ -42,7 +42,8 @@ import {
 	combatant,
 	attackSelfInput,
 	boughtListing,
-	built,
+	finished,
+	summed,
 	doEconomy,
 	economyLogits,
 	economyMask,
@@ -222,13 +223,14 @@ export function appliedEconomy(
 export function nodeRows(around: Surroundings, legal: NodeMask): int32 {
 	const pet = around.actorPet();
 	if (legal.bits == 0) { return 0; }
-	const before = Stats.built(pet.tree, pet.level as int32, pet.talent());
+	const sums = pet.tree.summed(pet.level as int32);
+	const before = sums.finished(pet.tree, pet.talent());
 	let row: int32[22] = [];
 	let rows = 0;
 	for (let id = 0; id < TREE_NODES; id++) {
 		if (!legal.allowsNode(id)) { continue; }
 		for (let position = 0; position < NODE_FEATURES; position++) { row[position] = 0; }
-		pet.writeNode(id, before, row, 0);
+		pet.writeNode(id, sums, before, row, 0);
 		rows += 1;
 	}
 	return rows;
@@ -242,7 +244,8 @@ export function nodeChoice(
 ): int32 {
 	const pet = around.actorPet();
 	if (legal.bits == 0) { return ALLOCATE_HOLD; }
-	const before = Stats.built(pet.tree, pet.level as int32, pet.talent());
+	const sums = pet.tree.summed(pet.level as int32);
+	const before = sums.finished(pet.tree, pet.talent());
 	let input: int32[30] = [];
 	let hidden: int32[32] = [];
 	let score: int32[1] = [];
@@ -258,7 +261,7 @@ export function nodeChoice(
 		if (id == ALLOCATE_HOLD) {
 			writeNodeHold(input, NODE_SELF_INPUTS);
 		} else {
-			pet.writeNode(id, before, input, NODE_SELF_INPUTS);
+			pet.writeNode(id, sums, before, input, NODE_SELF_INPUTS);
 		}
 		const value = nodeScore(policy, input, hidden, score);
 		if (!found || value > bestScore) {

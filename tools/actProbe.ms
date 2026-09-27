@@ -55,6 +55,7 @@ import {
 	attackMask,
 	writeTarget,
 	writeNode,
+	summed,
 	has,
 	touches,
 } from "../rules/index";
@@ -330,7 +331,9 @@ function costsLogged(): Result<uint64, ProgramError> {
 	logComputeUnits();
 	around.writeTarget(((context.actor as int32) + 1) % BLOCK_SLOTS, fighter, row, 0);
 	logComputeUnits();
-	block.pets[context.actor as int32].writeNode(frontier, built, row, 0);
+	const sums = actor.tree.summed(actor.level as int32);
+	logComputeUnits();
+	block.pets[context.actor as int32].writeNode(frontier, sums, built, row, 0);
 	logComputeUnits();
 	logU64((built.might as uint64) + (derived.grit as uint64) + (fighter.hearts as uint64) +
 		(odds as uint64) + (reachable.ok ? 1 : 0) + (dawn as uint64) + (hunger as uint64) +
