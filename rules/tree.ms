@@ -160,7 +160,7 @@ function nodeBit(id: int32): uint64 {
 	return (1 as uint64) << (id as uint64);
 }
 
-function keystoneMask(): uint64 {
+export function keystoneMask(): uint64 {
 	return (~(0 as uint64)) << (KEYSTONE_GLASS_CANNON as uint64);
 }
 
@@ -251,6 +251,17 @@ export function allocate(
 	}
 	if (tree.isEmpty() || !tree.touches(id)) { return Result.err(AllocationError.NotAdjacent); }
 	return Result.ok(tree.withNode(id));
+}
+
+export function allocatable(this tree: Tree, start: Region): uint64 {
+	if (tree.isEmpty()) { return nodeBit(start as int32); }
+	let touched: uint64 = 0;
+	let remaining = tree.bits & ~keystoneMask();
+	while (remaining != 0) {
+		touched = touched | neighbors(lowestNode(remaining));
+		remaining = remaining & (remaining - 1);
+	}
+	return touched & ~tree.bits & ~(nodeBit(GATE) - 1);
 }
 
 export function opensWith(this tree: Tree, id: int32): int32 {
@@ -466,6 +477,24 @@ test "every node is reachable from every start" {
 			}
 		}
 		assert seen.nodeCount() == TREE_NODES;
+	}
+}
+
+test "the allocatable set is every node allocate accepts" {
+	for (let start = 0; start < 3; start++) {
+		let tree = Tree.empty();
+		let grew = true;
+		while (grew) {
+			for (let id = 0; id < TREE_NODES; id++) {
+				const accepted = tree.allocate(id, start as Region).ok;
+				assert ((tree.allocatable(start as Region) & nodeBit(id)) != 0) == accepted;
+			}
+			grew = false;
+			for (let id = TREE_NODES - 1; id >= 0; id--) {
+				if (!grew && tree.allocate(id, start as Region).ok) { tree = tree.withNode(id); grew = true; }
+			}
+		}
+		assert tree.allocatable(start as Region) == 0;
 	}
 }
 

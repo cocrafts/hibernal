@@ -2,7 +2,16 @@ import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
 import { revived } from "./owner";
-import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
+import {
+	TREE_NODES,
+	KEYSTONE_CANNIBAL,
+	KEYSTONE_COST,
+	AllocationError,
+	Tree,
+	allocatable,
+	keystoneMask,
+	nodeCost,
+} from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord, Insurance } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
 import {
@@ -337,11 +346,12 @@ export function allocateNode(
 
 export function legalNodes(this pet: Pet, global: GlobalConfig): NodeMask {
 	if (!pet.alive) { return { bits: 0, hold: false }; }
-	let mask = nodeHoldMask();
-	for (let id = 0; id < TREE_NODES; id++) {
-		if (pet.grownTree(id, global).ok) { mask = mask.allowingNode(id); }
-	}
-	return mask;
+	const settled = pet.lastTickEpoch == global.rewardEpoch &&
+		pet.rewardSnapshot == global.rewardPerWorkPower;
+	const points = pet.pointsUnspent as int32;
+	if (!settled || points < 1) { return nodeHoldMask(); }
+	const affordable = points >= KEYSTONE_COST ? ~(0 as uint64) : ~keystoneMask();
+	return { bits: pet.tree.allocatable(pet.startRegion()) & affordable, hold: true };
 }
 
 export function attackable(
@@ -674,6 +684,27 @@ test "allocation needs a settled pet and points, and moves the work power" {
 	const unsettled = newborn.pet.allocateNode(4, newborn.global.settle(1));
 	assert !unsettled.ok;
 	if (!unsettled.ok) { assert unsettled.error == AllocationError.Unsettled; }
+}
+
+test "the legal nodes are every node the pet could grow into" {
+	const newborn = Pet.born(0, BlockSlot.First, Region.Fighter, 0, GlobalConfig.genesis(0));
+	let pet = newborn.pet;
+	for (let step = 0; step < 24; step++) {
+		for (let points = 0; points <= KEYSTONE_COST; points++) {
+			const holding: Pet = { ...pet, pointsUnspent: points as uint8 };
+			for (const global of [newborn.global, newborn.global.settle(1)]) {
+				let expected = nodeHoldMask();
+				for (let id = 0; id < TREE_NODES; id++) {
+					if (holding.grownTree(id, global).ok) { expected = expected.allowingNode(id); }
+				}
+				assert holding.legalNodes(global) == expected;
+			}
+		}
+		const open = pet.tree.allocatable(pet.startRegion());
+		let next = 0;
+		while ((open & ((1 as uint64) << (next as uint64))) == 0) { next += 1; }
+		pet = { ...pet, tree: pet.tree.withNode(next) };
+	}
 }
 
 test "stakes scale with the level and the rules refuse illegal attacks" {
