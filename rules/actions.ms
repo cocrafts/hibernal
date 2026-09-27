@@ -8,9 +8,13 @@ import {
 	KEYSTONE_COST,
 	AllocationError,
 	Tree,
+	TreeSums,
 	allocatable,
+	finished,
 	keystoneMask,
 	nodeCost,
+	plusNode,
+	summed,
 } from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord, Insurance } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
@@ -325,9 +329,18 @@ export function allocateNode(
 	id: int32,
 	global: GlobalConfig,
 ): Result<PetAndGlobal, AllocationError> {
+	return pet.allocateNodeWithSums(id, global, pet.tree.summed(pet.level as int32));
+}
+
+export function allocateNodeWithSums(
+	this pet: Pet,
+	id: int32,
+	global: GlobalConfig,
+	sums: TreeSums,
+): Result<PetAndGlobal, AllocationError> {
 	const tree = try pet.grownTree(id, global);
 	const cost = nodeCost(id);
-	const derived = Stats.built(tree, pet.level as int32, pet.talent()).aged(pet.vigor());
+	const derived = sums.plusNode(pet.tree, id).finished(tree, pet.talent()).aged(pet.vigor());
 	const grown: Pet = {
 		...pet.withTreeBonuses(derived),
 		tree: tree,
@@ -694,6 +707,48 @@ test "allocation needs a settled pet and points, and moves the work power" {
 	const unsettled = newborn.pet.allocateNode(4, newborn.global.settle(1));
 	assert !unsettled.ok;
 	if (!unsettled.ok) { assert unsettled.error == AllocationError.Unsettled; }
+}
+
+test "a node allocated over the tree's sums grows the pet a rebuild of the grown tree grows" {
+	for (let start = 0; start < 3; start++) {
+		for (const talentKind of [TalentKind.None, TalentKind.Might]) {
+			const newborn = Pet.born(0, BlockSlot.First, start as Region, 0, GlobalConfig.genesis(0));
+			let pet: Pet = {
+				...newborn.pet,
+				level: 12,
+				pointsUnspent: 200,
+				talentKind: talentKind as uint8,
+				talentBps: talentKind == TalentKind.None ? 0 : 13500,
+			};
+			let open = pet.tree.allocatable(pet.startRegion());
+			while (open != 0) {
+				for (let id = 0; id < TREE_NODES; id++) {
+					if ((open & ((1 as uint64) << (id as uint64))) == 0) { continue; }
+					const grown = pet.allocateNode(id, newborn.global);
+					const tree = pet.grownTree(id, newborn.global);
+					assert grown.ok && tree.ok;
+					if (grown.ok && tree.ok) {
+						const rebuilt = Stats.built(tree.value, pet.level as int32, pet.talent()).aged(pet.vigor());
+						const expected: Pet = {
+							...pet.withTreeBonuses(rebuilt),
+							tree: tree.value,
+							forage: rebuilt.forage as uint16,
+							might: rebuilt.might as uint16,
+							grit: rebuilt.grit as uint16,
+							maxHearts: rebuilt.maxHearts as uint8,
+							hearts: Math.min(pet.hearts as int32, rebuilt.maxHearts) as uint8,
+							pointsUnspent: ((pet.pointsUnspent as int32) - nodeCost(id)) as uint8,
+						};
+						assert grown.value.pet == expected;
+					}
+				}
+				let next = 0;
+				while ((open & ((1 as uint64) << (next as uint64))) == 0) { next += 1; }
+				pet = { ...pet, tree: pet.tree.withNode(next) };
+				open = pet.tree.allocatable(pet.startRegion());
+			}
+		}
+	}
 }
 
 test "the legal nodes are every node the pet could grow into" {
