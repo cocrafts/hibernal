@@ -44,7 +44,7 @@
 
 - Rust `-O3` is the floor. MetaScript-generated C for `rules/policy.ms` costs 21–27 CU per weight on msc 0.2.55 since policy format 7 (package 6, §6), about 2× the floor.
 - The fight settles in the VRF callback `consume_fight`, a separate transaction, so the budget of `act` belongs to the brain and its bookkeeping.
-- **Measured** (2026-09-27, `SOLANA.md` §7 item 2): the ER's crank runs a scheduled instruction by CPI from its `Crank` builtin inside a validator-signed transaction of 400,000 CU, and a `ScheduleTask` has no field to raise it. The act exhausts it at 399,700 CU in both probe scenarios; a cranked `act` has to fit 400k or run through another path.
+- **Measured** (2026-09-27, `SOLANA.md` §7 item 2): the ER's crank runs a scheduled instruction by CPI from its `Crank` builtin inside a validator-signed transaction of 400,000 CU, and a `ScheduleTask` has no field to raise it. The act exhausts it at 399,700 CU in both probe scenarios; a cranked `act` has to fit 400k or run through another path. Hydra, MagicBlock's newer crank, runs the act top level with the limit its crank stores: the busiest act ran in 560,522 CU from a Hydra crank at 1.4M, three runs, 0 lamports each (2026-09-28), fired by a `hydra-cranker` we ran, since none runs on devnet-as.
 - Executed weights, not stored weights, are what cost CU: a network scored once per candidate target costs its size times the number of candidates.
 - Working limit: about 40–50k executed weights per `act` at the Rust rate. At the measured MetaScript rate that is 1.2–1.5M CU, the whole transaction; the current policy executes at most 20,192 weights (590k CU), and account parsing, observation, tick and writes are unmeasured.
 
