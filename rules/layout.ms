@@ -163,10 +163,13 @@ export function combatant(this pet: Pet): Combatant {
 }
 
 export function combatantFacing(this pet: Pet, opponent: Pet): Combatant {
-	const base = pet.combatant();
-	if (pet.rage == 0 || pet.grudgeSlot != opponent.slot) { return base; }
+	return pet.enragedAgainst(pet.combatant(), opponent);
+}
+
+export function enragedAgainst(this pet: Pet, own: Combatant, opponent: Pet): Combatant {
+	if (pet.rage == 0 || pet.grudgeSlot != opponent.slot) { return own; }
 	const bps = BPS + (pet.rage as int32) * RAGE_STEP_BPS;
-	return { ...base, might: base.might * bps / BPS, grit: base.grit * bps / BPS };
+	return { ...own, might: own.might * bps / BPS, grit: own.grit * bps / BPS };
 }
 
 export function robbedBy(this pet: Pet, robber: Pet, epoch: uint64): Pet {

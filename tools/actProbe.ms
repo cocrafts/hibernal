@@ -325,9 +325,9 @@ function costsLogged(): Result<uint64, ProgramError> {
 	logComputeUnits();
 	context.observedSelf(around, self);
 	logComputeUnits();
-	const attacks = around.attackMask();
+	const attacks = around.attackMask(fighter);
 	logComputeUnits();
-	around.writeTarget(((context.actor as int32) + 1) % BLOCK_SLOTS, row, 0);
+	around.writeTarget(((context.actor as int32) + 1) % BLOCK_SLOTS, fighter, row, 0);
 	logComputeUnits();
 	block.pets[context.actor as int32].writeNode(frontier, built, row, 0);
 	logComputeUnits();

@@ -1,6 +1,6 @@
 import * as arithmetic from "./arithmetic";
 import { BPS, ACTS_PER_EPOCH } from "./units";
-import { Mod, Stats, asCombatant } from "./stats";
+import { Combatant, Mod, Stats, asCombatant } from "./stats";
 import {
 	TREE_NODES,
 	NodeKind,
@@ -24,7 +24,9 @@ import {
 	Pet,
 	attackedOn,
 	blockSlot,
+	combatant,
 	combatantFacing,
+	enragedAgainst,
 	fightsInOn,
 	fightsOutOn,
 	ownStats,
@@ -42,7 +44,7 @@ import {
 	StakeLevel,
 	allowsNode,
 	attackHoldMask,
-	attackable,
+	attackableAs,
 	attacksOn,
 	legalEconomy,
 	legalNodes,
@@ -266,13 +268,13 @@ export function economyMask(this around: Surroundings, market: MarketView): BitS
 	return market.offer.ok ? listable.incl(EconomyAction.BuyItem) : listable;
 }
 
-export function attackMask(this around: Surroundings): AttackMask {
+export function attackMask(this around: Surroundings, own: Combatant): AttackMask {
 	const pet = around.actorPet();
 	if (!pet.alive) { return { bits: 0 }; }
 	let attacks = attackHoldMask();
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		if (slot == (around.actor as int32)) { continue; }
-		attacks = attacks.attacksOn(pet, around.defenderAt(slot), around.epoch);
+		attacks = attacks.attacksOn(pet, own, around.defenderAt(slot), around.epoch);
 	}
 	return attacks;
 }
@@ -332,6 +334,7 @@ export function writeSelf(
 	put(features, selfSlot(offset, SelfFeature.SmallMealCost), moneyFeature(meal));
 	put(features, selfSlot(offset, SelfFeature.LivingMates), around.livingMates() * 14);
 	put(features, selfSlot(offset, SelfFeature.PantryHearts), pet.pantry.storedHearts() * 4);
+	const own = stats.asCombatant(pet.hearts as int32);
 	let richest = 0;
 	let threat = 0;
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
@@ -342,8 +345,10 @@ export function writeSelf(
 			richest = Math.max(richest, moneyFeature(target.harvest));
 		}
 		if (!mate.alive) { continue; }
-		if (mate.attackable(pet, epoch).ok) {
-			const odds = mate.combatantFacing(pet).winChanceFromTable(pet.combatantFacing(mate));
+		const rival = mate.combatant();
+		if (mate.attackableAs(rival, pet, epoch).ok) {
+			const facing = pet.enragedAgainst(own, mate);
+			const odds = mate.enragedAgainst(rival, pet).winChanceFromTable(facing);
 			threat = Math.max(threat, odds);
 		}
 	}
@@ -436,6 +441,7 @@ export function writeNodes(this around: Surroundings, features: Span<int32>, off
 export function writeTarget(
 	this around: Surroundings,
 	slot: int32,
+	own: Combatant,
 	features: Span<int32>,
 	row: int32,
 ): void {
@@ -460,10 +466,10 @@ export function writeTarget(
 		targetSlot(row, TargetFeature.Grudge),
 		flag(robber.ok && robber.value == target.blockSlot()),
 	);
-	const stakeCap = pet.attackable(target, epoch);
+	const stakeCap = pet.attackableAs(own, target, epoch);
 	if (!stakeCap.ok) { return; }
 	const defender = target.combatantFacing(pet);
-	const attacker = pet.combatantFacing(target);
+	const attacker = pet.enragedAgainst(own, target);
 	const winChance = attacker.winChanceFromTable(defender);
 	put(features, targetSlot(row, TargetFeature.WinChance), winChance * FEATURE_ONE / BPS);
 	for (let ordinal = 0; ordinal < STAKE_LEVELS; ordinal++) {
@@ -489,8 +495,9 @@ export function writeTargetHold(features: Span<int32>, row: int32): void {
 }
 
 export function writeTargets(this around: Surroundings, features: Span<int32>, offset: int32): void {
+	const own = around.actorPet().combatant();
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		around.writeTarget(slot, features, offset + slot * TARGET_FEATURES);
+		around.writeTarget(slot, own, features, offset + slot * TARGET_FEATURES);
 	}
 	writeTargetHold(features, offset + BLOCK_SLOTS * TARGET_FEATURES);
 }

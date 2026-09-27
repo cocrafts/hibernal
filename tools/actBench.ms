@@ -39,6 +39,7 @@ import {
 	attackHoldMask,
 	attackLogits,
 	attackMask,
+	combatant,
 	attackSelfInput,
 	boughtListing,
 	built,
@@ -289,21 +290,23 @@ function wantsSlot(mask: AttackMask, slot: int32): boolean {
 }
 
 export function targetRows(around: Surroundings): int32 {
-	const mask = around.attackMask();
+	const own = around.actorPet().combatant();
+	const mask = around.attackMask(own);
 	if (mask.bits == attackHoldMask().bits) { return 0; }
 	let row: int32[13] = [];
 	let rows = 0;
 	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
 		if (!wantsSlot(mask, slot)) { continue; }
 		for (let position = 0; position < TARGET_FEATURES; position++) { row[position] = 0; }
-		around.writeTarget(slot, row, 0);
+		around.writeTarget(slot, own, row, 0);
 		rows += 1;
 	}
 	return rows;
 }
 
 export function attackChoice(policy: Span<uint8>, around: Surroundings, self: Span<int32>): int32 {
-	const mask = around.attackMask();
+	const own = around.actorPet().combatant();
+	const mask = around.attackMask(own);
 	if (mask.bits == attackHoldMask().bits) { return ATTACK_HOLD; }
 	let input: int32[25] = [];
 	let hidden: int32[32] = [];
@@ -321,7 +324,7 @@ export function attackChoice(policy: Span<uint8>, around: Surroundings, self: Sp
 		if (slot == BLOCK_SLOTS) {
 			writeTargetHold(input, ATTACK_SELF_INPUTS);
 		} else {
-			around.writeTarget(slot, input, ATTACK_SELF_INPUTS);
+			around.writeTarget(slot, own, input, ATTACK_SELF_INPUTS);
 		}
 		attackLogits(policy, input, hidden, narrow, out);
 		if (slot == BLOCK_SLOTS) {

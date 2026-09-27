@@ -1,6 +1,6 @@
 import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
-import { REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
+import { REWARD_WEIGHT_OFFSET, Combatant, Mod, Region, Stats, aged } from "./stats";
 import { revived } from "./owner";
 import {
 	TREE_NODES,
@@ -359,6 +359,15 @@ export function attackable(
 	defender: Pet,
 	epoch: uint64,
 ): Result<uint64, AttackError> {
+	return attacker.attackableAs(attacker.combatant(), defender, epoch);
+}
+
+export function attackableAs(
+	this attacker: Pet,
+	own: Combatant,
+	defender: Pet,
+	epoch: uint64,
+): Result<uint64, AttackError> {
 	if (!attacker.alive) { return Result.err(AttackError.Dead); }
 	if (!defender.alive) { return Result.err(AttackError.TargetDead); }
 	if (attacker.blockId != defender.blockId || attacker.slot == defender.slot) {
@@ -369,7 +378,7 @@ export function attackable(
 	}
 	if (attacker.shieldedAt(epoch)) { return Result.err(AttackError.Shielded); }
 	if (defender.shieldedAt(epoch)) { return Result.err(AttackError.TargetShielded); }
-	const _left = try attacker.combatant().attacksLeft(attacker.fightsOutOn(epoch));
+	const _left = try own.attacksLeft(attacker.fightsOutOn(epoch));
 	if (attacker.attackedOn(defender.blockSlot(), epoch)) {
 		return Result.err(AttackError.AlreadyAttacked);
 	}
@@ -401,10 +410,11 @@ export function stakeFor(
 export function attacksOn(
 	this mask: AttackMask,
 	attacker: Pet,
+	own: Combatant,
 	defender: Pet,
 	epoch: uint64,
 ): AttackMask {
-	const capped = attacker.attackable(defender, epoch);
+	const capped = attacker.attackableAs(own, defender, epoch);
 	if (!capped.ok) { return mask; }
 	let allowed = mask;
 	for (let ordinal = 0; ordinal < STAKE_LEVELS; ordinal++) {
@@ -724,15 +734,16 @@ test "stakes scale with the level and the rules refuse illegal attacks" {
 	assert refusalOf(poor.stakeFor(duel.defender, StakeLevel.Quarter, DUEL_EPOCH)) ==
 		AttackError.Broke;
 	const halfFunded: Pet = { ...duel.attacker, burrow: 20 * HBRN_UNIT };
-	const mask = attackHoldMask().attacksOn(halfFunded, duel.defender, DUEL_EPOCH);
+	const mask = attackHoldMask().attacksOn(halfFunded, halfFunded.combatant(), duel.defender, DUEL_EPOCH);
 	assert mask.allowsChoice(ATTACK_HOLD);
 	assert mask.allowsAttack(BlockSlot.Second, StakeLevel.Quarter);
 	assert mask.allowsAttack(BlockSlot.Second, StakeLevel.Half);
 	assert !mask.allowsAttack(BlockSlot.Second, StakeLevel.ThreeQuarters);
 	assert !mask.allowsAttack(BlockSlot.Second, StakeLevel.Whole);
-	assert attackHoldMask().attacksOn(poor, duel.defender, DUEL_EPOCH).bits ==
+	assert attackHoldMask().attacksOn(poor, poor.combatant(), duel.defender, DUEL_EPOCH).bits ==
 		attackHoldMask().bits;
-	assert attackHoldMask().attacksOn(duel.attacker, duel.attacker, DUEL_EPOCH).bits ==
+	const fighter = duel.attacker.combatant();
+	assert attackHoldMask().attacksOn(duel.attacker, fighter, duel.attacker, DUEL_EPOCH).bits ==
 		attackHoldMask().bits;
 	const busy: Pet = { ...duel.defender, fightDay: DUEL_EPOCH, fightsInToday: 3 };
 	assert refusalOf(duel.attacker.stakeFor(busy, StakeLevel.Quarter, DUEL_EPOCH)) ==

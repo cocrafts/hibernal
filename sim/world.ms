@@ -58,6 +58,8 @@ import {
 	MarketView,
 	economyMask,
 	attackMask,
+	actorPet,
+	combatant,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -480,7 +482,8 @@ export function marketViewOf(this world: World, index: int32): MarketView {
 }
 
 export function attackMaskFor(this world: World, index: int32): AttackMask {
-	return world.surroundingsOf(index).attackMask();
+	const around = world.surroundingsOf(index);
+	return around.attackMask(around.actorPet().combatant());
 }
 
 export function hasListing(this world: World, index: int32): boolean {
