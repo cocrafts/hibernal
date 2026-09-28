@@ -14,6 +14,7 @@ import {
 	Food,
 	Persona,
 	PersonaKind,
+	Skip,
 	EconomyAction,
 	StakeLevel,
 	CLUSTERS,
@@ -39,6 +40,11 @@ import {
 	isEmpty,
 	score,
 	FAIR_SCORE_BPS,
+	defeatHearts,
+	guardedBite,
+	damageGuardBps,
+	Pet,
+	Stats,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -57,6 +63,7 @@ import {
 } from "./world";
 
 export const TEACHER_ODDS_RUNS: int32 = 64;
+export const TEACHER_GEAR_SLOTS: int32 = 1023;
 export const REVENGE_WIN_CHANCE_BPS: int32 = 4000;
 export const NEVER_RANK: int32 = 1000;
 
@@ -89,34 +96,41 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 	if (masks.economy.has(EconomyAction.Bank)) { return EconomyAction.Bank; }
 	const level = pet.level as int32;
 	const starving = persona.hungry(hearts, pet.maxHearts as int32) && pet.pantry.stored() == 0;
-	const shortOfLarge = pet.burrow < foodCost(Food.Large, level);
+	const shortOfLarge = pet.wallet() < foodCost(Food.Large, level);
 	const turnLeft = world.round < ACTS_PER_EPOCH - 1;
 	if (starving && shortOfLarge && turnLeft && masks.economy.has(EconomyAction.SellItem)) {
 		return EconomyAction.SellItem;
 	}
-	const purchase = persona.pickPurchase(
+	const fromWallet = persona.pickPurchase(
 		hearts,
 		pet.maxHearts as int32,
 		pet.pantry,
-		pet.burrow,
+		pet.wallet(),
 		pet.level as int32,
 	);
+	const sellable = pet.gear.weakestItemSlot();
+	const spareGear = sellable.ok ? pet.gear.at(sellable.value).sellPrice() : 0;
+	const broke = !fromWallet.ok && fromWallet.error == Skip.Broke;
+	const purchase = broke
+		? persona.pickPurchase(hearts, pet.maxHearts as int32, pet.pantry, pet.wallet() + spareGear, pet.level as int32)
+		: fromWallet;
 	if (purchase.ok && masks.economy.has(buyAction(purchase.value))) {
 		return buyAction(purchase.value);
 	}
-	const spare = pet.burrow * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
+	const spare = pet.wallet() * ((BPS - persona.reserveBps) as uint64) / (BPS as uint64);
 	const reserve = foodReserve(level, pet.ownStats().hungerPerDay());
+	const gear = ((TEACHER_GEAR_SLOTS >> (index % BLOCK_SLOTS)) & 1) == 1;
 	const listing = world.bestListingFor(index);
-	if (listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
+	if (gear && listing.ok && masks.economy.has(EconomyAction.BuyItem)) {
 		const asked = world.market[listing.value].price;
-		if (pet.burrow >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
+		if (pet.wallet() >= asked + reserve && asked <= spare) { return EconomyAction.BuyItem; }
 	}
 	const price = mintPrice(level);
 	const weakest = pet.gear.at(pet.gear.weakestSlot());
 	const worn = (weakest.wear as int32) >= ITEM_REPLACE_WEAR && weakest.score() < FAIR_SCORE_BPS;
 	const due = weakest.isEmpty() || worn;
-	const affordable = pet.burrow >= price + reserve && price <= spare;
-	if (due && affordable && masks.economy.has(EconomyAction.Mint)) {
+	const affordable = pet.wallet() >= price + reserve && price <= spare;
+	if (gear && due && affordable && masks.economy.has(EconomyAction.Mint)) {
 		return EconomyAction.Mint;
 	}
 	if (masks.economy.has(EconomyAction.ListItem)) { return EconomyAction.ListItem; }
@@ -206,6 +220,8 @@ export function teachAttack(this world: World, index: int32, masks: Masks): int3
 	const persona = Persona.of(kind);
 	const attacker = pet.combatant();
 	if (!attacker.attacksLeft(pet.fightsOutOn(world.epoch)).ok) { return ATTACK_HOLD; }
+	const defeat = guardedBite(defeatHearts(pet.maxHearts as int32), pet.gear.damageGuardBps());
+	if ((pet.hearts as int32) <= defeat) { return ATTACK_HOLD; }
 	if (kind == PersonaKind.Vengeful) {
 		const revenge = world.revengeOn(index, masks);
 		if (revenge != ATTACK_HOLD) { return revenge; }
@@ -370,4 +386,31 @@ test "a short episode is legal, deterministic and has fights" {
 	for (let index = 0; index < first.pets.length; index++) {
 		assert first.pets[index] == second.pets[index];
 	}
+}
+
+function treeBonusesHold(pet: Pet): boolean {
+	const built = Stats.built(pet.tree, pet.level as int32, pet.talent());
+	return pet.foodBps == built.foodBps &&
+		pet.experienceBps == built.experienceBps &&
+		pet.lootBps == built.lootBps &&
+		pet.biteGuardBps == built.biteGuardBps &&
+		pet.mods == built.mods;
+}
+
+test "the tree bonuses a pet stores match its tree through lives and heirs" {
+	let world = World.staggered(1, 11);
+	for (let day = 1; day <= 110; day++) {
+		world = world.beginEpoch(day as uint64);
+		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				world = world.act(world.actorAt(turn));
+			}
+		}
+		world = world.endEpoch();
+		for (const pet of world.pets) {
+			assert treeBonusesHold(pet);
+		}
+	}
+	assert world.stats.heirs > 0;
 }

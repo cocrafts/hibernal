@@ -1,8 +1,10 @@
+import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
 import { Pantry, mealHearts } from "./pantry";
 import { Tree } from "./tree";
+import { noMods } from "./stats";
 import { TalentKind } from "./talent";
 import { Gear, ItemSkill, hasSkill, spentSkill } from "./items";
 
@@ -15,13 +17,14 @@ export const PURCHASE_BONDING: int32 = 15;
 export const OWNER_FOOD_PER_DAY: int32 = 1;
 export const REFUSAL_BONDING: int32 = -40;
 export const GIFT_BONDING: int32 = 60;
-export const GIFT_SHARE_BPS: int32 = 100;
-export const GIFT_CAP: uint64 = 500 * HBRN_UNIT;
+export const GIFT_SHARE_BPS: int32 = 500;
 export const GIFT_RESERVE_DAYS: uint64 = 3;
 export const GROWTH_STEP_BPS: int32 = 500;
 export const GROWTH_STEPS_MAX: int32 = 3;
 export const INSURANCE_REVIVE_BPS: int32 = 3000;
 export const INSURANCE_BURN_PERCENT: uint64 = 50;
+export const OWNER_BANK_PERCENT: uint64 = 50;
+export const OWNER_BANK_COOLDOWN_SECONDS: uint64 = 8 * 3600;
 
 export enum OwnerError {
 	Dead,
@@ -31,6 +34,8 @@ export enum OwnerError {
 	TalkedOut,
 	Insured,
 	NoSuchTier,
+	EmptyHarvest,
+	CoolingDown,
 }
 
 export function bondedBy(this pet: Pet, amount: int32): Pet {
@@ -49,6 +54,21 @@ export function ownerFed(this pet: Pet, food: Food): Result<Pet, OwnerError> {
 	const hearts = Math.min((pet.hearts as int32) + restored, pet.maxHearts as int32);
 	const fed: Pet = { ...pet, hearts: hearts as uint8, ownerFedToday: pet.ownerFedToday + 1 };
 	return Result.ok(fed.bondedBy(FEED_BONDING));
+}
+
+export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError> {
+	if (!pet.alive) { return Result.err(OwnerError.Dead); }
+	if (pet.harvest == 0) { return Result.err(OwnerError.EmptyHarvest); }
+	if (now < pet.ownerBankedAt + OWNER_BANK_COOLDOWN_SECONDS) {
+		return Result.err(OwnerError.CoolingDown);
+	}
+	const moved = pet.harvest * OWNER_BANK_PERCENT / 100;
+	return Result.ok({
+		...pet,
+		harvest: pet.harvest - moved,
+		burrow: pet.burrow + moved,
+		ownerBankedAt: now,
+	});
 }
 
 export function talkedTo(this pet: Pet): Result<Pet, OwnerError> {
@@ -115,12 +135,12 @@ export function foodReserve(level: int32, hungerPerDay: int32): uint64 {
 	return perDay * GIFT_RESERVE_DAYS;
 }
 
-export function giftFor(this pet: Pet, reserve: uint64): uint64 {
+export function giftFor(this pet: Pet, reserve: uint64, income: uint64): uint64 {
 	const bonding = pet.bonding as int32;
 	if (bonding < GIFT_BONDING || pet.burrow <= reserve) { return 0; }
 	const shareBps = GIFT_SHARE_BPS * (bonding - GIFT_BONDING) / (BONDING_MAX - GIFT_BONDING);
-	const share = pet.burrow * (shareBps as uint64) / (BPS as uint64);
-	return Math.min(Math.min(share, GIFT_CAP), pet.burrow - reserve);
+	const share = income * (shareBps as uint64) / (BPS as uint64);
+	return Math.min(share, pet.burrow - reserve);
 }
 
 test "bonding moves with owner care and stays inside its range" {
@@ -206,18 +226,35 @@ test "insurance revives once, burns half the wallet and leaves a scar" {
 	assert !gone.alive;
 }
 
-test "a devoted pet gifts a capped share and keeps its food reserve" {
+test "a devoted pet gifts a share of the day's income and keeps its food reserve" {
 	const reserve = foodReserve(20, 4);
 	assert reserve == foodCost(Food.Large, 20) * 4 / 10 * GIFT_RESERVE_DAYS;
+	const income = 1500 * HBRN_UNIT;
 	const devoted: Pet = { ...testPet(), bonding: 127, burrow: 100000 * HBRN_UNIT };
-	assert devoted.giftFor(reserve) == GIFT_CAP;
-	const modest: Pet = { ...devoted, burrow: 2000 * HBRN_UNIT };
-	const share = 2000 * HBRN_UNIT * (GIFT_SHARE_BPS as uint64) / (BPS as uint64);
-	assert modest.giftFor(reserve) == share;
+	assert devoted.giftFor(reserve, income) == income * (GIFT_SHARE_BPS as uint64) / (BPS as uint64);
+	const lean: Pet = { ...devoted, burrow: reserve + HBRN_UNIT };
+	assert lean.giftFor(reserve, income) == HBRN_UNIT;
 	const poor: Pet = { ...devoted, burrow: reserve };
-	assert poor.giftFor(reserve) == 0;
+	assert poor.giftFor(reserve, income) == 0;
 	const cool: Pet = { ...devoted, bonding: (GIFT_BONDING - 1) as int8 };
-	assert cool.giftFor(reserve) == 0;
+	assert cool.giftFor(reserve, income) == 0;
+}
+
+test "the owner banks half the harvest once per cooldown" {
+	const now: uint64 = 100 * 86400;
+	const exposed: Pet = { ...testPet(), harvest: 900, burrow: 100 };
+	const banked = exposed.ownerBanked(now);
+	assert banked.ok;
+	if (!banked.ok) { return; }
+	assert banked.value.harvest == 450 && banked.value.burrow == 550;
+	const refilled: Pet = { ...banked.value, harvest: 900 };
+	const early = refilled.ownerBanked(now + OWNER_BANK_COOLDOWN_SECONDS - 1);
+	assert !early.ok;
+	if (!early.ok) { assert early.error == OwnerError.CoolingDown; }
+	assert refilled.ownerBanked(now + OWNER_BANK_COOLDOWN_SECONDS).ok;
+	const empty = testPet().ownerBanked(now);
+	assert !empty.ok;
+	if (!empty.ok) { assert empty.error == OwnerError.EmptyHarvest; }
 }
 
 function testPet(): Pet {
@@ -235,6 +272,11 @@ function testPet(): Pet {
 		pointsUnspent: 0,
 		xp: 0,
 		tree: Tree.empty(),
+		foodBps: 0,
+		experienceBps: 0,
+		lootBps: 0,
+		biteGuardBps: 0,
+		mods: noMods(),
 		harvest: 0,
 		burrow: 0,
 		rewardSnapshot: 0,
@@ -259,6 +301,7 @@ function testPet(): Pet {
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		ownerBankedAt: 0,
 		gear: Gear.bare(),
 		grudgeSlot: 0,
 		rage: 0,

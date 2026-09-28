@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { Region } from "./stats";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
@@ -8,6 +9,9 @@ import {
 	Item,
 	ItemSkill,
 	ITEM_BONUS_PERCENT,
+	ITEM_WEAR_MAX,
+	gradeBonusBps,
+	wornBy,
 	minted,
 	mintPrice,
 	sellPrice,
@@ -62,8 +66,9 @@ export function usefulness(this item: Item, focus: TalentKind): int32 {
 	return item.stat == (focus as uint8) ? item.score() : 0;
 }
 
-export function listPrice(this item: Item, level: int32): uint64 {
-	return mintPrice(level) * (item.score() as uint64) / (FAIR_SCORE_BPS as uint64);
+export function listPrice(this item: Item): uint64 {
+	const price = mintPrice(item.level as int32);
+	return price * (item.score() as uint64) / (FAIR_SCORE_BPS as uint64);
 }
 
 export function spareSlot(this gear: Gear, focus: TalentKind): Result<GearSlot, MarketError> {
@@ -113,7 +118,7 @@ export function listedItem(
 		global: global.withWorkPower(pet.stats().rewardWeight(), bare.stats().rewardWeight()),
 		listing: {
 			item: item,
-			price: item.listPrice(pet.level as int32),
+			price: item.listPrice(),
 			seller: seller,
 			sellerBorn: pet.bornEpoch,
 			listedEpoch: epoch,
@@ -130,12 +135,13 @@ export function boughtListing(
 	if (!pet.alive) { return Result.err(MarketError.Dead); }
 	if (listing.seller == buyer) { return Result.err(MarketError.OwnListing); }
 	if (pet.listingGain(listing) <= 0) { return Result.err(MarketError.NotWanted); }
-	if (pet.burrow < listing.price) { return Result.err(MarketError.Broke); }
+	if (pet.wallet() < listing.price) { return Result.err(MarketError.Broke); }
 	const slot = pet.gear.replacedSlot(pet.focusStat());
-	const displaced = pet.gear.at(slot).sellPrice(pet.level as int32);
+	const displaced = pet.gear.at(slot).sellPrice();
+	const paid = pet.charged(listing.price);
 	const geared: Pet = {
-		...pet,
-		burrow: pet.burrow - listing.price + displaced,
+		...paid,
+		burrow: paid.burrow + displaced,
 		gear: pet.gear.with(slot, listing.item),
 	};
 	const fee = listing.price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);
@@ -170,15 +176,15 @@ export function paidFor(
 
 export function boughtBack(this seller: Pet, listing: Listing): Pet {
 	if (!listing.sellerOf(seller)) { return seller; }
-	const price = listing.item.sellPrice(seller.level as int32);
+	const price = listing.item.sellPrice();
 	return { ...seller, burrow: seller.burrow + price };
 }
 
 test "a pet lists its best item off its main stat at a price that follows the item's score" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
-	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
-	const grit = Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None);
-	const forage = Item.minted(TalentGrade.Rare, TalentKind.Forage, ItemSkill.None);
+	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1);
+	const grit = Item.minted(TalentGrade.Common, TalentKind.Grit, ItemSkill.None, 1);
+	const forage = Item.minted(TalentGrade.Rare, TalentKind.Forage, ItemSkill.None, 1);
 	const worker: Pet = {
 		...newborn.pet,
 		gear: Gear.bare()
@@ -192,7 +198,8 @@ test "a pet lists its best item off its main stat at a price that follows the it
 	if (!listed.ok) { return; }
 	assert listed.value.listing.item == might;
 	assert listed.value.pet.gear.head.isEmpty();
-	assert listed.value.listing.price == mintPrice(1) * 700 / (FAIR_SCORE_BPS as uint64);
+	const epic = gradeBonusBps(TalentGrade.Epic) as uint64;
+	assert listed.value.listing.price == mintPrice(1) * epic / (FAIR_SCORE_BPS as uint64);
 	assert listed.value.listing.listedEpoch == 9 && !listed.value.listing.expiredAt(11);
 	assert listed.value.listing.expiredAt(12);
 	const focused: Pet = { ...worker, gear: Gear.bare().with(GearSlot.Hands, forage) };
@@ -201,11 +208,21 @@ test "a pet lists its best item off its main stat at a price that follows the it
 	if (!nothing.ok) { assert nothing.error == MarketError.NoSpareItem; }
 }
 
+test "an item bought on the market never sells back to the system for more than it cost" {
+	for (let ordinal = 0; ordinal <= (TalentGrade.Mythic as int32); ordinal++) {
+		const fresh = Item.minted(ordinal as TalentGrade, TalentKind.Forage, ItemSkill.None, 1);
+		for (let days = 0; days < ITEM_WEAR_MAX; days += 10) {
+			const item = fresh.wornBy(days);
+			assert item.listPrice() >= item.sellPrice();
+		}
+	}
+}
+
 test "a buyer takes an item on its main stat into its least useful slot and the seller is paid" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
-	const rare = Item.minted(TalentGrade.Rare, TalentKind.Forage, ItemSkill.None);
-	const common = Item.minted(TalentGrade.Common, TalentKind.Forage, ItemSkill.None);
-	const legendary = Item.minted(TalentGrade.Legendary, TalentKind.Might, ItemSkill.None);
+	const rare = Item.minted(TalentGrade.Rare, TalentKind.Forage, ItemSkill.None, 1);
+	const common = Item.minted(TalentGrade.Common, TalentKind.Forage, ItemSkill.None, 1);
+	const legendary = Item.minted(TalentGrade.Legendary, TalentKind.Might, ItemSkill.None, 1);
 	const worker: Pet = {
 		...newborn.pet,
 		burrow: 5000 * HBRN_UNIT,
@@ -216,7 +233,7 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 			.with(GearSlot.Feet, legendary),
 	};
 	assert worker.gear.replacedSlot(TalentKind.Forage) == GearSlot.Feet;
-	const epic = Item.minted(TalentGrade.Epic, TalentKind.Forage, ItemSkill.None);
+	const epic = Item.minted(TalentGrade.Epic, TalentKind.Forage, ItemSkill.None, 1);
 	const listing: Listing = {
 		item: epic,
 		price: 900 * HBRN_UNIT,
@@ -224,12 +241,12 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 		sellerBorn: 0,
 		listedEpoch: 1,
 	};
-	assert worker.listingGain(listing) == 700;
+	assert worker.listingGain(listing) == gradeBonusBps(TalentGrade.Epic);
 	const bought = worker.boughtListing(listing, 2, newborn.global);
 	assert bought.ok;
 	if (!bought.ok) { return; }
 	assert bought.value.buyer.gear.feet == epic;
-	const refund = worker.gear.feet.sellPrice(1);
+	const refund = worker.gear.feet.sellPrice();
 	assert bought.value.buyer.burrow == worker.burrow - listing.price + refund;
 	const fee = listing.price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);
 	assert bought.value.proceeds == listing.price - fee;
@@ -239,7 +256,7 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 	const poor: Pet = { ...worker, burrow: 1 };
 	const broke = poor.boughtListing(listing, 2, newborn.global);
 	if (!broke.ok) { assert broke.error == MarketError.Broke; }
-	const grit = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None);
+	const grit = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None, 1);
 	const offStat: Listing = { ...listing, item: grit };
 	const unwanted = worker.boughtListing(offStat, 2, newborn.global);
 	if (!unwanted.ok) { assert unwanted.error == MarketError.NotWanted; }
@@ -250,5 +267,5 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 	const orphaned = heir.paidFor(listing, 7, newborn.global);
 	assert orphaned.pet.burrow == 10;
 	assert orphaned.global.recycledPending == newborn.global.recycledPending + 7;
-	assert seller.boughtBack(listing).burrow == 10 + epic.sellPrice(1);
+	assert seller.boughtBack(listing).burrow == 10 + epic.sellPrice();
 }

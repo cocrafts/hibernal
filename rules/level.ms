@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { HBRN_UNIT } from "./units";
 import { Pet } from "./layout";
 

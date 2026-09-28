@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import {
 	BASE_STAT,
@@ -55,11 +56,13 @@ export const HEIR_POINTS_CAP: int32 = 5;
 export const HEIRLOOM_SLOTS: int32 = 2;
 export const HUNGER_BPS: int32 = 1000;
 export const REWARD_FLOOR_SLOTS: uint32 = 500;
-export const BOT_WEIGHT: uint64 = 8649;
+export const BOT_WORK_POWER: uint64 = 53;
+export const BOT_WEIGHT: uint64 = (BOT_WORK_POWER + REWARD_WEIGHT_OFFSET) * (BOT_WORK_POWER + REWARD_WEIGHT_OFFSET);
 export const MIGHT_APPETITE_BPS: int32 = 50;
 export const FORAGE_APPETITE_BPS: int32 = 30;
 export const GRIT_APPETITE_BPS: int32 = 40;
 export const MIN_APPETITE_BPS: int32 = 5000;
+export const MAX_APPETITE_BPS: int32 = 30000;
 export const BERSERKER_APPETITE_BPS: int32 = 2500;
 
 export enum TalentError {
@@ -182,6 +185,11 @@ export function born(
 		pointsUnspent: level as uint8,
 		xp: NEWBORN_XP,
 		tree: tree,
+		foodBps: stats.foodBps,
+		experienceBps: stats.experienceBps,
+		lootBps: stats.lootBps,
+		biteGuardBps: stats.biteGuardBps,
+		mods: stats.mods,
 		harvest: 0,
 		burrow: 0,
 		rewardSnapshot: settled.rewardPerWorkPower,
@@ -206,6 +214,7 @@ export function born(
 		talksToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
+		ownerBankedAt: 0,
 		gear: Gear.bare(),
 		grudgeSlot: 0,
 		rage: 0,
@@ -264,7 +273,7 @@ export function appetiteBps(this stats: Stats): int32 {
 		(stats.forage - BASE_STAT) * FORAGE_APPETITE_BPS -
 		(stats.grit - BASE_STAT) * GRIT_APPETITE_BPS +
 		(stats.mods.has(Mod.Berserker) ? BERSERKER_APPETITE_BPS : 0);
-	return Math.max(appetite, MIN_APPETITE_BPS);
+	return Math.min(Math.max(appetite, MIN_APPETITE_BPS), MAX_APPETITE_BPS);
 }
 
 export function hungerPerDay(this stats: Stats): int32 {
@@ -273,6 +282,13 @@ export function hungerPerDay(this stats: Stats): int32 {
 		(HUNGER_BPS as int64) *
 		(stats.appetiteBps() as int64);
 	return Math.max(((hunger + scale / 2) / scale) as int32, 1);
+}
+
+export function dawnHearts(this pet: Pet): int32 {
+	const hungry = (pet.hearts as int32) - pet.ownStats().hungerPerDay();
+	const floor = pet.minHearts as int32;
+	const [dawn, _left] = pet.pantry.nightMeals(hungry, floor, pet.maxHearts as int32, pet.stats().foodBps);
+	return dawn;
 }
 
 export function tickTo(
@@ -330,7 +346,8 @@ export function tickTo(
 	const risen = pet.gainXp(earned * ((BPS + stats.experienceBps) as uint32) / (BPS as uint32));
 	const faded = Stats.built(pet.tree, risen.level as int32, pet.talent())
 		.aged(vigorBps(epoch - pet.bornEpoch));
-	const income = pet.harvest + pending + growthBonus(pending, multiplierBps);
+	const newIncome = pending + growthBonus(pending, multiplierBps);
+	const income = pet.harvest + newIncome;
 	const saved = revivals > 0;
 	const harvestBurned = saved ? income * INSURANCE_BURN_PERCENT / 100 : 0;
 	const burrowBurned = saved ? pet.burrow * INSURANCE_BURN_PERCENT / 100 : 0;
@@ -356,7 +373,8 @@ export function tickTo(
 		rewardSnapshot: settled.rewardPerWorkPower,
 		lastTickEpoch: epoch,
 	};
-	const gift = newDay && alive ? fed.giftFor(foodReserve(fed.level as int32, hunger)) : 0;
+	const reserve = foodReserve(fed.level as int32, hunger);
+	const gift = newDay && alive ? fed.giftFor(reserve, newIncome) : 0;
 	const gifted: Pet = { ...fed, burrow: fed.burrow - gift, giftOwed: fed.giftOwed + gift };
 	const weighed = alive
 		? settled.withWorkPower(weight, gifted.stats().rewardWeight())
@@ -399,7 +417,7 @@ export function heirOf(
 	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, global);
 	const generation = (dead.lineageGeneration as int32) + 1;
 	const points = (hatched.pet.pointsUnspent as int32) + Math.min(generation, HEIR_POINTS_CAP);
-	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS, dead.level as int32);
+	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS);
 	const heir: Pet = {
 		...hatched.pet,
 		burrow: dead.burrow + proceeds,
@@ -469,25 +487,27 @@ test "the first tick pays the emission share and levels on work xp" {
 	assert firstTicked.pet.pointsUnspent == 3;
 }
 
-test "hunger is a share of max hearts that might and forage raise and grit lowers" {
+test "hunger is a share of max hearts that might and forage raise and grit lowers, within bounds" {
 	const pet: Stats = { ...Stats.base(), maxHearts: 40 };
 	const mighty: Stats = { ...pet, might: BASE_STAT + 100 };
 	const forager: Stats = { ...pet, forage: BASE_STAT + 100 };
 	const gritty: Stats = { ...pet, grit: BASE_STAT + 100 };
 	const stone: Stats = { ...pet, grit: BASE_STAT + 400 };
 	const tiny: Stats = { ...pet, maxHearts: 1 };
+	const titan: Stats = { ...pet, might: BASE_STAT + 900 };
 	assert pet.hungerPerDay() == 4;
 	assert mighty.hungerPerDay() == 6;
 	assert forager.hungerPerDay() == 5;
 	assert gritty.hungerPerDay() == 2;
 	assert stone.appetiteBps() == MIN_APPETITE_BPS;
+	assert titan.appetiteBps() == MAX_APPETITE_BPS && titan.hungerPerDay() == 12;
 	assert tiny.hungerPerDay() == 1;
 }
 
 test "gear makes a pet stronger without making it hungrier" {
 	const newborn = hatch(Region.Fighter, 0, GlobalConfig.genesis(0));
 	const strong: Pet = { ...newborn.pet, might: 400, maxHearts: 40 };
-	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.None);
+	const mythic = Item.minted(TalentGrade.Mythic, TalentKind.Might, ItemSkill.None, 1);
 	const armed: Pet = { ...strong, gear: Gear.bare().with(GearSlot.Head, mythic) };
 	assert armed.stats().might > strong.stats().might;
 	assert armed.stats().hungerPerDay() > armed.ownStats().hungerPerDay();
@@ -612,7 +632,7 @@ function strongForager(talent: Talent): boolean {
 	return talent.kind == TalentKind.Forage && talent.multiplierBps >= 13000;
 }
 
-test "a talent shows at level ten once, scales the growth of its stat and moves the work power" {
+test "a talent shows at level ten once, scales its whole stat and moves the work power" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
 	const young = newborn.pet.revealTalent(newborn.global, 7);
 	assert !young.ok;
@@ -627,7 +647,7 @@ test "a talent shows at level ten once, scales the growth of its stat and moves 
 	const pet = shown.value.pet;
 	const talent = Talent.rolled(seed, 0);
 	const growth = ((pet.level as int32) - 1) * LEVEL_STAT_GROWTH;
-	assert (pet.forage as int32) == 80 + growth * talent.multiplierBps / BPS;
+	assert (pet.forage as int32) == (80 + growth) * talent.multiplierBps / BPS;
 	assert pet.might == grown.pet.might;
 	const added = pet.stats().rewardWeight() - grown.pet.stats().rewardWeight();
 	assert shown.value.global.totalWorkPower == grown.global.totalWorkPower + added;

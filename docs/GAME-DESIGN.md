@@ -118,7 +118,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 | Survivor | grit | max hearts | max hearts | bite guard, notable *Thick Hide* |
 
 - Keystones: Worker|Fighter *Glass Cannon* (58), *Tycoon* (59) · Fighter|Survivor *Cannibal* (60), *Berserker* (61) · Survivor|Worker *Pacifist* (62), *Bulwark* (63). A border's pair hangs off cluster 3's notable of the first direction and cluster 2's notable of the second. Effects in `BRIEF.md` §3.9.
-- Stats are built in one order: base, start, level growth (scaled by talent), then the sum of family percentages, then keystone multipliers (`Stats.built`).
+- Stats are built in one order: base, start, level growth, then the sum of family percentages, then keystone multipliers, then the talent multiplier on its whole stat (`Stats.built`; decided 2026-09-25, before that the talent scaled only the level growth).
 - Distances: own notable 6 points from the start, an own-border keystone 9; the other directions through the gate: entry, gate, entry, fork, cluster.
 - The draft ring layout this replaces (rings 1–4, lanes by stat) is in git history of this file before 2026-09-24.
 
@@ -258,13 +258,13 @@ Goal: the world looks alive from day one, and one or two early players cannot ta
 
 | Rarity | Mint roll | Bonus |
 |---|---|---|
-| Common | 55% | +2% |
-| Rare | 30% | +4% |
-| Epic | 12% | +7% |
-| Legendary | 2.5% | +10% |
-| Mythic | 0.5% | +13% |
+| Common | 55% | +4% |
+| Rare | 30% | +8% |
+| Epic | 12% | +14% |
+| Legendary | 2.5% | +20% |
+| Mythic | 0.5% | +26% |
 
-  Full Mythic gear on one stat is +52%, which is ×2.3 income through `workPower²` (§9).
+  Bonuses doubled on 2026-09-25 so that gear pays its buyer (`BRIEF.md` §3.12); full Mythic gear on one stat is +104%.
 - **Mint**: pay `$HBRN` (price rising with level), rarity and affixes drawn from VRF in the ER. Part of the price is burned, part goes to the pot `[split Open]`.
 - **Sell back to the system**: a formula price, e.g. 50% of mint price reduced by wear; the difference is burned. Because the price is a formula, wash trading between one owner's pets cannot move it.
 - **Pet-to-pet market**: list, buy, cancel inside the ER at zero transaction fee; a fee (e.g. 5%) goes to the pot. In the sim: one market per block at a formula price, one listing per pet, buyback after 3 days (`BRIEF.md` §3.12, `rules/market.ms`).

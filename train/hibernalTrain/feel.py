@@ -18,8 +18,7 @@ FEEL_FIELDS = (
     "livingEpochs",
     "heartsSum",
     "starved",
-    "starvedUnbanked",
-    "starvedStocked",
+    "starvedFunded",
     "bitten",
     "wealth",
     "living",
@@ -85,7 +84,7 @@ def feelLine(name, counters):
         f"{ratio(total['mealHeartsSum'], total['meals']):6.2f} {ratio(total['heartsSum'], total['livingEpochs']):6.2f} "
         f"{ratio(total['robbed'], pets):6.2f} "
         f"{ratio(total['avenged'], total['robbed']) * 100:6.1f}% "
-        f"{total['starved']:3d}/{total['starvedUnbanked']}/{total['starvedStocked']:<3d} {total['bitten']:6d} {total['agedOut']:5d} "
+        f"{total['starved']:4d}/{total['starvedFunded']:<4d} {total['bitten']:6d} {total['agedOut']:5d} "
         f"{ratio(total['wealth'], total['living']):7.0f} {ratio(total['heartsBitten'], pets):6.2f} "
         f"{ratio(total['heartsLostAttacking'], pets):6.2f}"
     )

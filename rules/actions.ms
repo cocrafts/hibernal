@@ -1,7 +1,21 @@
+import * as arithmetic from "./arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
-import { REWARD_WEIGHT_OFFSET, Mod, Region, Stats, aged } from "./stats";
+import { REWARD_WEIGHT_OFFSET, Combatant, Mod, Region, Stats, aged } from "./stats";
 import { revived } from "./owner";
-import { TREE_NODES, KEYSTONE_CANNIBAL, AllocationError, Tree, nodeCost } from "./tree";
+import {
+	TREE_NODES,
+	KEYSTONE_CANNIBAL,
+	KEYSTONE_COST,
+	AllocationError,
+	Tree,
+	TreeSums,
+	allocatable,
+	finished,
+	keystoneMask,
+	nodeCost,
+	plusNode,
+	summed,
+} from "./tree";
 import { BLOCK_SLOTS, BlockSlot, Pet, GlobalConfig, FightRecord, Insurance } from "./layout";
 import { Food, Split, foodCost, stakeSplit } from "./emission";
 import {
@@ -178,16 +192,30 @@ export function buy(
 		return Result.err(EconomyError.QuotaSpent);
 	}
 	const cost = foodCost(food, pet.level as int32);
-	if (pet.burrow < cost) { return Result.err(EconomyError.Broke); }
+	const funded = pet.fundedFor(cost, foodCost(Food.Small, pet.level as int32), global);
+	if (!funded.ok) { return Result.err(funded.error); }
+	const payer = funded.value.pet;
 	return Result.ok({
 		pet: {
-			...pet,
-			burrow: pet.burrow - cost,
-			pantry: pet.pantry.adding(food, 1),
-			foodBoughtToday: pet.foodBoughtToday + 1,
+			...payer.charged(cost),
+			pantry: payer.pantry.adding(food, 1),
+			foodBoughtToday: payer.foodBoughtToday + 1,
 		},
-		global: global.withSpend(Split.ofSpend(cost)),
+		global: funded.value.global.withSpend(Split.ofSpend(cost)),
 	});
+}
+
+function fundedFor(
+	this pet: Pet,
+	cost: uint64,
+	cheapest: uint64,
+	global: GlobalConfig,
+): Result<PetAndGlobal, EconomyError> {
+	if (pet.wallet() >= cost) { return Result.ok({ pet: pet, global: global }); }
+	if (pet.wallet() >= cheapest) { return Result.err(EconomyError.Broke); }
+	const sold = pet.soldItem(global);
+	if (!sold.ok || sold.value.pet.wallet() < cost) { return Result.err(EconomyError.Broke); }
+	return sold;
 }
 
 export function eat(
@@ -214,17 +242,16 @@ export function mintItem(
 	if (!pet.alive) { return Result.err(EconomyError.Dead); }
 	const level = pet.level as int32;
 	const price = mintPrice(level);
-	if (pet.burrow < price) { return Result.err(EconomyError.Broke); }
+	if (pet.wallet() < price) { return Result.err(EconomyError.Broke); }
 	const slot = pet.gear.weakestSlot();
 	const worn = pet.gear.at(slot);
 	const grade = rolledGrade(seed);
-	const fresh = Item.minted(grade, rolledStat(seed), rolledSkill(seed, grade));
+	const fresh = Item.minted(grade, rolledStat(seed), rolledSkill(seed, grade), level);
 	const upgrade = fresh.score() > worn.score();
 	const sold = upgrade ? worn : fresh;
-	const spent = price - sold.sellPrice(level);
+	const spent = price - sold.sellPrice();
 	const geared: Pet = {
-		...pet,
-		burrow: pet.burrow - spent,
+		...pet.charged(spent),
 		gear: upgrade ? pet.gear.with(slot, fresh) : pet.gear,
 	};
 	return Result.ok({
@@ -240,7 +267,7 @@ export function soldItem(this pet: Pet, global: GlobalConfig): Result<PetAndGlob
 	const found = pet.gear.weakestItemSlot();
 	if (!found.ok) { return Result.err(EconomyError.NoGear); }
 	const slot = found.value;
-	const price = pet.gear.at(slot).sellPrice(pet.level as int32);
+	const price = pet.gear.at(slot).sellPrice();
 	const bare: Pet = {
 		...pet,
 		burrow: pet.burrow + price,
@@ -302,11 +329,20 @@ export function allocateNode(
 	id: int32,
 	global: GlobalConfig,
 ): Result<PetAndGlobal, AllocationError> {
+	return pet.allocateNodeWithSums(id, global, pet.tree.summed(pet.level as int32));
+}
+
+export function allocateNodeWithSums(
+	this pet: Pet,
+	id: int32,
+	global: GlobalConfig,
+	sums: TreeSums,
+): Result<PetAndGlobal, AllocationError> {
 	const tree = try pet.grownTree(id, global);
 	const cost = nodeCost(id);
-	const derived = Stats.built(tree, pet.level as int32, pet.talent()).aged(pet.vigor());
+	const derived = sums.plusNode(pet.tree, id).finished(tree, pet.talent()).aged(pet.vigor());
 	const grown: Pet = {
-		...pet,
+		...pet.withTreeBonuses(derived),
 		tree: tree,
 		forage: derived.forage as uint16,
 		might: derived.might as uint16,
@@ -323,15 +359,25 @@ export function allocateNode(
 
 export function legalNodes(this pet: Pet, global: GlobalConfig): NodeMask {
 	if (!pet.alive) { return { bits: 0, hold: false }; }
-	let mask = nodeHoldMask();
-	for (let id = 0; id < TREE_NODES; id++) {
-		if (pet.grownTree(id, global).ok) { mask = mask.allowingNode(id); }
-	}
-	return mask;
+	const settled = pet.lastTickEpoch == global.rewardEpoch &&
+		pet.rewardSnapshot == global.rewardPerWorkPower;
+	const points = pet.pointsUnspent as int32;
+	if (!settled || points < 1) { return nodeHoldMask(); }
+	const affordable = points >= KEYSTONE_COST ? ~(0 as uint64) : ~keystoneMask();
+	return { bits: pet.tree.allocatable(pet.startRegion()) & affordable, hold: true };
 }
 
 export function attackable(
 	this attacker: Pet,
+	defender: Pet,
+	epoch: uint64,
+): Result<uint64, AttackError> {
+	return attacker.attackableAs(attacker.combatant(), defender, epoch);
+}
+
+export function attackableAs(
+	this attacker: Pet,
+	own: Combatant,
 	defender: Pet,
 	epoch: uint64,
 ): Result<uint64, AttackError> {
@@ -345,7 +391,7 @@ export function attackable(
 	}
 	if (attacker.shieldedAt(epoch)) { return Result.err(AttackError.Shielded); }
 	if (defender.shieldedAt(epoch)) { return Result.err(AttackError.TargetShielded); }
-	const _left = try attacker.combatant().attacksLeft(attacker.fightsOutOn(epoch));
+	const _left = try own.attacksLeft(attacker.fightsOutOn(epoch));
 	if (attacker.attackedOn(defender.blockSlot(), epoch)) {
 		return Result.err(AttackError.AlreadyAttacked);
 	}
@@ -377,10 +423,11 @@ export function stakeFor(
 export function attacksOn(
 	this mask: AttackMask,
 	attacker: Pet,
+	own: Combatant,
 	defender: Pet,
 	epoch: uint64,
 ): AttackMask {
-	const capped = attacker.attackable(defender, epoch);
+	const capped = attacker.attackableAs(own, defender, epoch);
 	if (!capped.ok) { return mask; }
 	let allowed = mask;
 	for (let ordinal = 0; ordinal < STAKE_LEVELS; ordinal++) {
@@ -662,6 +709,69 @@ test "allocation needs a settled pet and points, and moves the work power" {
 	if (!unsettled.ok) { assert unsettled.error == AllocationError.Unsettled; }
 }
 
+test "a node allocated over the tree's sums grows the pet a rebuild of the grown tree grows" {
+	for (let start = 0; start < 3; start++) {
+		for (const talentKind of [TalentKind.None, TalentKind.Might]) {
+			const newborn = Pet.born(0, BlockSlot.First, start as Region, 0, GlobalConfig.genesis(0));
+			let pet: Pet = {
+				...newborn.pet,
+				level: 12,
+				pointsUnspent: 200,
+				talentKind: talentKind as uint8,
+				talentBps: talentKind == TalentKind.None ? 0 : 13500,
+			};
+			let open = pet.tree.allocatable(pet.startRegion());
+			while (open != 0) {
+				for (let id = 0; id < TREE_NODES; id++) {
+					if ((open & ((1 as uint64) << (id as uint64))) == 0) { continue; }
+					const grown = pet.allocateNode(id, newborn.global);
+					const tree = pet.grownTree(id, newborn.global);
+					assert grown.ok && tree.ok;
+					if (grown.ok && tree.ok) {
+						const rebuilt = Stats.built(tree.value, pet.level as int32, pet.talent()).aged(pet.vigor());
+						const expected: Pet = {
+							...pet.withTreeBonuses(rebuilt),
+							tree: tree.value,
+							forage: rebuilt.forage as uint16,
+							might: rebuilt.might as uint16,
+							grit: rebuilt.grit as uint16,
+							maxHearts: rebuilt.maxHearts as uint8,
+							hearts: Math.min(pet.hearts as int32, rebuilt.maxHearts) as uint8,
+							pointsUnspent: ((pet.pointsUnspent as int32) - nodeCost(id)) as uint8,
+						};
+						assert grown.value.pet == expected;
+					}
+				}
+				let next = 0;
+				while ((open & ((1 as uint64) << (next as uint64))) == 0) { next += 1; }
+				pet = { ...pet, tree: pet.tree.withNode(next) };
+				open = pet.tree.allocatable(pet.startRegion());
+			}
+		}
+	}
+}
+
+test "the legal nodes are every node the pet could grow into" {
+	const newborn = Pet.born(0, BlockSlot.First, Region.Fighter, 0, GlobalConfig.genesis(0));
+	let pet = newborn.pet;
+	for (let step = 0; step < 24; step++) {
+		for (let points = 0; points <= KEYSTONE_COST; points++) {
+			const holding: Pet = { ...pet, pointsUnspent: points as uint8 };
+			for (const global of [newborn.global, newborn.global.settle(1)]) {
+				let expected = nodeHoldMask();
+				for (let id = 0; id < TREE_NODES; id++) {
+					if (holding.grownTree(id, global).ok) { expected = expected.allowingNode(id); }
+				}
+				assert holding.legalNodes(global) == expected;
+			}
+		}
+		const open = pet.tree.allocatable(pet.startRegion());
+		let next = 0;
+		while ((open & ((1 as uint64) << (next as uint64))) == 0) { next += 1; }
+		pet = { ...pet, tree: pet.tree.withNode(next) };
+	}
+}
+
 test "stakes scale with the level and the rules refuse illegal attacks" {
 	const duel = duelOver(60 * HBRN_UNIT);
 	const quarter = duel.attacker.stakeFor(duel.defender, StakeLevel.Quarter, DUEL_EPOCH);
@@ -679,15 +789,16 @@ test "stakes scale with the level and the rules refuse illegal attacks" {
 	assert refusalOf(poor.stakeFor(duel.defender, StakeLevel.Quarter, DUEL_EPOCH)) ==
 		AttackError.Broke;
 	const halfFunded: Pet = { ...duel.attacker, burrow: 20 * HBRN_UNIT };
-	const mask = attackHoldMask().attacksOn(halfFunded, duel.defender, DUEL_EPOCH);
+	const mask = attackHoldMask().attacksOn(halfFunded, halfFunded.combatant(), duel.defender, DUEL_EPOCH);
 	assert mask.allowsChoice(ATTACK_HOLD);
 	assert mask.allowsAttack(BlockSlot.Second, StakeLevel.Quarter);
 	assert mask.allowsAttack(BlockSlot.Second, StakeLevel.Half);
 	assert !mask.allowsAttack(BlockSlot.Second, StakeLevel.ThreeQuarters);
 	assert !mask.allowsAttack(BlockSlot.Second, StakeLevel.Whole);
-	assert attackHoldMask().attacksOn(poor, duel.defender, DUEL_EPOCH).bits ==
+	assert attackHoldMask().attacksOn(poor, poor.combatant(), duel.defender, DUEL_EPOCH).bits ==
 		attackHoldMask().bits;
-	assert attackHoldMask().attacksOn(duel.attacker, duel.attacker, DUEL_EPOCH).bits ==
+	const fighter = duel.attacker.combatant();
+	assert attackHoldMask().attacksOn(duel.attacker, fighter, duel.attacker, DUEL_EPOCH).bits ==
 		attackHoldMask().bits;
 	const busy: Pet = { ...duel.defender, fightDay: DUEL_EPOCH, fightsInToday: 3 };
 	assert refusalOf(duel.attacker.stakeFor(busy, StakeLevel.Quarter, DUEL_EPOCH)) ==
@@ -768,7 +879,7 @@ test "a winning attacker bites an empty harvest" {
 test "a cannibal whose bite kills takes half of what the victim left" {
 	const duel = duelOver(0);
 	const cannibalTree = (1 as uint64) << (KEYSTONE_CANNIBAL as uint64);
-	const cannibal: Pet = { ...duel.attacker, tree: { bits: cannibalTree } };
+	const cannibal = duel.attacker.withTree({ bits: cannibalTree });
 	const frail: Pet = { ...duel.defender, hearts: 1 };
 	let kills = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
@@ -805,7 +916,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 	const duel = duelOver(0);
 	const cannibalTree = (1 as uint64) << (KEYSTONE_CANNIBAL as uint64);
-	const cannibal: Pet = { ...duel.attacker, tree: { bits: cannibalTree } };
+	const cannibal = duel.attacker.withTree({ bits: cannibalTree });
 	const frail: Pet = { ...duel.defender, hearts: 1, insurance: Insurance.Armed as uint8 };
 	let saves = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
@@ -832,7 +943,7 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 
 test "a revive charm spares a bitten pet without a burn, and a ward cuts the loot" {
 	const duel = duelOver(0);
-	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive);
+	const charm = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.Revive, 1);
 	const charmed: Pet = {
 		...duel.defender,
 		hearts: 1,
@@ -857,7 +968,7 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 	}
 	assert saves > 0;
 	const rich = duelOver(900 * HBRN_UNIT);
-	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery);
+	const ward = Item.minted(TalentGrade.Mythic, TalentKind.Grit, ItemSkill.AntiRobbery, 1);
 	const warded: Pet = {
 		...rich.defender,
 		gear: Gear.bare().with(GearSlot.Feet, ward),
@@ -908,8 +1019,8 @@ test "rage builds against a repeat robber, strengthens only that fight and ends 
 
 test "a pet sells its weakest item for cash and cannot sell bare" {
 	const duel = duelOver(0);
-	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None);
-	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None);
+	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None, 1);
+	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None, 1);
 	const geared: Pet = {
 		...duel.defender,
 		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
@@ -919,8 +1030,37 @@ test "a pet sells its weakest item for cash and cannot sell bare" {
 	if (!sold.ok) { return; }
 	assert sold.value.pet.gear.feet.isEmpty();
 	assert !sold.value.pet.gear.head.isEmpty();
-	assert sold.value.pet.burrow == geared.burrow + common.sellPrice(geared.level as int32);
+	assert sold.value.pet.burrow == geared.burrow + common.sellPrice();
 	const bare = duel.defender.soldItem(duel.global);
 	assert !bare.ok;
 	if (!bare.ok) { assert bare.error == EconomyError.NoGear; }
+}
+
+test "a pet that cannot pay for the smallest portion sells its weakest item to eat" {
+	const duel = duelOver(0);
+	const epic = Item.minted(TalentGrade.Epic, TalentKind.Grit, ItemSkill.None, 1);
+	const common = Item.minted(TalentGrade.Common, TalentKind.Might, ItemSkill.None, 1);
+	const cost = foodCost(Food.Small, duel.defender.level as int32);
+	const short: Pet = {
+		...duel.defender,
+		harvest: 0,
+		burrow: cost - 1,
+		pantry: Pantry.unstocked(),
+		foodBoughtToday: 0,
+		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
+	};
+	const bought = short.buy(Food.Small, duel.global);
+	assert bought.ok;
+	if (!bought.ok) { return; }
+	assert bought.value.pet.gear.feet.isEmpty() && !bought.value.pet.gear.head.isEmpty();
+	assert bought.value.pet.burrow == cost - 1 + common.sellPrice() - cost;
+	assert bought.value.pet.pantry.portions(Food.Small) == 1;
+	const lean: Pet = { ...short, burrow: cost };
+	const bigger = lean.buy(Food.Medium, duel.global);
+	assert !bigger.ok;
+	if (!bigger.ok) { assert bigger.error == EconomyError.Broke; }
+	const bare: Pet = { ...short, gear: Gear.bare() };
+	const broke = bare.buy(Food.Small, duel.global);
+	assert !broke.ok;
+	if (!broke.ok) { assert broke.error == EconomyError.Broke; }
 }

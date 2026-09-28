@@ -1,5 +1,6 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
-import { Region, Stats, Combatant } from "./stats";
+import { Mod, Region, Stats, Combatant } from "./stats";
 import { Tree, built } from "./tree";
 import { Outcome, RAGE_STEP_BPS, RAGE_MAX, RAGE_DAYS } from "./fight";
 import { isShielded } from "./emission";
@@ -44,6 +45,11 @@ export struct Pet {
 	pointsUnspent: uint8;
 	xp: uint32;
 	tree: Tree;
+	foodBps: int32;
+	experienceBps: int32;
+	lootBps: int32;
+	biteGuardBps: int32;
+	mods: BitSet<Mod>;
 	harvest: uint64;
 	burrow: uint64;
 	rewardSnapshot: uint64;
@@ -68,6 +74,7 @@ export struct Pet {
 	talksToday: uint8;
 	ownerFedToday: uint8;
 	giftOwed: uint64;
+	ownerBankedAt: uint64;
 	gear: Gear;
 	grudgeSlot: uint8;
 	rage: uint8;
@@ -101,12 +108,33 @@ export struct FightRecord {
 
 export function ownStats(this pet: Pet): Stats {
 	return {
-		...Stats.built(pet.tree, pet.level as int32, pet.talent()),
+		...Stats.base(),
 		forage: pet.forage as int32,
 		might: pet.might as int32,
 		grit: pet.grit as int32,
 		maxHearts: pet.maxHearts as int32,
+		foodBps: pet.foodBps,
+		experienceBps: pet.experienceBps,
+		lootBps: pet.lootBps,
+		biteGuardBps: pet.biteGuardBps,
+		mods: pet.mods,
 	};
+}
+
+export function withTreeBonuses(this pet: Pet, built: Stats): Pet {
+	return {
+		...pet,
+		foodBps: built.foodBps,
+		experienceBps: built.experienceBps,
+		lootBps: built.lootBps,
+		biteGuardBps: built.biteGuardBps,
+		mods: built.mods,
+	};
+}
+
+export function withTree(this pet: Pet, tree: Tree): Pet {
+	const planted: Pet = { ...pet, tree: tree };
+	return planted.withTreeBonuses(Stats.built(tree, pet.level as int32, pet.talent()));
 }
 
 export function stats(this pet: Pet): Stats {
@@ -135,10 +163,13 @@ export function combatant(this pet: Pet): Combatant {
 }
 
 export function combatantFacing(this pet: Pet, opponent: Pet): Combatant {
-	const base = pet.combatant();
-	if (pet.rage == 0 || pet.grudgeSlot != opponent.slot) { return base; }
+	return pet.enragedAgainst(pet.combatant(), opponent);
+}
+
+export function enragedAgainst(this pet: Pet, own: Combatant, opponent: Pet): Combatant {
+	if (pet.rage == 0 || pet.grudgeSlot != opponent.slot) { return own; }
 	const bps = BPS + (pet.rage as int32) * RAGE_STEP_BPS;
-	return { ...base, might: base.might * bps / BPS, grit: base.grit * bps / BPS };
+	return { ...own, might: own.might * bps / BPS, grit: own.grit * bps / BPS };
 }
 
 export function robbedBy(this pet: Pet, robber: Pet, epoch: uint64): Pet {
@@ -156,6 +187,15 @@ export function rageAt(this pet: Pet, epoch: uint64): uint8 {
 export function calmedAgainst(this pet: Pet, foe: Pet): Pet {
 	if (pet.grudgeSlot != foe.slot) { return pet; }
 	return { ...pet, rage: 0 };
+}
+
+export function wallet(this pet: Pet): uint64 {
+	return pet.harvest + pet.burrow;
+}
+
+export function charged(this pet: Pet, amount: uint64): Pet {
+	const fromHarvest = Math.min(pet.harvest, amount);
+	return { ...pet, harvest: pet.harvest - fromHarvest, burrow: pet.burrow - (amount - fromHarvest) };
 }
 
 export function startRegion(this pet: Pet): Region {

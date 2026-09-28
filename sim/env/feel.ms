@@ -45,8 +45,7 @@ export enum FeelCounter {
 	LivingEpochs,
 	HeartsSum,
 	Starved,
-	StarvedUnbanked,
-	StarvedStocked,
+	StarvedFunded,
 	Bitten,
 	Wealth,
 	Living,
@@ -97,9 +96,8 @@ export enum Milestone {
 
 export enum Larder {
 	Dead,
-	Empty,
-	Unbanked,
-	Stocked,
+	Broke,
+	Funded,
 }
 
 export struct Grudge {
@@ -168,8 +166,7 @@ function tally(this feel: Feel, key: int32, counter: FeelCounter, amount: int32)
 export function larderOf(this pet: Pet): Larder {
 	if (!pet.alive) { return Larder.Dead; }
 	const meal = foodCost(Food.Small, pet.level as int32);
-	if (pet.pantry.stored() > 0 || pet.burrow >= meal) { return Larder.Stocked; }
-	return pet.harvest + pet.burrow >= meal ? Larder.Unbanked : Larder.Empty;
+	return pet.wallet() >= meal ? Larder.Funded : Larder.Broke;
 }
 
 export function momentOf(
@@ -194,16 +191,18 @@ export function momentOf(
 }
 
 function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, after: Pet): void {
-	if (action == (EconomyAction.SellItem as int32) && after.burrow > actor.burrow) {
+	if (action == (EconomyAction.SellItem as int32) && after.wallet() > actor.wallet()) {
 		feel.tally(key, FeelCounter.Sells, 1);
 	}
-	if (action == (EconomyAction.Mint as int32) && after.burrow < actor.burrow) {
+	if (action == (EconomyAction.Mint as int32) && after.wallet() < actor.wallet()) {
 		feel.tally(key, FeelCounter.Mints, 1);
-		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
+		const spent = ((actor.wallet() - after.wallet()) / HBRN_UNIT) as int32;
 		feel.tally(key, FeelCounter.MintSpent, spent);
 	}
 	if (after.pantry.stored() > actor.pantry.stored()) {
-		const spent = ((actor.burrow - after.burrow) / HBRN_UNIT) as int32;
+		const before = actor.wallet() + actor.gear.resaleValue();
+		const spent = ((before - after.wallet() - after.gear.resaleValue()) / HBRN_UNIT) as int32;
+		if (after.gear.resaleValue() < actor.gear.resaleValue()) { feel.tally(key, FeelCounter.Sells, 1); }
 		feel.tally(key, FeelCounter.FoodSpent, spent);
 		if ((actor.level as int32) >= LEVEL_CAP) {
 			feel.tally(key, FeelCounter.FoodSpentAtCap, spent);
@@ -318,7 +317,7 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 		feel.tally(key, FeelCounter.FightsInSum, fightsIn);
 		if (fightsIn >= INCOMING_CAP) { feel.tally(key, FeelCounter.FightsInCapDays, 1); }
 		feel.noteMilestones(key, pet, world.epoch);
-		harvests[key] = pet.harvest;
+		harvests[key] = pet.harvest + world.ownerLedgers[index].banked;
 	}
 }
 
@@ -359,8 +358,9 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 			grudges[key] = { robber: BlockSlot.First, epoch: 0 };
 		}
 		const sameLife = feel.lifeBorns[key] == pet.bornEpoch + 1;
-		if (pet.alive && sameLife && pet.harvest >= feel.harvests[key]) {
-			const earned = ((pet.harvest - feel.harvests[key]) / HBRN_UNIT) as int32;
+		const reached = pet.harvest + world.ownerLedgers[index].banked;
+		if (pet.alive && sameLife && reached >= feel.harvests[key]) {
+			const earned = ((reached - feel.harvests[key]) / HBRN_UNIT) as int32;
 			feel.tally(key, FeelCounter.Earned, earned);
 			if ((pet.level as int32) >= LEVEL_CAP) {
 				feel.tally(key, FeelCounter.EarnedAtCap, earned);
@@ -373,8 +373,7 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 			continue;
 		}
 		feel.tally(key, FeelCounter.Starved, 1);
-		if (larder == Larder.Unbanked) { feel.tally(key, FeelCounter.StarvedUnbanked, 1); }
-		if (larder == Larder.Stocked) { feel.tally(key, FeelCounter.StarvedStocked, 1); }
+		if (larder == Larder.Funded) { feel.tally(key, FeelCounter.StarvedFunded, 1); }
 	}
 }
 
@@ -477,16 +476,16 @@ test "an attack under forty percent is reckless and under every persona" {
 	assert feel.tallied(2, FeelCounter.StakeShareSum) == 5000;
 }
 
-test "a starved pet is sorted by what it could still have eaten" {
+test "a starved pet counts against its brain only if it could still buy a meal" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
 	const meal = foodCost(Food.Small, pets[0].level as int32);
-	pets[0] = { ...pets[0], harvest: 0, burrow: 0, pantry: Pantry.unstocked() };
+	pets[0] = { ...pets[0], harvest: 0, burrow: 0, pantry: Pantry.unstocked().adding(Food.Small, 1) };
 	pets[1] = { ...pets[1], harvest: meal, burrow: 0, pantry: Pantry.unstocked() };
 	pets[2] = { ...pets[2], harvest: 0, burrow: meal, pantry: Pantry.unstocked() };
-	assert pets[0].larderOf() == Larder.Empty;
-	assert pets[1].larderOf() == Larder.Unbanked;
-	assert pets[2].larderOf() == Larder.Stocked;
+	assert pets[0].larderOf() == Larder.Broke;
+	assert pets[1].larderOf() == Larder.Funded;
+	assert pets[2].larderOf() == Larder.Funded;
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.closeEpoch(0, world);
 	for (let index = 0; index < 3; index++) {
@@ -496,9 +495,9 @@ test "a starved pet is sorted by what it could still have eaten" {
 	feel.closeEpoch(0, world);
 	feel.openEpoch(0, world);
 	assert feel.tallied(0, FeelCounter.Starved) == 1;
-	assert feel.tallied(0, FeelCounter.StarvedUnbanked) == 0;
-	assert feel.tallied(1, FeelCounter.StarvedUnbanked) == 1;
-	assert feel.tallied(2, FeelCounter.StarvedStocked) == 1;
+	assert feel.tallied(0, FeelCounter.StarvedFunded) == 0;
+	assert feel.tallied(1, FeelCounter.StarvedFunded) == 1;
+	assert feel.tallied(2, FeelCounter.StarvedFunded) == 1;
 	assert feel.tallied(3, FeelCounter.Starved) == 0;
 	assert feel.tallied(3, FeelCounter.LivingEpochs) == 2;
 	assert feel.tallied(3, FeelCounter.HeartsSum) == 2 * (pets[3].hearts as int32);
