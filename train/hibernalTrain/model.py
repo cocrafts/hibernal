@@ -7,7 +7,8 @@ from torch import nn
 from .env import SELF_FEATURES
 
 POLICY_MAGIC = 0x4E524248
-POLICY_FORMAT = 5
+POLICY_FORMAT = 7
+WEIGHT_ZERO_POINT = 128
 ACTIVATION_ONE = 128.0
 ACTIVATION_MAX = 127.0
 WEIGHT_MAX = 127.0
@@ -77,7 +78,7 @@ class QuantDense(nn.Module):
 
     def toBytes(self):
         weight, bias = self.integerWeights()
-        weights = weight.detach().to(torch.int8).numpy().tobytes()
+        weights = (weight.detach() + WEIGHT_ZERO_POINT).to(torch.uint8).numpy().tobytes()
         biases = bias.detach().to(torch.int32).numpy().astype("<i4").tobytes()
         return bytes([self.shift]) + weights + biases
 

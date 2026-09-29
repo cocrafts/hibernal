@@ -156,10 +156,11 @@ export function digestLineage(): uint64 {
 		for (let ordinal = 0; ordinal <= (GearSlot.Feet as int32); ordinal++) {
 			const draw = splitmix(seed * 4 + (ordinal as uint64));
 			const grade = rolledGrade(draw);
-			const item = Item.minted(grade, rolledStat(draw), rolledSkill(draw, grade));
+			const level = ((seed % 20) as int32) + 1;
+			const item = Item.minted(grade, rolledStat(draw), rolledSkill(draw, grade), level);
 			gear = gear.with(ordinal as GearSlot, item.wornBy((draw % 90) as int32));
 		}
-		const [kept, proceeds] = gear.heirlooms(HEIRLOOM_SLOTS, ((seed % 20) as int32) + 1);
+		const [kept, proceeds] = gear.heirlooms(HEIRLOOM_SLOTS);
 		const talent = Talent.rolled(seed, lineageNudgeBps((seed % 7) as int32));
 		digest = digest.absorb(proceeds ^
 			((kept.totalBonusBps() as uint64) << 32) ^

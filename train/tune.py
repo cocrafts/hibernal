@@ -97,10 +97,10 @@ def patched(setting, knobs):
     return copy
 
 
-def measure(setting, knobs, arguments):
+def measure(setting, knobs, arguments, extra=()):
     copy = patched(setting, knobs)
     command = ["uv", "run", "--project", str(TRAIN), "python", "health.py", "--policy", arguments.policy,
-               "--worlds", str(arguments.worlds), "--seed", str(arguments.seed)]
+               "--worlds", str(arguments.worlds), "--seed", str(arguments.seed), *extra]
     finished = subprocess.run(command, cwd=copy / "train", capture_output=True, text=True)
     shutil.rmtree(copy)
     if finished.returncode != 0:

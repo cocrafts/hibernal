@@ -15,9 +15,9 @@ import {
 	Dice,
 	mixSeeds,
 	fightSeed,
-	attackHoldMask,
 	attackChoice,
 	HBRN_UNIT,
+	EPOCH_SECONDS,
 	LIFESPAN_EPOCHS,
 	INHERITANCE_TAX_PERCENT,
 	agedOut,
@@ -36,8 +36,6 @@ import {
 	settle,
 	Listing,
 	MarketError,
-	focusStat,
-	spareSlot,
 	listingGain,
 	listedItem,
 	boughtListing,
@@ -54,16 +52,25 @@ import {
 	bare,
 	with,
 	sellPrice,
+	ACTS_PER_EPOCH,
+	GrudgeError,
+	Surroundings,
+	MarketView,
+	economyMask,
+	attackMask,
+	actorPet,
+	combatant,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../rules/pantry";
 import { Gear, Item } from "../rules/items";
-import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited } from "./owner";
+import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited, openDraw, opens } from "./owner";
+
+export { ACTS_PER_EPOCH, GrudgeError } from "../rules/index";
 
 export const WORLD_BLOCKS: int32 = 20;
-export const ACTS_PER_EPOCH: int32 = 4;
 export const EPISODE_EPOCHS: int32 = 120;
 export const INITIAL_CLAIM_DAYS: int32 = 30;
 export const GRUDGE_EPOCHS: uint64 = 3;
@@ -73,11 +80,6 @@ export const NO_KEYSTONE: int32 = -1;
 export struct Grudge {
 	robber: BlockSlot;
 	epoch: uint64;
-}
-
-export enum GrudgeError {
-	None,
-	Stale,
 }
 
 export function none(this typeof Grudge): Grudge {
@@ -149,7 +151,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		const slot = index % BLOCK_SLOTS;
 		turns.push(index);
 		owners.push(ownerKindFor(seed, index));
-		ownerLedgers.push({ visits: 0, skr: 0, refusals: 0 });
+		ownerLedgers.push({ visits: 0, skr: 0, refusals: 0, banked: 0 });
 		grudges.push(Grudge.none());
 		buildTargets.push(PERSONA_BUILD);
 		const hatched = Pet.born(
@@ -324,7 +326,7 @@ export function wildsAwake(this world: World, harvest: uint64): World {
 		const tree = Tree.empty().withNode(region as int32);
 		const stats = Stats.built(tree, level, Talent.unrevealed());
 		wilds[index] = {
-			...pet,
+			...pet.withTreeBonuses(stats),
 			alive: true,
 			level: level as uint16,
 			forage: stats.forage as uint16,
@@ -332,7 +334,7 @@ export function wildsAwake(this world: World, harvest: uint64): World {
 			grit: stats.grit as uint16,
 			maxHearts: stats.maxHearts as uint8,
 			hearts: stats.maxHearts as uint8,
-			tree: Tree.empty().withNode(region as int32),
+			tree: tree,
 			harvest: harvest,
 			burrow: 0,
 			bornEpoch: world.epoch - Math.min(world.epoch, NEWBORN_EPOCHS),
@@ -374,6 +376,7 @@ export function ownersVisited(this world: World): World {
 			visits: ledger.visits + 1,
 			skr: ledger.skr + visit.skr,
 			refusals: ledger.refusals + (visit.refused ? 1 : 0),
+			banked: ledger.banked + visit.banked,
 		};
 	}
 	return world;
@@ -395,7 +398,27 @@ export function inRound(this world: World, round: int32): World {
 			turns[picked] = waiting;
 		}
 	}
-	return { ...world, round: round };
+	const shuffled: World = { ...world, round: round };
+	return round > 0 ? shuffled.ownersOpened() : shuffled;
+}
+
+export function ownersOpened(this world: World): World {
+	const pets = world.pets;
+	const ledgers = world.ownerLedgers;
+	const roundSeconds = EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64);
+	const now = world.epoch * EPOCH_SECONDS + (world.round as uint64) * roundSeconds;
+	for (let index = 0; index < pets.length; index++) {
+		const pet = pets[index];
+		if (!pet.alive) { continue; }
+		const draw = openDraw(world.seed, index, world.epoch, world.round);
+		if (!habitOf(world.owners[index]).opens(draw)) { continue; }
+		const banked = pet.ownerBanked(now);
+		if (!banked.ok) { continue; }
+		const ledger = ledgers[index];
+		ledgers[index] = { ...ledger, banked: ledger.banked + banked.value.burrow - pet.burrow };
+		pets[index] = banked.value;
+	}
+	return world;
 }
 
 export function actorAt(this world: World, turn: int32): int32 {
@@ -437,16 +460,30 @@ export function endEpoch(this world: World): World {
 	return { ...world, global: global, stats: { ...world.stats, deaths: deaths } };
 }
 
+export function surroundingsOf(this world: World, index: int32): Surroundings {
+	return {
+		pets: world.pets,
+		wilds: world.wilds,
+		base: blockStart(index),
+		actor: (index % BLOCK_SLOTS) as BlockSlot,
+		global: world.global,
+		epoch: world.epoch,
+		round: world.round,
+		robber: world.robberOf(index),
+	};
+}
+
+export function marketViewOf(this world: World, index: int32): MarketView {
+	const best = world.bestListingFor(index);
+	const offer: Result<Listing, MarketError> = best.ok
+		? Result.ok(world.market[best.value])
+		: Result.err(best.error);
+	return { listed: world.hasListing(index), offer: offer };
+}
+
 export function attackMaskFor(this world: World, index: int32): AttackMask {
-	const pet = world.pets[index];
-	if (!pet.alive) { return { bits: 0 }; }
-	const base = blockStart(index);
-	let attacks = attackHoldMask();
-	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-		if (base + slot == index) { continue; }
-		attacks = attacks.attacksOn(pet, world.defenderAt(base + slot), world.epoch);
-	}
-	return attacks;
+	const around = world.surroundingsOf(index);
+	return around.attackMask(around.actorPet().combatant());
 }
 
 export function hasListing(this world: World, index: int32): boolean {
@@ -485,13 +522,7 @@ export function bestListingFor(this world: World, index: int32): Result<int32, M
 }
 
 export function economyMaskFor(this world: World, index: int32): BitSet<EconomyAction> {
-	const pet = world.pets[index];
-	const legal = pet.legalEconomy(world.global);
-	if (!pet.alive) { return legal; }
-	const spare = pet.gear.spareSlot(pet.focusStat()).ok;
-	const listable = spare && !world.hasListing(index) ? legal.incl(EconomyAction.ListItem) : legal;
-	const wanted = world.bestListingFor(index).ok;
-	return wanted ? listable.incl(EconomyAction.BuyItem) : listable;
+	return world.surroundingsOf(index).economyMask(world.marketViewOf(index));
 }
 
 export function masksFor(this world: World, index: int32): Masks {
@@ -749,6 +780,26 @@ test "hold applies nothing and stays legal" {
 	assert after.pets[4].harvest > 0;
 }
 
+test "an owner who opens the app again waits out the 8-hour cooldown" {
+	const world = World.create(2, 5).beginEpoch(1);
+	const dawn = world.epoch * EPOCH_SECONDS;
+	const before: uint64[] = [];
+	for (const ledger of world.ownerLedgers) { before.push(ledger.banked); }
+	const later = world.inRound(1);
+	let opened = 0;
+	for (let index = 0; index < later.pets.length; index++) {
+		const moved = later.ownerLedgers[index].banked - before[index];
+		if (later.pets[index].ownerBankedAt == dawn) { assert moved == 0; }
+		if (moved > 0) { opened += 1; }
+	}
+	const noon = later.inRound(2);
+	let banked = 0;
+	for (let index = 0; index < noon.pets.length; index++) {
+		if (noon.pets[index].ownerBankedAt > dawn) { banked += 1; }
+	}
+	assert banked > opened;
+}
+
 test "an illegal action counts and changes nothing" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const before = world.pets[0];
@@ -777,7 +828,7 @@ test "a dead pet has empty masks and is buried once" {
 
 test "a listed item sells to a pet that wants it, and an unsold one is bought back" {
 	let world = World.create(1, 6).beginEpoch(1);
-	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None);
+	const might = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1);
 	world.pets[0] = { ...world.pets[0], gear: Gear.bare().with(GearSlot.Head, might) };
 	assert world.economyMaskFor(0).has(EconomyAction.ListItem);
 	world = world.applyEconomy(0, EconomyAction.ListItem);
@@ -806,7 +857,7 @@ test "a listed item sells to a pet that wants it, and an unsold one is bought ba
 	assert world.market.length == 1;
 	world = world.endEpoch().beginEpoch(1 + LISTING_DAYS);
 	assert world.market.length == 0;
-	assert world.pets[0].burrow == listedBurrow + might.sellPrice(world.pets[0].level as int32);
+	assert world.pets[0].burrow == listedBurrow + might.sellPrice();
 }
 
 test "an heir takes the slot after the grace period" {

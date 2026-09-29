@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import { Combatant, Mod, modsFromMask } from "./stats";
 import { splitmix } from "./rng";
@@ -44,13 +45,21 @@ export function expectedStrike(this striker: Combatant, target: Combatant): int3
 	return hasted * (BPS + striker.bleed * BLEED_BPS_PER_POINT) / BPS;
 }
 
+function healOf(this striker: Combatant, strike: int32): int32 {
+	return strike * striker.lifesteal * LIFESTEAL_BPS_PER_POINT / BPS;
+}
+
 export function expectedHeal(this striker: Combatant, target: Combatant): int32 {
-	return striker.expectedStrike(target) * striker.lifesteal * LIFESTEAL_BPS_PER_POINT / BPS;
+	return striker.healOf(striker.expectedStrike(target));
+}
+
+function netPressureBps(strike: int32, heal: int32, targetHp: int32): int32 {
+	const net = Math.max(strike - heal, 1);
+	return Math.max(net * BPS / targetHp, 1);
 }
 
 export function pressureBps(this striker: Combatant, target: Combatant): int32 {
-	const net = Math.max(striker.expectedStrike(target) - target.expectedHeal(striker), 1);
-	return Math.max(net * BPS / target.fightHp(), 1);
+	return netPressureBps(striker.expectedStrike(target), target.expectedHeal(striker), target.fightHp());
 }
 
 function clampInt32(value: int32, low: int32, high: int32): int32 {
@@ -58,8 +67,15 @@ function clampInt32(value: int32, low: int32, high: int32): int32 {
 }
 
 export function oddsKeyAgainst(this attacker: Combatant, defender: Combatant): OddsKey {
-	const attackerPressure = attacker.pressureBps(defender);
-	const defenderPressure = defender.pressureBps(attacker);
+	const attackerStrike = attacker.expectedStrike(defender);
+	const defenderStrike = defender.expectedStrike(attacker);
+	return keyOf(
+		netPressureBps(attackerStrike, defender.healOf(defenderStrike), defender.fightHp()),
+		netPressureBps(defenderStrike, attacker.healOf(attackerStrike), attacker.fightHp()),
+	);
+}
+
+function keyOf(attackerPressure: int32, defenderPressure: int32): OddsKey {
 	const scaled = ((attackerPressure as uint64) << 16) / (defenderPressure as uint64);
 	const ratio = log2Times32(scaled) - 16 * LOG2_ONE + ODDS_RATIO_SPAN / 2;
 	const pace = log2Times32((attackerPressure + defenderPressure) as uint64) - ODDS_PACE_FLOOR;
@@ -123,6 +139,20 @@ test "the key is centred on even pressure and clamps at the edges" {
 	const crushing = Combatant.plain(200, 200, 5).oddsKeyAgainst(Combatant.plain(1, 50, 5));
 	assert crushing.ratio == ODDS_RATIO_SPAN;
 	assert crushing.nearestColumn() == ODDS_RATIO_COLUMNS - 1;
+}
+
+test "the key reads each side's pressure, lifesteal and bleed included" {
+	for (let index = 0; index < 200; index++) {
+		const seed = splitmix((index as uint64) + 77);
+		const attacker: Combatant = { ...reachable(seed), lifesteal: ((seed >> 48) % 4) as int32 };
+		const target: Combatant = {
+			...reachable(splitmix(seed)),
+			lifesteal: ((seed >> 52) % 4) as int32,
+			bleed: ((seed >> 56) % 3) as int32,
+		};
+		const expected = keyOf(attacker.pressureBps(target), target.pressureBps(attacker));
+		assert attacker.oddsKeyAgainst(target) == expected;
+	}
 }
 
 test "the table rises with the pressure ratio and stays close to simulated odds" {

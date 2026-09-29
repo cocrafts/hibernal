@@ -1,13 +1,15 @@
+import * as arithmetic from "./arithmetic";
 import { STAKE_LEVELS, EconomyAction } from "./actions";
 import { Food } from "./emission";
 
 export const POLICY_MAGIC: int32 = 0x4e524248;
-export const POLICY_FORMAT: int32 = 5;
+export const POLICY_FORMAT: int32 = 7;
 export const POLICY_HEADER_BYTES: int32 = 16;
-export const POLICY_WIDTH: int32 = 45;
+export const WEIGHT_ZERO_POINT: int32 = 128;
+export const POLICY_WIDTH: int32 = 46;
 export const ACTIVATION_MAX: int32 = 127;
 
-export const ECONOMY_INPUTS: int32 = 45;
+export const ECONOMY_INPUTS: int32 = 46;
 export const ECONOMY_HIDDEN: int32 = 32;
 export const ECONOMY_OUTPUTS: int32 = 12;
 export const NODE_INPUTS: int32 = 30;
@@ -50,8 +52,7 @@ export function policyBytes(): int32 {
 }
 
 function signedByte(policy: Span<uint8>, position: int32): int32 {
-	const raw = policy[position] as int32;
-	return raw >= 128 ? raw - 256 : raw;
+	return ((policy[position] as int32) ^ 128) - 128;
 }
 
 function wordAt(policy: Span<uint8>, position: int32): int32 {
@@ -76,6 +77,14 @@ export function checkPolicy(policy: Span<uint8>, engine: uint64): Result<int32, 
 	return Result.ok(policyBytes());
 }
 
+// Math.min/Math.max are calls into another C file under --os=solana, never inlined (ld.lld, no LTO):
+// ~30 CU a row here, measured with tools/chain/policyLiteSvm.mjs.
+function activation(value: int32): int32 {
+	if (value < 0) { return 0; }
+	if (value > ACTIVATION_MAX) { return ACTIVATION_MAX; }
+	return value;
+}
+
 export function dense(
 	policy: Span<uint8>,
 	offset: int32,
@@ -88,13 +97,16 @@ export function dense(
 	const shift = policy[offset] as int32;
 	const weights = offset + 1;
 	const biases = weights + inputs * outputs;
+	let inputSum = 0;
+	for (let column = 0; column < inputs; column++) { inputSum += input[column]; }
+	const zeroPointSum = WEIGHT_ZERO_POINT * inputSum;
 	for (let row = 0; row < outputs; row++) {
-		let sum = wordAt(policy, biases + row * 4);
+		let sum = wordAt(policy, biases + row * 4) - zeroPointSum;
 		for (let column = 0; column < inputs; column++) {
-			sum += signedByte(policy, weights + row * inputs + column) * input[column];
+			sum += (policy[weights + row * inputs + column] as int32) * input[column];
 		}
 		const scaled = sum >> shift;
-		output[row] = activate ? Math.max(0, Math.min(scaled, ACTIVATION_MAX)) : scaled;
+		output[row] = activate ? activation(scaled) : scaled;
 	}
 	return biases + outputs * 4;
 }
@@ -178,29 +190,29 @@ function foldFamily(
 test "the policy fits one account and the heads follow each other" {
 	assert layerBytes(32, 32) == 1 + 1024 + 128;
 	assert economyOffset() == 16;
-	assert nodeOffset() == 16 + 1569 + 433;
+	assert nodeOffset() == 16 + 1601 + 433;
 	assert attackOffset() == nodeOffset() + 1089 + 37;
 	assert policyBytes() == attackOffset() + 929 + 577 + 81;
-	assert policyBytes() == 4731;
+	assert policyBytes() == 4763;
 	assert policyBytes() <= 10240;
 }
 
-test "a dense layer multiplies signed bytes, adds the bias, shifts and clamps" {
-	const layer: uint8[] = [2, 1, 255, 2, 254, 3, 253, 0xf6, 0xff, 0xff, 0xff, 100, 0, 0, 0];
+test "a dense layer multiplies weights stored as byte minus 128, adds the bias, shifts and clamps" {
+	const layer: uint8[] = [2, 129, 127, 130, 126, 131, 125, 0xf6, 0xff, 0xff, 0xff, 100, 0, 0, 0];
 	const input: int32[] = [10, 20, 30];
 	const output: int32[] = [0, 0];
 	const end = dense(layer, 0, input, 3, output, 2, false);
 	assert end == 15;
 	assert output[0] == 10;
 	assert output[1] == 12;
-	const negative: uint8[] = [1, 255, 0xfd, 0xff, 0xff, 0xff];
+	const negative: uint8[] = [1, 127, 0xfd, 0xff, 0xff, 0xff];
 	const one: int32[] = [4];
 	const out: int32[] = [0];
 	const _raw = dense(negative, 0, one, 1, out, 1, false);
 	assert out[0] == -4;
 	const _clamped = dense(negative, 0, one, 1, out, 1, true);
 	assert out[0] == 0;
-	const large: uint8[] = [0, 127, 0, 0, 0, 0];
+	const large: uint8[] = [0, 255, 0, 0, 0, 0];
 	const big: int32[] = [127];
 	const _high = dense(large, 0, big, 1, out, 1, true);
 	assert out[0] == ACTIVATION_MAX;

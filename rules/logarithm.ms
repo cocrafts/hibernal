@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 export const LOG2_FRACTION_BITS: int32 = 5;
 export const LOG2_ONE: int32 = 32;
 
@@ -5,7 +6,7 @@ export function log2Times32(value: uint64): int32 {
 	if (value == 0) { return 0; }
 	let exponent = 0;
 	let rest = value;
-	for (let shift = 32; shift > 0; shift = shift / 2) {
+	for (let shift = 32; shift > 0; shift = shift >> 1) {
 		if ((rest >> (shift as uint64)) != 0) {
 			rest = rest >> (shift as uint64);
 			exponent += shift;

@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { BPS } from "./units";
 import { Food, foodHearts, isShielded } from "./emission";
 

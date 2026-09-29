@@ -1,10 +1,10 @@
 import {
+	ACTS_PER_EPOCH,
 	BLOCK_SLOTS,
+	TREE_NODES,
 	STAKE_LEVELS,
 	ATTACK_HOLD,
 	POLICY_WIDTH,
-	NODE_INPUTS,
-	ATTACK_INPUTS,
 	ATTACK_OUTPUTS,
 	EconomyAction,
 	economyLogits,
@@ -12,22 +12,45 @@ import {
 	foldEatIntoBuy,
 	nodeScore,
 	attackLogits,
-} from "../../rules/index";
-import {
-	ECONOMY_ACTIONS,
 	FEATURE_ONE,
-	Head,
 	SelfFeature,
 	SELF_FEATURES,
 	NODE_FEATURES,
-	NODE_CANDIDATES,
 	TARGET_FEATURES,
+	NODE_SELF_INPUTS,
+	ATTACK_SELF_INPUTS,
+	nodeSelfInput,
+	attackSelfInput,
+	actorPet,
+	allowsNode,
+	Combatant,
+	legalNodes,
+	stats,
+	writeSelf,
+	writeSelfForNodeAndAttack,
+} from "../../rules/index";
+import {
+	ECONOMY_ACTIONS,
+	Head,
+	NODE_CANDIDATES,
 	actionCount,
+	rivalsAround,
 	zeros,
 } from "./observe";
-
-export const NODE_SELF_INPUTS: int32 = NODE_INPUTS - NODE_FEATURES;
-export const ATTACK_SELF_INPUTS: int32 = ATTACK_INPUTS - TARGET_FEATURES;
+import {
+	World,
+	actorAt,
+	applyEconomy,
+	applyNode,
+	beginEpoch,
+	economyMaskFor,
+	endEpoch,
+	inRound,
+	marketViewOf,
+	staggered,
+	surroundingsOf,
+} from "../world";
+import { act, personaKindOf } from "../teacher";
 
 export struct Scratch {
 	input: int32[];
@@ -50,36 +73,6 @@ export function selfInputs(head: Head): int32 {
 		Head.Economy => SELF_FEATURES,
 		Head.Node => NODE_SELF_INPUTS,
 		Head.Attack => ATTACK_SELF_INPUTS,
-	};
-}
-
-function nodeSelfInput(position: int32): SelfFeature {
-	return match (position) {
-		0 => SelfFeature.RegionWorker,
-		1 => SelfFeature.RegionFighter,
-		2 => SelfFeature.RegionSurvivor,
-		3 => SelfFeature.PersonaCautious,
-		4 => SelfFeature.PersonaGreedy,
-		5 => SelfFeature.PersonaVengeful,
-		6 => SelfFeature.Level,
-		_ => SelfFeature.PointsUnspent,
-	};
-}
-
-function attackSelfInput(position: int32): SelfFeature {
-	return match (position) {
-		0 => SelfFeature.Hearts,
-		1 => SelfFeature.MaxHearts,
-		2 => SelfFeature.Harvest,
-		3 => SelfFeature.Burrow,
-		4 => SelfFeature.Level,
-		5 => SelfFeature.AttacksLeft,
-		6 => SelfFeature.PersonaCautious,
-		7 => SelfFeature.PersonaGreedy,
-		8 => SelfFeature.PersonaVengeful,
-		9 => SelfFeature.Might,
-		10 => SelfFeature.Grit,
-		_ => SelfFeature.Round,
 	};
 }
 
@@ -192,8 +185,43 @@ export function bestLegal(
 	return best;
 }
 
+function sameRivals(before: Combatant[], after: Combatant[], index: int32): boolean {
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		if (slot != index % BLOCK_SLOTS && !(before[slot] == after[slot])) { return false; }
+	}
+	return true;
+}
+
+test "an actor's economy and node leave the rivals it observed at dawn unchanged" {
+	let world = World.staggered(1, 11);
+	for (let day = 1; day <= 20; day++) {
+		world = world.beginEpoch(day as uint64);
+		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
+			world = world.inRound(round);
+			for (let turn = 0; turn < world.pets.length; turn++) {
+				const index = world.actorAt(turn);
+				const rivals = rivalsAround(world.surroundingsOf(index));
+				const economy = world.economyMaskFor(index);
+				for (let ordinal = 0; ordinal <= (EconomyAction.BuyItem as int32); ordinal++) {
+					if (!economy.has(ordinal as EconomyAction)) { continue; }
+					const spent = world.applyEconomy(index, ordinal as EconomyAction);
+					assert sameRivals(rivals, rivalsAround(spent.surroundingsOf(index)), index);
+					const nodes = spent.pets[index].legalNodes(spent.global);
+					for (let node = 0; node < TREE_NODES; node++) {
+						if (!nodes.allowsNode(node)) { continue; }
+						const grown = spent.applyNode(index, node);
+						assert sameRivals(rivals, rivalsAround(grown.surroundingsOf(index)), index);
+					}
+				}
+				world = world.act(index);
+			}
+		}
+		world = world.endEpoch();
+	}
+}
+
 test "each head gathers its own inputs" {
-	assert selfInputs(Head.Economy) == 45;
+	assert selfInputs(Head.Economy) == 46;
 	assert NODE_SELF_INPUTS == 8;
 	assert ATTACK_SELF_INPUTS == 12;
 	assert selfInput(Head.Economy, 5) == SelfFeature.Level;
@@ -209,6 +237,40 @@ test "each head gathers its own inputs" {
 	assert scratch.input[11] == 3 + (SelfFeature.Round as int32);
 	assert scratch.input[12] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES;
 	assert scratch.input[24] == 3 + SELF_FEATURES + 2 * TARGET_FEATURES + 12;
+}
+
+test "the node and attack heads read only what the short self observation writes" {
+	let world = World.create(1, 8);
+	for (let day = 1; day <= 6; day++) {
+		world = world.beginEpoch(day as uint64);
+		for (let index = 0; index < world.pets.length; index++) {
+			world = world.applyEconomy(index, EconomyAction.Bank);
+			world = world.applyEconomy(index, EconomyAction.BuyLarge);
+		}
+		world = world.endEpoch();
+	}
+	world = world.beginEpoch(7);
+	const full = zeros(SELF_FEATURES);
+	const short = zeros(SELF_FEATURES);
+	for (let index = 0; index < world.pets.length; index++) {
+		const around = world.surroundingsOf(index);
+		const persona = personaKindOf(index);
+		for (let position = 0; position < SELF_FEATURES; position++) {
+			full[position] = 0;
+			short[position] = 0;
+		}
+		around.writeSelf(persona, world.marketViewOf(index), rivalsAround(around), full, 0);
+		around.writeSelfForNodeAndAttack(persona, around.actorPet().stats(), short, 0);
+		for (let position = 0; position < NODE_SELF_INPUTS; position++) {
+			const feature = selfInput(Head.Node, position) as int32;
+			assert short[feature] == full[feature];
+		}
+		for (let position = 0; position < ATTACK_SELF_INPUTS; position++) {
+			const feature = selfInput(Head.Attack, position) as int32;
+			assert short[feature] == full[feature];
+		}
+		assert short[SelfFeature.Might as int32] > 0;
+	}
 }
 
 test "the best legal action ignores illegal logits and falls back when nothing is legal" {

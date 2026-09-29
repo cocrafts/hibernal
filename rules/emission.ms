@@ -1,3 +1,4 @@
+import * as arithmetic from "./arithmetic";
 import { EPOCH_SECONDS, HBRN_UNIT, BPS } from "./units";
 
 export const NEWBORN_EPOCHS: uint64 = 3;
