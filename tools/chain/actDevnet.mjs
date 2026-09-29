@@ -43,13 +43,18 @@ const SPONSOR_LAMPORTS = 20_000_000n;
 const HYDRA_WAIT_MS = Number(process.env.HYDRA_WAIT_MS ?? 60000);
 const HYDRA_RUNS = Number(process.env.HYDRA_RUNS ?? 3);
 const HYDRA_INTERVAL_SLOTS = Number(process.env.HYDRA_INTERVAL_SLOTS ?? 1);
+const DAY = process.env.DAY ?? "";
+const DAY_INTERVAL_SLOTS = Number(process.env.DAY_INTERVAL_SLOTS ?? 2_160_000);
+const DAY_STAGGER_SLOTS = Number(process.env.DAY_STAGGER_SLOTS ?? 6_000);
+const DAY_LEAD_SLOTS = Number(process.env.DAY_LEAD_SLOTS ?? 6_000);
 const POLICY = 0;
 const CONTEXT = 1;
 const CONFIG = 2;
 const WILDS = 3;
 const FIRST_PET = 4;
 const PETS = 10;
-const IDS = Array.from({ length: FIRST_PET + PETS }, (_, id) => id);
+const FIRST_SLOT_CONTEXT = FIRST_PET + PETS;
+const IDS = Array.from({ length: FIRST_SLOT_CONTEXT + (DAY ? PETS : 0) }, (_, id) => id);
 const WRITTEN_BY_ACT = [CONFIG, ...Array.from({ length: PETS }, (_, slot) => FIRST_PET + slot)];
 const SECTIONS = [
 	"load accounts",
@@ -67,8 +72,8 @@ const SECTIONS = [
 ];
 
 const [programArgument, policyPath] = process.argv.slice(2);
-if (!programArgument || !policyPath) {
-	console.log("usage: node tools/chain/actDevnet.mjs <program id> <checkpoint>.policy (after tools/chain/actLiteSvm.mjs wrote out/actProbe/*.txt)");
+if (!programArgument || !policyPath || (DAY && !["setup", "watch", "teardown"].includes(DAY))) {
+	console.log("usage: [DAY=setup|watch|teardown] node tools/chain/actDevnet.mjs <program id> <checkpoint>.policy (after tools/chain/actLiteSvm.mjs wrote out/actProbe/*.txt)");
 	process.exit(2);
 }
 const PROGRAM = address(programArgument);
@@ -429,11 +434,11 @@ async function walletDelegated(sponsor) {
 	console.log(`Hydra sponsor ${sponsor.address} delegated, seen by the ER after ${Date.now() - started}ms`);
 }
 
-function hydraCreateData(seed, authority, startSlot, remaining, cuLimit, scheduled) {
+function hydraCreateData(seed, authority, startSlot, interval, remaining, cuLimit, scheduled) {
 	const head = joined(joined(Uint8Array.of(0), seed), addressEncoder.encode(authority));
 	const limit = new Uint8Array(4);
 	new DataView(limit.buffer).setUint32(0, cuLimit, true);
-	const parts = [head, words(startSlot, HYDRA_INTERVAL_SLOTS, remaining, 0), limit];
+	const parts = [head, words(startSlot, interval, remaining, 0), limit];
 	const size = new Uint8Array(3);
 	size[0] = scheduled.accounts.length;
 	new DataView(size.buffer).setUint16(1, scheduled.data.length, true);
@@ -462,7 +467,7 @@ async function hydraCranked(scenario, sponsor, write) {
 	const sponsorBefore = await balanceIn(ephemeral, sponsor.address);
 	const payerBefore = await balanceIn(ephemeral, payer.address);
 	const created = await send(ephemeral, "er", `create a Hydra crank for the act (cu_limit 1.4M, tip 0, ${HYDRA_RUNS} runs every ${HYDRA_INTERVAL_SLOTS} slots)`, [
-		{ programAddress: HYDRA_PROGRAM, accounts: [sponsorMeta, writable(crank), writable(MAGIC_VAULT), readonly(MAGIC_PROGRAM)], data: hydraCreateData(seed, sponsor.address, slot, HYDRA_RUNS, COMPUTE_UNIT_LIMIT, act) },
+		{ programAddress: HYDRA_PROGRAM, accounts: [sponsorMeta, writable(crank), writable(MAGIC_VAULT), readonly(MAGIC_PROGRAM)], data: hydraCreateData(seed, sponsor.address, slot, HYDRA_INTERVAL_SLOTS, HYDRA_RUNS, COMPUTE_UNIT_LIMIT, act) },
 	]);
 	if (created.err) {
 		console.log(created.logs.join("\n"));
@@ -524,6 +529,169 @@ async function walletReturned(sponsor) {
 	console.log("Hydra sponsor not back on L1 within 120 s");
 }
 
+const dayPath = new URL("../../out/actDay.json", import.meta.url);
+
+function dayOf() {
+	const fields = {};
+	for (const line of readFileSync(new URL("day.txt", probeDirectory), "utf8").split("\n")) {
+		const [key, ...rest] = line.split(" ");
+		if (key) { fields[key] = rest; }
+	}
+	const bytes = (key) => {
+		if (!fields[key]) throw new Error(`out/actProbe/day.txt has no ${key}: the day run cranks all ${PETS} pets`);
+		return Uint8Array.from(fields[key].map(Number));
+	};
+	const order = fields.order.map(Number);
+	const pets = bytes("pets");
+	const petBytes = pets.length / PETS;
+	const contents = [policy, bytes(`context${order[0]}`), bytes("global"), bytes("wilds")];
+	for (let slot = 0; slot < PETS; slot++) contents.push(pets.slice(slot * petBytes, (slot + 1) * petBytes));
+	for (let slot = 0; slot < PETS; slot++) contents.push(bytes(`context${slot}`));
+	const steps = [];
+	for (let step = 0; fields[`step${step}`]; step++) {
+		const [, slot, , economy, node, attack, , digest] = fields[`step${step}`];
+		const after = bytes(`after${step}`);
+		const expected = new Map([[CONFIG, bytes(`afterGlobal${step}`)]]);
+		for (let pet = 0; pet < PETS; pet++) expected.set(FIRST_PET + pet, after.slice(pet * petBytes, (pet + 1) * petBytes));
+		steps.push({ slot: Number(slot), choice: [economy, node, attack].map(Number), digest: BigInt(digest), expected });
+	}
+	return { name: "day", contents, order, runs: Number(fields.scenario[fields.scenario.length - 1]), steps, engine: BigInt(fields.engine[0]), header: fields.scenario.join(" ") };
+}
+
+const dayActAccounts = (slot) => [
+	readonly(holders[POLICY].key),
+	readonly(holders[FIRST_SLOT_CONTEXT + slot].key),
+	writable(holders[CONFIG].key),
+	readonly(holders[WILDS].key),
+	...holders.slice(FIRST_PET, FIRST_PET + PETS).map((holder) => writable(holder.key)),
+];
+
+async function daySetup() {
+	const day = dayOf();
+	console.log(`${day.header} · order ${day.order.join(" ")} · ${day.steps.length} acts · a crank a pet, ${day.runs} runs every ${DAY_INTERVAL_SLOTS} slots, pets ${DAY_STAGGER_SLOTS} slots apart`);
+	await prepared(day);
+	for (const id of WRITTEN_BY_ACT) await delegated(holders[id]);
+	const sponsor = await keypairAt("hydraSponsor");
+	await walletDelegated(sponsor);
+	const sponsorMeta = { address: sponsor.address, role: AccountRole.WRITABLE_SIGNER, signer: sponsor };
+	const sponsorBefore = await balanceIn(ephemeral, sponsor.address);
+	const createdSlot = BigInt(await ephemeral.getSlot().send());
+	const firstSlot = createdSlot + BigInt(DAY_LEAD_SLOTS);
+	const cranks = [];
+	for (const [turn, slot] of day.order.entries()) {
+		const act = program(dayActAccounts(slot), actData(1, day.engine, true));
+		const seed = new Uint8Array(randomBytes(32));
+		const [crank] = await getProgramDerivedAddress({ programAddress: HYDRA_PROGRAM, seeds: ["crank", seed] });
+		const startSlot = firstSlot + BigInt(turn * DAY_STAGGER_SLOTS);
+		await mustSend(ephemeral, "er", `create the crank of pet ${slot} from slot ${startSlot}`, [
+			{ programAddress: HYDRA_PROGRAM, accounts: [sponsorMeta, writable(crank), writable(MAGIC_VAULT), readonly(MAGIC_PROGRAM)], data: hydraCreateData(seed, sponsor.address, startSlot, DAY_INTERVAL_SLOTS, day.runs, COMPUTE_UNIT_LIMIT, act) },
+		]);
+		cranks.push({ slot, crank, startSlot: Number(startSlot) });
+	}
+	const sponsorAfter = await balanceIn(ephemeral, sponsor.address);
+	writeFileSync(dayPath, JSON.stringify({ program: PROGRAM, createdAt: Date.now(), createdSlot: Number(createdSlot), intervalSlots: DAY_INTERVAL_SLOTS, runs: day.runs, sponsorAfterCreate: String(sponsorAfter), cranks }, null, 1));
+	console.log(`${cranks.length} cranks created for ${sponsorBefore - sponsorAfter} lamports of rent, the first due at slot ${firstSlot}; plan in out/actDay.json`);
+}
+
+async function configHistory(sinceSlot, whole) {
+	const entries = [];
+	let before;
+	for (;;) {
+		const page = await patiently(() => ephemeral.getSignaturesForAddress(holders[CONFIG].key, { limit: whole ? 1000 : 30, ...(before ? { before } : {}) }).send());
+		entries.push(...page);
+		if (!whole || page.length === 0 || Number(page[page.length - 1].slot) < sinceSlot) return entries;
+		before = page[page.length - 1].signature;
+	}
+}
+
+async function dayWatch() {
+	const plan = JSON.parse(readFileSync(dayPath, "utf8"));
+	const day = dayOf();
+	const byCrank = new Map(plan.cranks.map((entry) => [entry.crank, { ...entry, runs: [] }]));
+	const expectedRuns = plan.cranks.length * plan.runs;
+	const lastDue = Math.max(...plan.cranks.map((entry) => entry.startSlot)) + (plan.runs - 1) * plan.intervalSlots;
+	const seen = new Set();
+	const triggers = [];
+	const balances = new Map();
+	const problems = [];
+	console.log(`watching ${plan.cranks.length} cranks × ${plan.runs} runs, the last due at slot ${lastDue}`);
+	for (;;) {
+		const slot = Number(await patiently(() => ephemeral.getSlot().send()));
+		const history = await configHistory(plan.createdSlot, seen.size === 0);
+		const fresh = history.filter((entry) => !seen.has(entry.signature)).sort((left, right) => Number(left.slot) - Number(right.slot));
+		const found = [];
+		for (const entry of fresh) {
+			seen.add(entry.signature);
+			const detail = await fetchTransaction(ephemeral, entry.signature);
+			const keys = detail?.transaction?.message?.accountKeys ?? [];
+			const crank = keys.find((key) => byCrank.has(key));
+			if (keys.includes(HYDRA_PROGRAM) && crank) found.push({ entry, detail, crank: byCrank.get(crank) });
+		}
+		for (const [position, { entry, detail, crank }] of found.entries()) {
+			const step = triggers.length;
+			const expected = day.steps[step];
+			const run = crank.runs.length;
+			const due = crank.startSlot + run * plan.intervalSlots;
+			const at = Number(entry.slot);
+			const blockTime = Number(detail?.blockTime ?? 0);
+			const gap = run > 0 ? `${blockTime - crank.runs[run - 1].blockTime} s after its previous run` : "its first run";
+			const feePayer = detail?.transaction?.message?.accountKeys?.[0];
+			const balance = await balanceIn(ephemeral, feePayer);
+			const moved = balances.has(feePayer) ? balance - balances.get(feePayer) : 0n;
+			balances.set(feePayer, balance);
+			const choice = logged(detail?.meta?.logMessages ?? []);
+			const orderMatch = expected?.slot === crank.slot;
+			const choiceMatch = expected ? same(choice, expected.choice) : false;
+			const newest = position === found.length - 1;
+			const bytes = expected && newest ? await differingOn(ephemeral, expected) : null;
+			crank.runs.push({ at, blockTime });
+			triggers.push({ step, at, due, late: at - due, failed: Boolean(entry.err), choiceMatch, orderMatch, bytes, moved, fee: Number(detail?.meta?.fee ?? 0) });
+			console.log(`step ${step} run ${run} pet ${crank.slot}: ${entry.err ? `FAILED ${json(entry.err)}` : "ok"} at slot ${at} (${at - due >= 0 ? "+" : ""}${at - due} from due), ${gap} · ${new Date(blockTime * 1000).toISOString()} · ${detail?.meta?.computeUnitsConsumed} CU · fee ${detail?.meta?.fee} · cranker ${feePayer} ${moved} lamports · host step pet ${expected?.slot ?? "none"} ${orderMatch ? "same" : "DIFFERENT"} · choice ${choice.join(" ")} ${choiceMatch ? "match" : "DIFFERS"} · bytes differing ${bytes ?? "not read (a later act landed first)"}`);
+			if (!orderMatch || !choiceMatch || entry.err || (bytes ?? 0) > 0) problems.push(step);
+		}
+		if (triggers.length >= expectedRuns || slot > lastDue + 180_000) break;
+		const pending = [...byCrank.values()].filter((crank) => crank.runs.length < plan.runs).map((crank) => crank.startSlot + crank.runs.length * plan.intervalSlots);
+		const nextDue = pending.length ? Math.min(...pending) : slot;
+		await sleep(slot < nextDue - 3000 ? Math.min(60000, (nextDue - 3000 - slot) * 10) : 2000);
+	}
+	const late = triggers.map((trigger) => trigger.late);
+	const gaps = [...byCrank.values()].flatMap((crank) => crank.runs.slice(1).map((run, index) => run.blockTime - crank.runs[index].blockTime));
+	console.log(`\nday watched: ${triggers.length}/${expectedRuns} runs, ${triggers.filter((trigger) => trigger.failed).length} failed, ${problems.length} steps off the host's (${problems.join(" ") || "none"}) · slots from due ${Math.min(...late)}..${Math.max(...late)} · gaps between runs of a pet ${gaps.length ? `${Math.min(...gaps)}..${Math.max(...gaps)} s` : "none"} · fees ${triggers.reduce((sum, trigger) => sum + trigger.fee, 0)} lamports · cranker balance moved ${triggers.reduce((sum, trigger) => sum + trigger.moved, 0n)} lamports`);
+}
+
+async function dayTeardown() {
+	const plan = JSON.parse(readFileSync(dayPath, "utf8"));
+	const day = dayOf();
+	const sponsor = await keypairAt("hydraSponsor");
+	const sponsorMeta = { address: sponsor.address, role: AccountRole.WRITABLE_SIGNER, signer: sponsor };
+	const sponsorBefore = await balanceIn(ephemeral, sponsor.address);
+	console.log(`sponsor ${sponsorBefore - BigInt(plan.sponsorAfterCreate)} lamports since the cranks were created`);
+	for (const entry of plan.cranks) {
+		await send(ephemeral, "er", `cancel the crank of pet ${entry.slot}`, [
+			{ programAddress: HYDRA_PROGRAM, accounts: [sponsorMeta, writable(entry.crank), writable(sponsor.address), writable(MAGIC_VAULT), readonly(MAGIC_PROGRAM)], data: Uint8Array.of(2) },
+		]);
+	}
+	console.log(`cancels returned ${(await balanceIn(ephemeral, sponsor.address)) - sponsorBefore} lamports to the sponsor`);
+	const inEr = await send(ephemeral, "er", "digest in ER", [program(actAccounts([]), words(2))]);
+	const digest = logged(inEr.logs).pop();
+	const step = day.steps.findLastIndex((entry) => entry.digest === digest);
+	if (step < 0) {
+		console.log(`ER digest 0x${digest?.toString(16)} is none of the host's steps`);
+	} else {
+		console.log(`ER holds the host's state after step ${step} (${step + 1} acts): bytes differing ${await differingOn(ephemeral, day.steps[step])}`);
+	}
+	const returnStarted = Date.now();
+	for (const id of WRITTEN_BY_ACT) await returned(holders[id]);
+	for (const id of WRITTEN_BY_ACT) await onBase(holders[id]);
+	console.log(`written accounts back on L1 ${Date.now() - returnStarted}ms after the first return`);
+	if (step >= 0) {
+		const landed = await send(base, "base", "digest on L1 after", [program(actAccounts([]), words(2))]);
+		const onL1 = logged((await fetchTransaction(baseRead, landed.signature))?.meta?.logMessages ?? []).pop();
+		console.log(`L1 accounts after commit: digest match ${onL1 === day.steps[step].digest} · bytes differing from the host's ${await differingOn(baseRead, day.steps[step])}`);
+	}
+	await walletReturned(sponsor);
+}
+
 function reportSplit(scenario, sent) {
 	if (sent.err) {
 		console.log(`split act: FAILED ${json(sent.err)}`);
@@ -545,6 +713,11 @@ if (!deployed?.executable) {
 }
 const lamportsBefore = (await base.getBalance(payer.address).send()).value;
 console.log(`program ${PROGRAM} payer ${payer.address} ER ${ER_RPC} validator ${VALIDATOR}`);
+
+if (DAY) {
+	await { setup: daySetup, watch: dayWatch, teardown: dayTeardown }[DAY]();
+	process.exit(0);
+}
 
 for (const name of SCENARIOS) {
 	const scenario = scenarioOf(name);
