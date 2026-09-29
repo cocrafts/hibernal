@@ -62,7 +62,7 @@ flowchart LR
     P4[P4 attack, FightRecord,<br/>death, allocate]
     P5[P5 SKR shop CPI]
     P6[P6 VRF]
-    P7[P7 update_config, timelock]
+    P7[P7 update_config]
     P8[P8 guard.ms + adversarial]
     P9[P9 differential fuzz]
     P10[P10 devnet deploy]
@@ -70,6 +70,7 @@ flowchart LR
     P12[P12 act + crank,<br/>heuristic brain on chain]
     P13[P13 rev 4 instructions:<br/>talent, lifespan, items, bonding]
     P14[P14 item market in ER]
+    P15[P15 HBRN mint,<br/>program as only minter]
     P0b[P0b rules for rev 4 systems]
   end
   subgraph A[native core + shell]
@@ -113,6 +114,8 @@ flowchart LR
   P6 --> P13
   P12 --> P13
   P13 --> P14
+  R6 --> P15
+  P11 --> P15
   S1 --> S3 --> S4
   P12 --> S4
   P12 --> P10
@@ -243,7 +246,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 | **P4** | `attack` + `FightPending`, `fight()` in program, stat-driven loot, `FightRecord` ring buffer, starvation death + inheritance, `allocate` | 3 | P2 P0 |
 | **P5** | SKR shop: `feed`, `buy_growth`, `buy_insurance`, `buy_skin` via Token-2022 CPI | 1 | R6 P1 |
 | **P6** | VRF inside the ER: request CPI + `consume_fight` callback (VRF identity check); reused by `consume_talent` | 1.5 | R6 P4 E1 |
-| **P7** | `update_config`, timelock authority | 0.5 | P1 |
+| **P7** | `update_config`, config authority (no timelock, `BRIEF.md` D15) | 0.5 | P1 |
 | **P8** | `guard.ms` + adversarial LiteSVM tests (wrong owner, missing signer, fake session token, duplicate accounts, overflow inputs, shield, caps) | 2 | P1 R11 |
 | **P9** | Differential fuzz: JS model vs LiteSVM `.so`, invariants, UBSan host build | 2 | P4 P0 R7 |
 | **P11** | Delegation: `delegate_pet` / `delegate_block` / `delegate_config`, `commit`, commit-and-undelegate, `undelegate` callback | 2 | R6 E1 P1 |
@@ -251,6 +254,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 | **P13** | Rev 4 instructions: XP-gated `level_up`, natural death + heir, `consume_talent`, `mint_item` / `equip` / `sell_item`, `feed` / `talk` bonding and the gift ledger, fights against wild pets | 4 | P0b P6 P12 |
 | **P14** | Item market in the ER: `list_item`, `buy_item`, `cancel_listing`, fee | 2 | P13 · built last |
 | **P10** | Devnet deploy, DevAdmission group, demo config (`EPOCH_SECONDS=600`, `max_hearts=3`) | 0.5 | P2 S2 |
+| **P15** | `$HBRN` mint at launch (`BRIEF.md` D38): the program as its only minter, and the path between the game's `u64` balances and token accounts (`BRIEF.md` §10 Q15, `SOLANA.md` §7 item 15) | open | R6 P11 |
 
 ### 3.6 Native core + shell packages
 | ID | Package | Est. | Depends on |

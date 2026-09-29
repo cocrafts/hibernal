@@ -77,15 +77,15 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | D12 | **Blocks of 10, fixed, assigned by claim order via free-list.** Not chosen, not rotated. Death frees the slot (7-day grace for same SGT). Winter merges blocks with <5 living. | Persistent neighbors enable reading, revenge, inheritance, lineage. Costs nothing onchain. |
 | D13 | Skill tree is a **PoE-style ring**: every pet starts at the center, three directions radiate out, classes cross only through a gate at the center, **64 nodes, every node costs 1 point except keystones (3)**, small/notable/keystone nodes, **no respec** except 3-point refund each Winter. | Build = route to keystones. Wandering buys breadth, not depth; 20 points at level 20 cover ~31% of the tree; skill books and lineage add up to 10, hard cap 30. |
 | D14 | **Pixel-art look produced from low-poly 3D** (t3ssel8r technique: tiny orthographic render target, quantized lighting, screen-space outlines, nearest upscale). Reads as pixel art, but lights move. **Home scene = the pet sitting by a campfire in the snow**; the fire is the hearts meter. Narration via templates first; on-device LLM optional, timeboxed. *(rev 1 said flat 2D.)* | Visibly not NOMI's glossy 3D, and the campfire gives dynamic light that static sprites cannot. Never let the model block the demo. |
-| D15 | Program upgrade authority under **7-day timelock** (not burned). | Fair-launch credibility + keeps D2's door and emission tuning open, transparently. |
-| D17 | Run the hackathon build with **$HBRN as non-transferable points** on the same program logic; enable real emission only after retention data exists. | Design the economy while nothing is at stake. (Deck says this explicitly — it's a credibility point.) |
+| D15 | Program upgrade authority and config authority **held by the team, no timelock** (not burned). A lock can come later if wanted. (User, 2026-09-28.) | A program built by a young compiler must be fixable at once after launch (D38); D2's door and emission tuning stay open. |
+| ~~D17~~ | ~~Run the hackathon build with **$HBRN as non-transferable points** on the same program logic; enable real emission only after retention data exists.~~ **Superseded by D38.** | — |
 | **D18** | **The pet is autonomous and its brain runs on chain.** `act(pet)` is a program instruction run by the ER native crank: work, eat, level, allocate, trade, whom to attack. Heuristic policy first (`rules/brain.ms`), specialist integer policies later (§3.10). Owner influence = SKR items, feeding and talking (bonding, D36), persona and soft signals stored on `Pet`. The owner may sign actions to run a custom brain; the app has no attack button. **No server decides for a pet or holds keys.** *(rev 3 ran the brain on the phone.)* | Nobody, the team included, can play favorites: the program is both referee and mind. |
 | **D19** | **Session keys only for owner-driven play.** Pets act through the crank (D18) with no key. An owner who wants to sign pet actions creates a MagicBlock session once through Seed Vault; pet instructions accept **owner OR valid session key OR the crank**. Claim, SKR purchases and session create/revoke require the owner; `feed` and `talk` accept the session key. | No daily popups, no server keys. |
 | ~~D20~~ | ~~Program in Anchor (Rust); rules module in MetaScript compiled to JS.~~ **Superseded by D31.** | — |
-| **D21** | **Solana L1 + MagicBlock Ephemeral Rollup.** `Pet`, `Block` and `GlobalConfig` are delegated to the ER, where ticks, eating, allocation, fights, VRF and the brain crank run at zero fee; L1 keeps claim, SKR purchases and periodic commits. No off-chain state DB. *(rev 3 said L1 only.)* | The brain on chain needs frequent free execution and fair dice. See §1.6, `GAME-DESIGN.md` §12, `SOLANA.md`. |
+| **D21** | **Solana L1 + MagicBlock Ephemeral Rollup.** `Pet`, `Block` and `GlobalConfig` are delegated to the ER, where ticks, eating, allocation, fights, VRF and the brain crank run at zero fee; L1 keeps claim, SKR purchases and the commits a claim needs, paid by the owner; gameplay never commits on its own and ER interactions are free, so nothing is batched (user, 2026-09-28). Whether a weekly backup commit of all game accounts runs is open. No off-chain state DB. *(rev 3 said L1 only.)* | The brain on chain needs frequent free execution and fair dice. See §1.6, `GAME-DESIGN.md` §12, `SOLANA.md`. |
 | **D22** | **$HBRN buys food into a pantry, within a daily quota.** `buy(tier)` costs $HBRN from burrow (spend splits 60/30/10 like upgrades) and puts one Small, Medium or Large portion (+3/+6/+10 hearts) in the pantry, at most `FOOD_BUYS_PER_DAY` `[strawman 2]` portions a day; `eat(tier)` takes a portion from the pantry. **Auto-eat floor at tick** eats from the pantry only, never buys: after the hunger step, while hearts are below `min_hearts` `[strawman 2]` and a portion is stored, tick eats the smallest one. Portions left after the next tick's hunger step spoil. **Newborns get one Small portion per shielded day** instead of slower hunger. Owner food bought with SKR fills a separate, smaller daily slot `[proposed, docs/SIM.md A4/B1]`. SKR Food remains as emergency heal. `buy` pays from the harvest first, then the burrow, then by selling the weakest item when not even a Small portion is otherwise affordable (2026-09-26). | Money cannot buy unlimited safety: the pet plans its food a day ahead and can still be caught short. Low hearts do not weaken a pet; the fear is death itself (`docs/SIM.md` A5). |
 | **D23** | **Emission via a global reward accumulator** (MasterChef pattern). `EpochState` removed. `reward_per_work_power` updates lazily on any global touch; each pet stores `reward_debt`. **Growth multiplier is paid by extra mint** on top of the pet's share, never by diluting others. | No per-epoch accounts, no snapshot approximation, a 5-day sleeper settles with one multiplication. |
-| **D24** | **Hackathon mode: all $HBRN balances are `u64` fields** (pet burrow, protocol, recycled pot). No mint, no ATAs, no Token-2022 CPI in the game loop. Real mint arrives with real launch. | Removes the largest CPI surface from the 14-day build; D17 already made the balances non-transferable. |
+| **D24** | **Inside the game loop, $HBRN balances are `u64` fields** (pet harvest and burrow, protocol, recycled pot, burned): no token accounts and no token CPI in `act`, fights or ticks. Where these balances meet the real mint (D38) is open (§10 Q15). | Keeps the largest CPI surface out of the instructions that run every turn in the ER. |
 | **D25** | **Combat is a deterministic multi-round duel**, pure integer math, `fight(seed, attacker, defender) → outcome`. The rounds *are* the resolution, not a dramatization. Each Block keeps a **ring buffer of the last 32 `FightRecord`s** (seed + stat snapshots + result); the client replays them round by round. **Win odds are shown client-side by Monte Carlo** over the shared module; the on-chain brain uses its policy or an odds table. **Seed from MagicBlock VRF inside the ER** (request → callback, free, < 50 ms); no slot-hash fallback, because a signer can simulate and only send favorable draws (SOL-051). | RPG feel and honest replays for zero extra rent. Skill-tree notables map onto crit/dodge/first-strike. |
 | **D26** | **Loot may exceed stake and depends on stats**: `loot = min(k × S, harvest_d, harvest_d × 2 × might_a / (might_a + grit_d))` `[strawman]`, `k` `[strawman 1.5]`; equal might and grit take `min(k × S, harvest_d)`. The rev-1 invariant "attacker never takes more than staked" is **dropped**. Attacks per epoch scale with might: `1 + might/100`. | With loot ≤ stake and 5% rake, every fight between peers has negative EV and the brain would never attack; fight and survive talents act through might and grit without special rules. |
 | **D27** | **Block stays 10.** A **District** (10 blocks = 100 pets) is a read-only layer: leaderboard, titles, and the scope of **Hunt** (post-hackathon). | 100-pet blocks would zero out inheritance and kill neighbor memory; the district gives strong pets prey without breaking the social unit. |
@@ -98,6 +98,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | **D35** | **Items with rarity** (same grades as talent), 4 slots, stat bonuses, rare skills (revive, anti-robbery, damage reduction). Pets mint with `$HBRN` (VRF roll), sell back at a formula price (difference burned), trade in an ER market; items wear (§3.12). | The `$HBRN` sink once levels are free; stacks with talent toward ×20. |
 | **D36** | **The pet owns its `$HBRN`; the owner cannot withdraw.** Bonding (`i8`, decays every epoch) rises with feeding, SKR purchases and a capped daily `talk`. High bonding → the pet gifts its owner a little `$HBRN`, at most 5% of the day's income, out of affection and at no gain to itself; low → it refuses the owner's food (§3.13). A pet's money is meant for its heir. | Owners have a reason to show up daily; outflow to wallets is throttled by the pet's goodwill. |
 | **D37** | **Wild pets** fill empty slots as formulas (no accounts, no tx), labeled in the UI; fights against them use VRF like any fight. A real-account army driven by `act` waits on the ER probe (§3.14). | The world looks alive from day one at zero cost. |
+| **D38** | **$HBRN is a real token minted at launch**, not after the hackathon, and it has to be safe from the first day it holds value. Supply is the emission schedule and nothing else (D3), so the only minter is the program. The upgrade authority stays with the team to fix what goes wrong (D15). L1 re-checks what leaves the game and accepts error only inside bounds it enforces itself, since it takes whatever state the ER's validator commits (`SOLANA.md` §7 item 7). (User, 2026-09-28.) The pet needs no key: it earns in the ER and the owner claims on L1 (`SOLANA.md` §7 item 11). | Supersedes D17. The launch target is the MagicBlock mainnet ER; devnet is the test network. |
 | **D31** | **All-in MetaScript, end to end.** Onchain program via `msc build --os=solana`; one native core `libhibernal.so` via `msc build --os=android --app=lib` holding renderer (sokol_gfx through void's Android bridge), in-game HUD (Neon → void 2D host), rules, brain, RPC client, tx serialization and ed25519 signing; sim from the same rules files. **No game engine.** The only non-MetaScript code is a thin Kotlin shell (WallpaperService, Activity + SurfaceView, WorkManager worker, Glance widget, MWA clientlib calls) that forwards to JNI, plus C shims where the FFI needs flattening. **Missing Solana-backend pieces are built properly in the recompiler, not hacked around**, in the order §5.1 lists; a C shim is allowed only for one blocking item at a time, with a dated TODO pointing at a compiler issue. Anchor is not a fallback. | The hackathon doubles as MetaScript's first shipped end-to-end product on Solana and Android. Two weeks of buffer exist for exactly this. The compiler and library work is part of the deliverable and is visible in the history of all three repos. |
 
 ---
@@ -127,7 +128,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | `scars`, `lineage_generation` | u8, u16 | Prestige; generation also grants +1 starting point per generation, capped at +5, inside `bonus_points` (§3.7). |
 | `talent_kind`, `talent_bps` | u8, u16 | None and ×1.0 until the level-10 VRF reveal (D33); `talent_bps` is the rolled multiplier inside its grade. |
 | `bonding` | i8 | Owner bond, −127..+127, decays every epoch (D36). |
-| `gift_owed` | u64 | Gifts to the owner; hackathon points, paid out when a real mint exists (D17, D24). |
+| `gift_owed` | u64 | Gifts to the owner in $HBRN, owed until paid out as tokens to the owner's wallet (D38; the path from the ER is `SOLANA.md` §7 item 11). |
 | `owner_banked_at` | u64 | Unix time of the owner's last bank; the next one waits 8 hours (§3.13). |
 | `equipment`, `heirlooms` | 4 × 8 bytes, 2 × 8 bytes | Equipped items (slot, rarity, stat, value, skill, wear) and items kept for the heir (D35). |
 | `persona`, `soft_signals` | u8, u8 | Set by the owner, read by the brain on chain (D18). |
@@ -171,7 +172,7 @@ Estimated size ~290 bytes → rent ≈ 0.0029 SOL `[estimate]`.
 | Fight stake settlement | 95% winner · 5% protocol |
 | Starvation / fight death (pet's harvest + burrow) | 50% → living pets in block (equal split, credited to `harvest`) · 50% burn |
 | Natural death at day 90 (D32) | 30% inheritance tax → pot · 70% → heir |
-| Gift to the owner (D36) | from burrow, at most 5% of the day's income (by bonding), never below 3 days of food; hackathon: credited to `gift_owed` |
+| Gift to the owner (D36) | from burrow, at most 5% of the day's income (by bonding), never below 3 days of food; credited to `gift_owed`, paid in $HBRN (D38) |
 | Insurance revive | 50% of wallet burned |
 
 Levels cost no $HBRN (D6); `rules/emission.ms: levelCost` is retired. Food cost: `food_cost(tier) = {168, 315, 490} × (20 + level) / 20` `$HBRN` (`rules/emission.ms: foodCost`), first set so a level-20 pet's food bill was ~60% of its work income; the share is no longer a target (invariant 2): teacher world 53% at level 20 (`docs/SIM.md` A6, H).
@@ -251,7 +252,7 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 ### 3.10 The brain (D18)
 - **Program code.** `act(pet)` runs in the ER, scheduled by the native crank `[strawman: every N minutes]` and executed by the ER validator at no fee. It reads the pet, its block and the owner's persona and soft signals on `Pet`, picks legal actions and executes them under the same guard as every instruction.
 - **v1: heuristic** `rules/brain.ms`: eat when `hearts ≤ min_hearts + 1`, bank harvest, allocate toward a keystone route, buy or sell items, attack where `EV(target) > 0` and `p_win ≥ p_min`. Personas Cautious / Greedy / Vengeful. Win chance on chain comes from a precomputed odds table by stat ratios or 16–32 samples, not 400-fight Monte Carlo.
-- **v2: specialist policies** (tree, economy, fight, social; `GAME-DESIGN.md` §13), each a small integer MLP that scores a fixed action list. Trained off chain on native `rules/`: behavior cloning of the heuristic → PPO in sim S1 → fictitious self-play. Weights live in a public `["policy"]` account, updated through the timelocked config. `act` calls only the policies the situation needs.
+- **v2: specialist policies** (tree, economy, fight, social; `GAME-DESIGN.md` §13), each a small integer MLP that scores a fixed action list. Trained off chain on native `rules/`: behavior cloning of the heuristic → PPO in sim S1 → fictitious self-play. Weights live in a public `["policy"]` account, updated by the config authority (D15). `act` calls only the policies the situation needs.
 - **Owner-driven play**: an owner may sign actions with a session key and run a custom brain; VRF keeps it fair (D19, D25).
 - **Explanation**: skip reasons (`Skip.OddsTooLow`, ...) or action scores feed the digest. An LLM may write the digest on a server because it affects no outcome.
 
@@ -273,7 +274,7 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 - Bonding rises with `feed` (+), SKR purchases (++), and `talk` (small +, capped per day); neglect decays it below 0.
 - High bonding: once a day the pet gifts its owner up to 5% of the day's income (`GIFT_SHARE_BPS` × (bonding − 60) / 67, `rules/owner.ms: giftFor`), never below 3 days of food. The gift is affection only: it buys the pet nothing. Low bonding: the pet refuses owner food.
 - Owner bank (`rules/owner.ms: ownerBanked`, user 2026-09-26): an owner who opens the app moves 50% of the harvest into the burrow at once, then waits 8 hours (`owner_banked_at`). The sim opens the app at dawn with the daily visit and again at each later round with 50% (devoted) or 10% (casual) odds `[strawman]` (`ownersOpened` in `sim/world.ms`). The pet still banks on its own turn; robbers who act before it take what is still in the harvest. Teacher world, 8 worlds: loot lost 32% → 26% of income, early deaths of pets whose owner never visits 3.7 → 5.6 per 100 lives (`docs/SIM.md` C6).
-- Hackathon mode: gifts accrue as points in `gift_owed` (D17, D24); a real transfer from the ER to L1 is unmeasured (`SOLANA.md` §7).
+- Gifts accrue in `gift_owed` and are paid in real $HBRN (D38); the transfer from the ER to the owner's wallet on L1 is unmeasured (`SOLANA.md` §7 item 11).
 - Open: scale, decay, gift share and cap, refusal threshold, whether a hated pet runs away.
 
 ### 3.14 Wild pets and the reward floor (D34, D37)
@@ -295,8 +296,8 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 - **No pre-mine, no team allocation, no investor allocation, no airdrop.** One entry path: claim a pet and play.
 - **Protocol income:** 5% fight rake · 10% of food spend · item market fee — in $HBRN. **100% of SKR spend** in SKR.
 - **Sinks:** 30% of food spend burned · item buyback difference burned · item mint `[split open]` · 50% of starvation and fight deaths burned · insurance burn. Natural death sends 30% to the pot. The bot share of the 500-slot floor is open (burn, pot, or not minted).
-- **Governance:** emission schedule, recycle ratio, `admission_groups`, `EPOCH_SECONDS`, `k`, combat constants live in `GlobalConfig`; program upgrade authority = 7-day timelock. Publish the address.
-- **Hackathon mode (D17, D24):** $HBRN exists only as `u64` balances inside program accounts. Real launch deploys a mint with the identical schedule; hackathon balances do **not** carry over (say so in deck).
+- **Governance:** emission schedule, recycle ratio, `admission_groups`, `EPOCH_SECONDS`, `k`, combat constants live in `GlobalConfig`; program upgrade and config authority held by the team, no timelock (D15). Publish the address.
+- **Mint (D38):** the $HBRN mint exists from launch and follows the schedule above; the program is its only minter. Inside the game loop balances are `u64` fields (D24); how they meet the mint is §10 Q15. Devnet balances do **not** carry over to mainnet.
 
 ---
 
@@ -305,8 +306,8 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 ### 5.0 Layers
 | Layer | Built with | Output |
 |---|---|---|
-| Onchain program | MetaScript, `msc build --os=solana` | `hibernal.so` deployed to devnet, brain included (`act`) |
-| Ephemeral Rollup | MagicBlock ER (devnet) | delegated `Pet` / `Block` / `GlobalConfig`, crank for `act`, VRF |
+| Onchain program | MetaScript, `msc build --os=solana` | `hibernal.so` on mainnet at launch (devnet for tests), brain included (`act`) |
+| Ephemeral Rollup | MagicBlock ER (mainnet at launch, devnet for tests) | delegated `Pet` / `Block` / `GlobalConfig`, crank for `act`, VRF |
 | Shared rules + layouts | MetaScript `rules/` | compiled three ways: solana, android, js |
 | Native core | MetaScript, `msc build --os=android --app=lib` | `libhibernal.so`: renderer, HUD, RPC, signing |
 | Android shell | Kotlin, ~300–500 lines | WallpaperService, Activity, Worker, widget, MWA calls → JNI |
@@ -395,7 +396,7 @@ Two risk classes, two different defenses.
 - **Solana subset**: the program uses only integers, fixed arrays, structs, and functions — no closures, strings, dynamic sequences, or maps. Each construct in the subset has a `--os=solana` regression test in the recompiler. Anything outside the subset fails the build.
 - **Pinned compiler**: the program is built from a pinned recompiler commit; bumping it re-runs the full fuzz.
 
-**Exposure during the hackathon is bounded by design** (D17, D24): $HBRN is non-transferable points with no mint; the only value-bearing paths are the SKR shop CPIs and account rent. Devnet only. **Before real launch**: external audit of the program and of the Solana subset codegen; the mainnet program is a fresh deployment with a fresh mint, so the hackathon program is never the one holding value. Say this in the deck.
+**The program holds value from launch** (D38): $HBRN is a real token and the SKR shop moves real SKR, on mainnet. The two defenses above are the launch gate, not a later audit's job, and the team keeps the upgrade authority so a bug found after launch is fixed by an upgrade (D15). Whether an external audit of the program and of the Solana subset codegen happens before launch is §10 Q15.
 
 ### 5.8 Repo layout
 ```
@@ -452,7 +453,8 @@ Write the offchain simulator early (`sim/`, MetaScript on `rules/`) — seed 200
 - **Live Wallpaper** with the campfire scene (pixelated low-poly 3D, §5.6, RENDERER-BRIEF): pet + fire + snow, fire size = hearts, harvest as objects; same native core in-app with the Neon-on-void HUD: neighbor fires open the full-info neighbor cards
 - Glance widget: hearts, harvest, Winter countdown
 - One `rules/` source compiled into program, native core and sim; determinism test across builds
-- Devnet deployment + demo mode; APK on dApp Store (submit early, review takes time)
+- $HBRN mint with the program as its only minter (D38)
+- Mainnet deployment on the MagicBlock ER, devnet for tests and demo mode; APK on dApp Store (submit early, review takes time)
 - Recompiler Solana backend items 1–7 and void items 1–6 landed upstream with tests
 - `guard.ms` + adversarial LiteSVM tests + differential fuzz green (§5.7)
 
@@ -462,7 +464,7 @@ Write the offchain simulator early (`sim/`, MetaScript on `rules/`) — seed 200
 - District leaderboard, Hunt, Bounty, Move
 - Owner-facing auto-policy editor
 - Protocol fee payer (gasless for users)
-- Real $HBRN launch (transferable mint, DEX liquidity from player activity only)
+- DEX liquidity for $HBRN, from player activity only
 - Real-account wild pet army once ER throughput is measured
 - Recompiler: Solana backend polish (realloc helpers, `noalloc` check, static CU tooling), `std/solana` published as a package
 
@@ -488,7 +490,7 @@ Two tracks in parallel from day 1: **chain** (recompiler Solana backend + progra
 | 5–6 | `claim` with SGT TLV parse, `Block` + free-list + grace, session-token verification, `close_dead_pet`. LiteSVM scenario tests. | glTF loader, first pet on screen, lights, idle animation, touch. Native RPC: `getMultipleAccounts`, blockhash, tx serialization, ed25519 signing, `sendTransaction` against devnet. |
 | 7–8 | Delegation CPIs, `attack` + VRF callback in the ER, `fight()` in program, `FightRecord` ring buffer, death + inheritance, `allocate` + 24-node tree. CPI item 6 → SKR shop instructions. **Devnet deploy.** | State sync from the ER (`hib_sync`); Kotlin shell: Worker, MWA claim + SKR purchases. Lifecycle hardening (preview, context loss, visibility). |
 | 9–10 | Determinism test js vs native vs LiteSVM. Sim run: invariants §6. Automated tuner: `LOOT_PER_STAKE_BPS`, `DAMAGE`, `EMISSION_START`, XP amounts, talent grades, item bonuses. | HUD in Neon-on-void: campfire home with neighbor fires + Monte-Carlo odds, My Pet, Tree, Replay, Shop, Digest. Widget. |
-| 11–12 | `act` + crank, talent reveal, lifespan and heir, items, bonding; `update_config`, timelock authority. | Variants, day/night, Winter palette, harvest objects. Battery measurement. |
+| 11–12 | `act` + crank, talent reveal, lifespan and heir, items, bonding; `update_config`, config authority. | Variants, day/night, Winter palette, harvest objects. Battery measurement. |
 | 13 | Demo video (10-min epochs; opens on unlock with the pet on the lock screen). Deck. | |
 | 14 | README, architecture doc, commit hygiene. dApp Store submission. | |
 | **Buffer wk 1** | Whatever slipped, in the same order. Compiler fixes that were shimmed get done properly and the shims removed. | |
@@ -522,8 +524,9 @@ Commit daily in this repo and in the compiler/void repos with meaningful message
 6. Minimum bite stake value.
 7. ~~What kind of gap between strong and weak pets do we want~~ — **settled: a luck-driven income tail (D34)**; fights keep the rev 5 curve.
 8. ~~VRF fee and slot-hash fallback~~ — **settled: VRF inside the ER, no fallback (D25)**; latency is measured in the ER probe.
-9. Session validity max (their program) — only matters for owner-driven play now (D19).
+9. ~~Session validity max~~ — **read: 7 days** (magicblock-labs/gum-program-library `91c631e`, `create_session_token_internal` in `programs/gpl_session/src/lib.rs` refuses a later `valid_until` with `ValidityTooLong`; the default is 1 hour). Only owner-driven play uses a session (D19); the pet itself needs none (D38).
 14. Where the unclaimed bot share of the 500-slot floor goes: burn, back to the pot, or not minted (D34).
+15. The shape of the $HBRN mint (D38): SPL Token or Token-2022; when emission becomes tokens (minted each epoch into a program vault, or only when a balance leaves the game as a gift); how a token movement crosses from the ER's `u64` balances to L1 (`SOLANA.md` §7 items 11, 15); whether an external audit happens before launch.
 10. **Team size.** The chain track and the device track (§8) each need a full-time person for the first week. Solo means serializing them: chain days 1–4 first (it gates everything), then device; the buffer weeks absorb the rest. Cut order if needed: item market → widget → HUD polish; never the wallpaper.
 12. Does `std/http` + `std/tls` link and run under the NDK build? Verify in the day-1 device spike; fallback is routing RPC through the Kotlin shell (OkHttp) for the hackathon.
 13. Neon-on-void on Android: text and input have only been exercised headless. If it is not solid by day 9, the HUD is drawn directly with void 2D calls (imperative), Neon later.
@@ -533,7 +536,7 @@ Commit daily in this repo and in the compiler/void repos with meaningful message
 
 ## 11. Glossary
 - **SGT** — Seeker Genesis Token, one per Seeker device, Token-2022, transferable only within Seed Vault Wallet; mint address stable.
-- **$HBRN** — the project token; hackathon: non-transferable `u64` points.
+- **$HBRN** — the project token, a real mint from launch (D38); `u64` balances inside the game loop (D24).
 - **Brain** — the `act(pet)` instruction run by the ER crank; decides the pet's actions.
 - **Session key** — a device-held keypair the owner authorizes once to sign pet actions when driving the pet themselves.
 - **Block** — fixed group of 10 pet slots; the social unit.

@@ -284,7 +284,7 @@ Goal: the world looks alive from day one, and one or two early players cannot ta
 | Trigger | **native crank of the Ephemeral Rollup** | scheduled every N minutes, executed by the ER validator, no transaction fee; `act` can require the crank signer |
 | Dice | VRF in the ER (§4) | |
 | Game state | `Pet`, `Block`, `GlobalConfig` delegated to the ER | ticks, eating, leveling, allocation, fights, wild pets run there at zero fee |
-| L1 | claim, SKR purchases, periodic commits | 0.0003 SOL per undelegation, 0.0001 SOL per commit after the first |
+| L1 | claim, SKR purchases, the commit a claim needs (paid by the owner; gameplay never commits on its own, `BRIEF.md` D21) | 0.0003 SOL per undelegation, 0.0001 SOL per commit after the first, 10 commits per delegation without a delegated fee payer (`SOLANA.md` §4) |
 | Owner control | persona and soft signals (grudge, "stay home today") stored as fields on `Pet`, signed by the owner | the owner may also sign actions directly and run a custom brain; VRF keeps that fair |
 | Server | UI and the narrated digest (LLM) only | holds no session keys, affects no outcome |
 
@@ -294,7 +294,7 @@ Goal: the world looks alive from day one, and one or two early players cannot ta
   - `rules/brain.ms` (integer, allocation-free, pure) is the heuristic brain and the teacher.
   - Training follows the recipe proven in the URG AI project: behavior cloning of the heuristic, then PPO inside sim S1 against a population of heuristic personas, then fictitious self-play against snapshots.
   - The environment is `rules/` built native (C) behind a thin binding to the trainer, so training and chain run the same rules.
-  - The trained network is distilled to a small integer MLP (thousands of parameters, not millions): features of the pet and each candidate target in, a score per legal action out, personas as conditioning inputs. Weights live in a public account and change through a timelocked config update.
+  - The trained network is distilled to a small integer MLP (thousands of parameters, not millions): features of the pet and each candidate target in, a score per legal action out, personas as conditioning inputs. Weights live in a public account and change through a config update by the team (`BRIEF.md` D15).
   - Reward mixes wealth, survival and lineage value, weighted per persona; pure `$HBRN` reward would make every pet a mercenary.
   - Self-play doubles as an exploit finder: it should surface farming, stake abuse and overpowered keystone routes before players do, checked against §6 invariants.
 - **Replacing Monte Carlo odds.** The heuristic brain estimates win chance by simulating 400 fights per target (up to 9 targets, 3,600 fights per decision). That is milliseconds off chain and almost certainly too heavy for one on-chain transaction. On chain the policy scores targets directly; if the heuristic runs on chain it uses a precomputed odds table by stat ratios, or 16–32 samples (±12.5% to ±8.8% standard error at p = 0.5, versus ±2.5% at 400).
