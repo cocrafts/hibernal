@@ -1,6 +1,3 @@
-@include("buffer.h");
-@compile("buffer.c");
-
 import { WORLD_BLOCKS, EPISODE_EPOCHS } from "../world";
 import { engineVersion } from "../digests";
 import { BLOCK_SLOTS, PersonaKind, checkPolicy } from "../../rules/index";
@@ -8,9 +5,10 @@ import { Head, observationSize, actionCount, largestActionCount, zeros } from ".
 import { selfInputs, selfInput } from "./actor";
 import { POLICY_SLOTS, Batch, RewardTerm, withTerm } from "./batch";
 
-extern function hibernalCopyOut(target: unknown, source: Borrow<int32>, count: int32): void;
-extern function hibernalPeek(source: unknown, index: int32): int32;
-extern function hibernalPeekByte(source: unknown, index: int32): int32;
+function copyOut(target: Ptr<void>, source: Span<int32>, count: int32): void {
+	const cells = target as Ptr<int32>;
+	for (let index = 0; index < count; index++) { cells[index] = source[index]; }
+}
 
 export const FFI_REFUSED: int32 = -1;
 export const STAT_FIELDS: int32 = 8;
@@ -86,35 +84,35 @@ function ffiActionCount(head: int32): int32 {
 }
 
 @exportName("hibernal_observe")
-function ffiObserve(head: int32, observationBuffer: unknown, legalBuffer: unknown): int32 {
+function ffiObserve(head: int32, observationBuffer: Ptr<void>, legalBuffer: Ptr<void>): int32 {
 	if (batch.rows() == 0 || head != (batch.cursor.head as int32)) { return FFI_REFUSED; }
 	batch.observe(observations, legal);
 	const rows = batch.rows();
-	hibernalCopyOut(observationBuffer, observations[0], rows * observationSize(batch.cursor.head));
-	hibernalCopyOut(legalBuffer, legal[0], rows * actionCount(batch.cursor.head));
+	copyOut(observationBuffer, observations, rows * observationSize(batch.cursor.head));
+	copyOut(legalBuffer, legal, rows * actionCount(batch.cursor.head));
 	return rows;
 }
 
 @exportName("hibernal_teacher_actions")
-function ffiTeacherActions(head: int32, actionBuffer: unknown): int32 {
+function ffiTeacherActions(head: int32, actionBuffer: Ptr<void>): int32 {
 	if (batch.rows() == 0 || head != (batch.cursor.head as int32)) { return FFI_REFUSED; }
 	batch.teacherActions(actions);
-	hibernalCopyOut(actionBuffer, actions[0], batch.rows());
+	copyOut(actionBuffer, actions, batch.rows());
 	return batch.rows();
 }
 
 @exportName("hibernal_actors")
-function ffiActors(actorBuffer: unknown): int32 {
+function ffiActors(actorBuffer: Ptr<void>): int32 {
 	if (batch.rows() == 0) { return FFI_REFUSED; }
 	for (let row = 0; row < batch.rows(); row++) {
 		actorSlots[row] = batch.petOf(row) % BLOCK_SLOTS;
 	}
-	hibernalCopyOut(actorBuffer, actorSlots[0], batch.rows());
+	copyOut(actorBuffer, actorSlots, batch.rows());
 	return batch.rows();
 }
 
 @exportName("hibernal_owner_kinds")
-function ffiOwnerKinds(kindBuffer: unknown): int32 {
+function ffiOwnerKinds(kindBuffer: Ptr<void>): int32 {
 	const pets = batch.blocks * BLOCK_SLOTS;
 	const kinds = zeros(batch.worlds.length * pets);
 	for (let env = 0; env < batch.worlds.length; env++) {
@@ -123,30 +121,31 @@ function ffiOwnerKinds(kindBuffer: unknown): int32 {
 		}
 	}
 	if (kinds.length == 0) { return FFI_REFUSED; }
-	hibernalCopyOut(kindBuffer, kinds[0], kinds.length);
+	copyOut(kindBuffer, kinds, kinds.length);
 	return kinds.length;
 }
 
 @exportName("hibernal_step")
 function ffiStep(
 	head: int32,
-	actionBuffer: unknown,
-	rewardBuffer: unknown,
-	doneBuffer: unknown,
+	actionBuffer: Ptr<void>,
+	rewardBuffer: Ptr<void>,
+	doneBuffer: Ptr<void>,
 ): int32 {
 	if (batch.rows() == 0 || head != (batch.cursor.head as int32)) { return FFI_REFUSED; }
 	const rows = batch.rows();
-	for (let row = 0; row < rows; row++) { actions[row] = hibernalPeek(actionBuffer, row); }
+	const chosen = actionBuffer as Ptr<int32>;
+	for (let row = 0; row < rows; row++) { actions[row] = chosen[row]; }
 	const stepped = batch.step(batch.cursor.head, actions, rewards, dones);
 	if (!stepped.ok) { return FFI_REFUSED; }
 	batch = stepped.value;
-	hibernalCopyOut(rewardBuffer, rewards[0], rows);
-	hibernalCopyOut(doneBuffer, dones[0], rows);
+	copyOut(rewardBuffer, rewards, rows);
+	copyOut(doneBuffer, dones, rows);
 	return rows;
 }
 
 @exportName("hibernal_stats")
-function ffiStats(env: int32, statBuffer: unknown): int32 {
+function ffiStats(env: int32, statBuffer: Ptr<void>): int32 {
 	if (env >= batch.worlds.length) { return FFI_REFUSED; }
 	let fights = 0;
 	let wins = 0;
@@ -180,15 +179,15 @@ function ffiStats(env: int32, statBuffer: unknown): int32 {
 	stats[5] = living;
 	stats[6] = levels;
 	stats[7] = Math.min(wealth, 2000000000 as uint64) as int32;
-	hibernalCopyOut(statBuffer, stats[0], STAT_FIELDS);
+	copyOut(statBuffer, stats, STAT_FIELDS);
 	return STAT_FIELDS;
 }
 
 @exportName("hibernal_feel")
-function ffiFeel(feelBuffer: unknown, capacity: int32): int32 {
+function ffiFeel(feelBuffer: Ptr<void>, capacity: int32): int32 {
 	const counters = batch.feel.counters;
 	if (counters.length == 0 || capacity != counters.length) { return FFI_REFUSED; }
-	hibernalCopyOut(feelBuffer, counters[0], counters.length);
+	copyOut(feelBuffer, counters, counters.length);
 	return counters.length;
 }
 
@@ -215,12 +214,11 @@ function ffiSelfInput(head: int32, position: int32): int32 {
 }
 
 @exportName("hibernal_load_policy")
-function ffiLoadPolicy(slot: int32, policyBuffer: unknown, byteCount: int32): int32 {
+function ffiLoadPolicy(slot: int32, policyBuffer: Ptr<void>, byteCount: int32): int32 {
 	if (byteCount <= 0 || byteCount > 65536) { return FFI_REFUSED; }
+	const source = policyBuffer as Ptr<uint8>;
 	const bytes: uint8[] = [];
-	for (let position = 0; position < byteCount; position++) {
-		bytes.push(hibernalPeekByte(policyBuffer, position) as uint8);
-	}
+	for (let position = 0; position < byteCount; position++) { bytes.push(source[position]); }
 	const checked = checkPolicy(bytes, ffiEngineVersion());
 	if (!checked.ok) { return FFI_REFUSED - 1 - (checked.error as int32); }
 	return batch.withPolicy(slot, bytes) ? byteCount : FFI_REFUSED;
@@ -232,10 +230,10 @@ function ffiAssign(env: int32, slot: int32, controller: int32): int32 {
 }
 
 @exportName("hibernal_policy_logits")
-function ffiPolicyLogits(policy: int32, logitBuffer: unknown): int32 {
+function ffiPolicyLogits(policy: int32, logitBuffer: Ptr<void>): int32 {
 	if (batch.rows() == 0 || policy < 0 || policy >= POLICY_SLOTS) { return FFI_REFUSED; }
 	if (batch.policies[policy].bytes.length == 0) { return FFI_REFUSED; }
 	batch.policyLogits(policy, logits);
-	hibernalCopyOut(logitBuffer, logits[0], batch.rows() * actionCount(batch.cursor.head));
+	copyOut(logitBuffer, logits, batch.rows() * actionCount(batch.cursor.head));
 	return batch.rows();
 }

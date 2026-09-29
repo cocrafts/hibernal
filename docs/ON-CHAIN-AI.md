@@ -163,7 +163,7 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 
 ### Package 4: observation, batched env, training pipeline — Measured
 
-`rules/logarithm.ms`, `rules/oddsTable.ms` (+ generated `rules/oddsTableColumns.ms`), `rules/policy.ms`; `sim/env/observe.ms`, `batch.ms`, `actor.ms`, `ffi.ms` (+ `buffer.c`); `sim/digests.ms`; `tools/oddsTableGen.ms`, `sim/oddsError.ms`; `train/` (uv, numpy 2.4, torch 2.14).
+`rules/logarithm.ms`, `rules/oddsTable.ms` (+ generated `rules/oddsTableColumns.ms`), `rules/policy.ms`; `sim/env/observe.ms`, `batch.ms`, `actor.ms`, `ffi.ms`; `sim/digests.ms`; `tools/oddsTableGen.ms`, `sim/oddsError.ms`; `train/` (uv, numpy 2.4, torch 2.14).
 
 **Odds table.** The proposed grid over `might_a/might_d × grit_a/grit_d` was measured first: mean error 580 bps on the stats reachable today, because fight HP is `800 + 7 × grit` and mods are outside the key. The table is keyed on *pressure* instead: expected damage per round (roll mean, Glass Cannon, crit, dodge, haste, bleed, armor) minus the target's lifesteal, over the target's fight HP, in bps. Key = `log2(pressure_a / pressure_d)` in eighths of an octave (41 columns, ±2.5 octaves, linear interpolation) × `log2(pressure_a + pressure_d)` in half octaves (8 rows). One `uint64` per column, one byte per cell at 50 bps: 41 `match` arms, no array, no allocation.
 
