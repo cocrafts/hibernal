@@ -204,3 +204,45 @@ for (const name of SCENARIOS) {
 	const dry = await send(actData(1, scenario.engine, false));
 	console.log(`plain act without write-back ${dry.failed ? dry.error : `${dry.units} CU`}`);
 }
+
+function dayOf() {
+	const fields = {};
+	for (const line of readFileSync(new URL("day.txt", probeDirectory), "utf8").split("\n")) {
+		const [key, ...rest] = line.split(" ");
+		if (key) { fields[key] = rest; }
+	}
+	const bytes = (key) => Uint8Array.from(fields[key].map(Number));
+	const steps = [];
+	for (let step = 0; fields[`step${step}`]; step++) {
+		const [, slot, , economy, node, attack, , digest] = fields[`step${step}`];
+		steps.push({ slot: Number(slot), choice: [economy, node, attack].map(Number), digest: BigInt(digest), after: bytes(`after${step}`), afterGlobal: bytes(`afterGlobal${step}`) });
+	}
+	return {
+		pets: bytes("pets"),
+		wilds: bytes("wilds"),
+		global: bytes("global"),
+		contexts: new Map(fields.order.map((slot) => [Number(slot), bytes(`context${slot}`)])),
+		steps,
+		engine: BigInt(fields.engine[0]),
+		header: fields.scenario.join(" "),
+	};
+}
+
+const day = dayOf();
+console.log(`\n${day.header} · ${day.steps.length} acts chained on one moment, each pet with its own context`);
+loadScenario({ ...day, context: day.contexts.get(day.steps[0].slot) });
+const dayUnits = [];
+let dayChoices = 0;
+let dayBytes = 0;
+for (const [index, step] of day.steps.entries()) {
+	put(holders[1], day.contexts.get(step.slot));
+	const acted = await send(actData(1, day.engine, true));
+	if (acted.failed) {
+		console.log(`  step ${index} slot ${step.slot}: ${acted.error}`);
+		break;
+	}
+	dayUnits.push(acted.units);
+	if (!same(logged(acted.logs), step.choice)) dayChoices++;
+	dayBytes += differingBytes(step);
+}
+console.log(`day on LiteSVM: ${dayUnits.length}/${day.steps.length} acts ran · ${dayChoices} choices and ${dayBytes} written bytes differ from the host's over all steps · ${Math.min(...dayUnits)}–${Math.max(...dayUnits)} CU`);

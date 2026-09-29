@@ -88,6 +88,8 @@ const CONTEXT_ACCOUNT: int32 = 1;
 const CONFIG_ACCOUNT: int32 = 2;
 const WILDS_ACCOUNT: int32 = 3;
 const FIRST_PET_ACCOUNT: int32 = 4;
+const FIRST_SLOT_CONTEXT: int32 = FIRST_PET_ACCOUNT + BLOCK_SLOTS;
+const HOLDER_IDS: int32 = FIRST_SLOT_CONTEXT + BLOCK_SLOTS;
 
 enum ProbeError {
 	Layout,
@@ -392,7 +394,7 @@ function actSeeds(id: uint8): Seeds {
 
 function idIn(data: Bytes): Result<uint8, ProgramError> {
 	const id = try data.readU64(8);
-	if (id >= (FIRST_PET_ACCOUNT + BLOCK_SLOTS) as uint64) { return Result.err(ProgramError.invalidArgument()); }
+	if (id >= HOLDER_IDS as uint64) { return Result.err(ProgramError.invalidArgument()); }
 	return Result.ok(id as uint8);
 }
 

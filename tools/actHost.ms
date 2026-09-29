@@ -40,7 +40,7 @@ import {
 } from "../sim/env/observe";
 import { Scratch, bestLegal, create, logitsInto } from "../sim/env/actor";
 import { engineVersion } from "../sim/digests";
-import { ActChoice, ActContext, actOnce, buffersMatchRules, digestOf } from "./actBench";
+import { ActChoice, ActContext, actOnce, actTicked, buffersMatchRules, digestOf } from "./actBench";
 
 extern function hibernalPetBytes(target: Span<uint8>, source: Span<Pet>, elementBytes: int64): void;
 extern function hibernalContextBytes(
@@ -59,6 +59,7 @@ const WORLD_SEED: uint64 = 9001;
 const TYPICAL_DAY: uint64 = 40;
 const TYPICAL_ROUND: int32 = 2;
 const BUSY_FROM_DAY: uint64 = 30;
+const DAY_RUNS: int32 = 5;
 
 enum Scenario {
 	Typical,
@@ -194,11 +195,11 @@ function petLine(name: string, pets: Pet[]): string {
 	return line(name, bytes);
 }
 
-function contextLine(context: ActContext): string {
+function contextLine(name: string, context: ActContext): string {
 	const bytes = zeroBytes(sizeof ActContext as int32);
 	const contexts: ActContext[] = [context];
 	hibernalContextBytes(bytes, contexts, sizeof ActContext as int64);
-	return line("context", bytes);
+	return line(name, bytes);
 }
 
 function globalLine(name: string, global: GlobalConfig): string {
@@ -249,7 +250,7 @@ function written(
 ): Result<ActChoice, HostError> {
 	const pets = copied(world.pets);
 	const wilds = copied(world.wilds);
-	const before = petLine("pets", pets) + petLine("wilds", wilds) + contextLine(context) +
+	const before = petLine("pets", pets) + petLine("wilds", wilds) + contextLine("context", context) +
 		globalLine("global", world.global);
 	const outcome = context.actOnce(policy, pets, wilds, world.global);
 	if (!outcome.ok) { return Result.err(HostError.Tick); }
@@ -270,6 +271,44 @@ function written(
 	if (!saved.ok) { return Result.err(HostError.Write); }
 	console.log(`${name}: day ${moment.day} round ${moment.round} slot ${context.actor as int32} · points ${pets[context.actor as int32].pointsUnspent} · choice ${choice.economy as int32} ${choice.node} ${choice.attack} · digest 0x${digest.toString(16)}`);
 	return Result.ok(choice);
+}
+
+function dayWritten(policy: uint8[]): Result<int32, HostError> {
+	const moment: Moment = { day: TYPICAL_DAY, round: 0, turn: 0, index: 0 };
+	const world = worldAt(moment);
+	const pets = copied(world.pets);
+	const wilds = copied(world.wilds);
+	let global = world.global;
+	const order: int32[] = [];
+	let orderText = "order";
+	let contexts = "";
+	for (let turn = 0; turn < BLOCK_SLOTS; turn++) {
+		const slot = world.actorAt(turn);
+		if (!pets[slot].alive) { continue; }
+		if (pets[slot].lastTickEpoch < moment.day) { return Result.err(HostError.Tick); }
+		order.push(slot);
+		orderText = orderText + ` ${slot}`;
+		contexts = contexts + contextLine(`context${slot}`, world.contextOf(slot, moment.day, moment.round));
+	}
+	const before = petLine("pets", pets) + petLine("wilds", wilds) + globalLine("global", global) + contexts;
+	let steps = "";
+	let step = 0;
+	for (let run = 0; run < DAY_RUNS; run++) {
+		for (const slot of order) {
+			const outcome = world.contextOf(slot, moment.day, moment.round).actTicked(policy, pets, wilds, global);
+			global = outcome.global;
+			const choice = outcome.choice;
+			steps = steps +
+				`step${step} slot ${slot} choice ${choice.economy as int32} ${choice.node} ${choice.attack} digest ${digestOf(pets, global)}\n` +
+				petLine(`after${step}`, pets) + globalLine(`afterGlobal${step}`, global);
+			step++;
+		}
+	}
+	const header = `scenario day day ${moment.day} round ${moment.round} runs ${DAY_RUNS}\n${orderText}\nengine ${engineVersion()}\n`;
+	const saved = writeFile(`${PROBE_DIRECTORY}/day.txt`, header + before + steps);
+	if (!saved.ok) { return Result.err(HostError.Write); }
+	console.log(`day: day ${moment.day} round ${moment.round} · ${orderText} · ${step} acts over ${DAY_RUNS} runs · last digest 0x${digestOf(pets, global).toString(16)}`);
+	return Result.ok(step);
 }
 
 function policyBytes(): Result<uint8[], HostError> {
@@ -297,6 +336,7 @@ function run(): Result<int32, HostError> {
 	const dawnWorld = worldBeforeDawn(busiest.day);
 	const dawnContext = dawnWorld.contextOf(busiest.index, busiest.day, 0);
 	const _dawn = try written("dawn", busiest, dawnWorld, dawnContext, policy, false);
+	const _day = try dayWritten(policy);
 	return Result.ok(0);
 }
 
