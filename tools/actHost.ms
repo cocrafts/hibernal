@@ -1,5 +1,3 @@
-@include("rawBytes.h");
-@compile("rawBytes.c");
 import { readLines, writeFile } from "std/fs";
 import {
 	ACTS_PER_EPOCH,
@@ -41,18 +39,6 @@ import {
 import { Scratch, bestLegal, create, logitsInto } from "../sim/env/actor";
 import { engineVersion } from "../sim/digests";
 import { ActChoice, ActContext, actOnce, actTicked, buffersMatchRules, digestOf } from "./actBench";
-
-extern function hibernalPetBytes(target: Span<uint8>, source: Span<Pet>, elementBytes: int64): void;
-extern function hibernalContextBytes(
-	target: Span<uint8>,
-	source: Span<ActContext>,
-	elementBytes: int64,
-): void;
-extern function hibernalGlobalBytes(
-	target: Span<uint8>,
-	source: Span<GlobalConfig>,
-	elementBytes: int64,
-): void;
 
 const PROBE_DIRECTORY = "out/actProbe";
 const WORLD_SEED: uint64 = 9001;
@@ -177,9 +163,10 @@ function copied(pets: Pet[]): Pet[] {
 	return copy;
 }
 
-function zeroBytes(count: int32): uint8[] {
+function bytesAt(address: Ptr<void>, count: int32): uint8[] {
+	const source = address as Ptr<uint8>;
 	const bytes: uint8[] = [];
-	for (let position = 0; position < count; position++) { bytes.push(0); }
+	for (let position = 0; position < count; position++) { bytes.push(source[position]); }
 	return bytes;
 }
 
@@ -190,23 +177,17 @@ function line(name: string, bytes: uint8[]): string {
 }
 
 function petLine(name: string, pets: Pet[]): string {
-	const bytes = zeroBytes(pets.length * (sizeof Pet as int32));
-	hibernalPetBytes(bytes, pets, sizeof Pet as int64);
-	return line(name, bytes);
+	return line(name, bytesAt(pets[0] as Ptr<void>, pets.length * (sizeof Pet as int32)));
 }
 
 function contextLine(name: string, context: ActContext): string {
-	const bytes = zeroBytes(sizeof ActContext as int32);
 	const contexts: ActContext[] = [context];
-	hibernalContextBytes(bytes, contexts, sizeof ActContext as int64);
-	return line(name, bytes);
+	return line(name, bytesAt(contexts[0] as Ptr<void>, sizeof ActContext as int32));
 }
 
 function globalLine(name: string, global: GlobalConfig): string {
-	const bytes = zeroBytes(sizeof GlobalConfig as int32);
 	const globals: GlobalConfig[] = [global];
-	hibernalGlobalBytes(bytes, globals, sizeof GlobalConfig as int64);
-	return line(name, bytes);
+	return line(name, bytesAt(globals[0] as Ptr<void>, sizeof GlobalConfig as int32));
 }
 
 function policyChoice(
