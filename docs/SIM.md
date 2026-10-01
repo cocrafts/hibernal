@@ -300,6 +300,24 @@
 - Bắt nạt (2026-09-25, câu hỏi "phẫn nộ" của user): đo tỉ lệ vụ cướp mà cùng kẻ cướp lại cướp cùng nạn nhân trong 3 ngày (`robbedAgain` trong `sim/env/feel.ms`). Teacher, 4 world, engine `3931114478917005264`: 17%; Worker bị cướp 0.6–0.8 lần mỗi ngày, nạn nhân nặng nhất bị cùng một kẻ cướp lại 24–28 lần trong đời.
 - Đã thêm phẫn nộ (đề xuất của agent theo ý user, commit `42b0ade`): bị cùng một hàng xóm cướp hoặc cắn lần nữa thì phẫn nộ +1 (tối đa 3, giữ 3 ngày từ lần cuối); khi đánh với kẻ đó ở vai nào cũng được might và grit +10% mỗi bậc; thắng kẻ đó thì hết. Odds mà brain thấy có tính phẫn nộ. Đo (teacher, 4 world, engine `2369342061091774511`): cướp lặp lại 17% → 13%, tỉ lệ thắng khi tấn công 0.83 → 0.81, tổng tiền bị cướp không đổi (27% thu nhập), nhận ra persona 0.86 → 0.89. Bản đầu cho phẫn nộ giảm 1 mỗi ngày thì không bao giờ có tác dụng (kẻ cướp chỉ đánh một mục tiêu một lần mỗi ngày), engine không đổi — đã sửa thành giữ 3 ngày.
 
+### D3. Đảo block theo sức mạnh (D39) — Có trong code (sau cờ, mặc định tắt) · Đo được với teacher
+
+- Tâm lý: con yếu không bị con mạnh ăn hiếp tới chết; mỗi block là mười con ngang sức.
+- Code (2026-09-30): `rules/resort.ms` (`strengthOf` theo Level, Power hoặc Combat, có tính gear; `movedTo` xoá thù hận), `World.resorted` và `newbornsPlacedWeak` trong `sim/world.ms`, `health.py --resort N --measure M --wilds 0|1`. Mặc định tắt: digest và engine `16948401298924711931` không đổi, native = JS.
+- Đo (teacher, 8 world × 200 pet × 120 ngày, seed 9001–9003, `out/resort/`):
+
+| Cấu hình | Cướp bởi con mạnh gấp đôi | Tiền mất vì bị cướp, % thu nhập | Chết sớm / 100 đời | Wealth median region cao / thấp |
+|---|---|---|---|---|
+| Cố định, có wild | 45% | 25.8 | 2.5 | 4.0 |
+| Cố định, không wild | 40% | 25.6 | 3.6 | 5.0 |
+| 7 ngày, Level | 30% | 21.6 | 5.9 | 8.0 |
+| 7 ngày, Power | 35% | 22.6 | 4.7 | 7.0 |
+| 7 ngày, Combat | 1% | 13.8 | 9.5 | 39.6 |
+| 30 ngày, Combat | 16% | 15.8 | 8.1 | 14.9 |
+
+- Vì sao chết sớm tăng: Fighter của teacher sống nhờ cướp Worker. Block cố định: Worker mất 36% thu nhập vì bị cướp, Fighter đói 2.5% đời. 7 ngày theo Combat: Worker chỉ mất 14% và giàu hơn (median 37k → 59k), Fighter hết mồi, median 29k → 1.5k, đói 19.8% đời. Bỏ wild pet riêng nó đã đẩy Fighter đói 2.5% → 8.0%. Teacher không đổi cách kiếm tiền khi hết mồi; brain train lại có thể đổi, chưa đo.
+- Mở: chọn thước đo và nhịp đảo; nguồn thu của Fighter khi block toàn con ngang sức.
+
 ### D2. Persona đọc được từ log (D18) — Có trong code · Đo được
 
 - Chỉ số: recall khi đoán persona từ log một pet.
