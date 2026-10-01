@@ -4,6 +4,8 @@
 >
 > Status legend: **READY** = no upstream blocker, start now · **BLOCKED:R / V / N** = waiting on recompiler / void / neon work · **BLOCKED:dep** = waiting on another package in this file · **OPT** = optional, cut first.
 > Estimates are person-days for someone who knows the stack. Last updated 2026-09-14 (BRIEF rev 4: brain on chain in the MagicBlock ER, VRF, lifespan, talent, items, bonding, wild pets).
+>
+> Release decision, 2026-09-30: use [LAUNCH.md](LAUNCH.md) for the approved two-milestone plan: a functional devnet/ER beta submission by October 8, then mainnet after security and operational readiness gates. Mainnet deployment and dApp Store approval do not gate the submission. The estimates and fallback paths below are historical planning, not proof of readiness or approval to reduce game scope.
 
 ---
 
