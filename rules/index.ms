@@ -20,3 +20,4 @@ export * from "./owner";
 export * from "./items";
 export * from "./market";
 export * from "./observe";
+export * from "./resort";
