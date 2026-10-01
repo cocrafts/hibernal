@@ -35,7 +35,6 @@ import {
 	surroundingsOf,
 	marketViewOf,
 } from "../world";
-import { personaKindOf } from "../teacher";
 
 export const ECONOMY_ACTIONS: int32 = (EconomyAction.BuyItem as int32) + 1;
 export const NODE_ACTIONS: int32 = ALLOCATE_HOLD + 1;
@@ -96,7 +95,7 @@ export function observeInto(
 	if (!world.pets[index].alive) { return; }
 	const around = world.surroundingsOf(index);
 	const rivals = rivalsAround(around);
-	around.writeSelf(personaKindOf(index), world.marketViewOf(index), rivals, features, offset);
+	around.writeSelf(world.personaOf(index), world.marketViewOf(index), rivals, features, offset);
 	if (head == Head.Node) { around.writeNodes(features, offset + SELF_FEATURES); }
 	if (head == Head.Attack) { around.writeTargets(rivals, features, offset + SELF_FEATURES); }
 }

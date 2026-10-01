@@ -9,14 +9,15 @@ import {
 	splitmix,
 	policyBytes,
 	agedOut,
+	resortsAt,
 } from "../../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
 // ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
 import { Pantry } from "../../rules/pantry";
 import { Gear, Item, resaleValue } from "../../rules/items";
-import { ACTS_PER_EPOCH, Masks, World, WorldStats, economyMaskFor } from "../world";
-import { personaKindOf, playEpisode } from "../teacher";
+import { ACTS_PER_EPOCH, Masks, Resort, World, WorldStats, economyMaskFor, fixed } from "../world";
+import { playEpisode } from "../teacher";
 import {
 	Head,
 	observationSize,
@@ -37,6 +38,8 @@ import {
 	closeEpoch,
 	openEpoch,
 	closeEpisode,
+	permuted,
+	forgetGrudges,
 } from "./feel";
 
 export const MILLI_PER_UNIT: uint64 = 1000;
@@ -81,6 +84,8 @@ export struct Batch {
 	weights: RewardWeights[];
 	feel: Feel;
 	controllers: int32[];
+	homes: int32[];
+	resort: Resort;
 	policies: PolicyBytes[];
 	scratch: Scratch;
 	rowObservation: int32[];
@@ -154,8 +159,8 @@ export function worldSeed(seed: uint64, env: int32, episode: int32): uint64 {
 	return splitmix(seed + ((env as uint64) << 32) + (episode as uint64));
 }
 
-export function weightsOf(this batch: Batch, index: int32): RewardWeights {
-	return batch.weights[personaKindOf(index) as int32];
+export function weightsOf(this batch: Batch, env: int32, index: int32): RewardWeights {
+	return batch.weights[batch.worlds[env].personaOf(index) as int32];
 }
 
 function rescore(this batch: Batch): void {
@@ -164,7 +169,7 @@ function rescore(this batch: Batch): void {
 	for (let env = 0; env < batch.worlds.length; env++) {
 		const world = batch.worlds[env];
 		for (let index = 0; index < pets; index++) {
-			scores[env * pets + index] = world.pets[index].score(batch.weightsOf(index));
+			scores[env * pets + index] = world.pets[index].score(batch.weightsOf(env, index));
 		}
 	}
 }
@@ -177,9 +182,17 @@ export function setWeights(this batch: Batch, kind: PersonaKind, weights: Reward
 
 function opened(this batch: Batch): Batch {
 	const worlds = batch.worlds;
+	const homes = batch.homes;
+	const pets = batch.blocks * BLOCK_SLOTS;
 	for (let env = 0; env < worlds.length; env++) {
 		const seed = worldSeed(batch.seed, env, batch.episode);
-		worlds[env] = World.staggered(batch.blocks, seed).beginEpoch(1);
+		const staggered: World = { ...World.staggered(batch.blocks, seed), resort: batch.resort };
+		const backHome = zeros(pets);
+		for (let index = 0; index < pets; index++) { backHome[homes[env * pets + index]] = index; }
+		batch.feel.permuted(env, backHome);
+		for (let index = 0; index < pets; index++) { homes[env * pets + index] = index; }
+		worlds[env] = staggered.beginEpoch(1);
+		batch.permutedFor(env, worlds[env]);
 	}
 	batch.rescore();
 	return { ...batch, cursor: { epoch: 1, round: 0, turn: 0, head: Head.Economy } };
@@ -195,10 +208,14 @@ export function create(
 	const worlds: World[] = [];
 	const scores: int64[] = [];
 	const controllers: int32[] = [];
+	const homes: int32[] = [];
 	const policies: PolicyBytes[] = [];
 	for (let env = 0; env < envCount; env++) {
 		worlds.push(World.create(blocks, 0));
-		for (let index = 0; index < blocks * BLOCK_SLOTS; index++) { scores.push(0); }
+		for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
+			scores.push(0);
+			homes.push(index);
+		}
 		for (let slot = 0; slot < BLOCK_SLOTS; slot++) { controllers.push(CONTROL_LEARNER); }
 	}
 	for (let slot = 0; slot < POLICY_SLOTS; slot++) { policies.push({ bytes: [] }); }
@@ -212,6 +229,8 @@ export function create(
 		],
 		feel: Feel.create(envCount, blocks * BLOCK_SLOTS),
 		controllers: controllers,
+		homes: homes,
+		resort: Resort.fixed(),
 		policies: policies,
 		scratch: Scratch.create(),
 		rowObservation: zeros(observationSize(Head.Node)),
@@ -236,7 +255,34 @@ export function petOf(this batch: Batch, row: int32): int32 {
 }
 
 export function controllerOf(this batch: Batch, row: int32): int32 {
-	return batch.controllers[(row / batch.blocks) * BLOCK_SLOTS + batch.petOf(row) % BLOCK_SLOTS];
+	const env = row / batch.blocks;
+	const home = batch.homes[env * batch.blocks * BLOCK_SLOTS + batch.petOf(row)];
+	return batch.controllers[env * BLOCK_SLOTS + home % BLOCK_SLOTS];
+}
+
+export function permutedFor(this batch: Batch, env: int32, world: World): void {
+	if (world.movedEpoch != world.epoch) { return; }
+	const pets = batch.blocks * BLOCK_SLOTS;
+	const base = env * pets;
+	const scores = batch.scores;
+	const homes = batch.homes;
+	const movedScores: int64[] = [];
+	const movedHomes: int32[] = [];
+	for (let index = 0; index < pets; index++) {
+		movedScores.push(scores[base + world.origins[index]]);
+		movedHomes.push(homes[base + world.origins[index]]);
+	}
+	for (let index = 0; index < pets; index++) {
+		scores[base + index] = movedScores[index];
+		homes[base + index] = movedHomes[index];
+	}
+	batch.feel.permuted(env, world.origins);
+	if (resortsAt(world.epoch, batch.resort.every)) { batch.feel.forgetGrudges(env); }
+}
+
+export function withResort(this batch: Batch, resort: Resort): Batch {
+	const configured: Batch = { ...batch, resort: resort, episode: 0 };
+	return configured.opened();
 }
 
 export function assign(this batch: Batch, env: int32, slot: int32, controller: int32): boolean {
@@ -391,11 +437,12 @@ function advanced(this batch: Batch): Batch {
 		batch.feel.closeEpoch(env, worlds[env]);
 		const world = worlds[env].endEpoch().beginEpoch(cursor.epoch + 1);
 		worlds[env] = world;
+		batch.permutedFor(env, world);
 		batch.feel.openEpoch(env, world);
 		for (let index = 0; index < pets; index++) {
 			const pet = world.pets[index];
 			if (pet.alive && pet.bornEpoch == world.epoch) {
-				scores[env * pets + index] = pet.score(batch.weightsOf(index));
+				scores[env * pets + index] = pet.score(batch.weightsOf(env, index));
 			}
 		}
 	}
@@ -420,6 +467,8 @@ export function step(
 	const lastEpoch = cursor.epoch >= (batch.epochs as uint64);
 	const lastRound = lastEpoch && cursor.round == ACTS_PER_EPOCH - 1;
 	const closing = lastRound && head == Head.Attack;
+	const resorting = !lastEpoch && cursor.round == ACTS_PER_EPOCH - 1 && head == Head.Attack &&
+		resortsAt(cursor.epoch + 1, batch.resort.every);
 	for (let row = 0; row < batch.rows(); row++) {
 		const env = row / batch.blocks;
 		const index = batch.petOf(row);
@@ -434,12 +483,12 @@ export function step(
 		worlds[env] = world;
 		batch.feel.note(moment, world);
 		const pet = world.pets[index];
-		const weights = batch.weightsOf(index);
+		const weights = batch.weightsOf(env, index);
 		const now = pet.score(weights);
 		const earned = now - scores[env * pets + index] + weights.shaping(moment, world);
 		rewards[row] = earned as int32;
 		scores[env * pets + index] = now;
-		const running = closing ? Done.Truncated : Done.Running;
+		const running = closing || resorting ? Done.Truncated : Done.Running;
 		const available = pet.alive || world.claimEpochs[index] != 0;
 		dones[row] = (available ? running : Done.Died) as int32;
 	}

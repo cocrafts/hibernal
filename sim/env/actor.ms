@@ -50,7 +50,7 @@ import {
 	staggered,
 	surroundingsOf,
 } from "../world";
-import { act, personaKindOf } from "../teacher";
+import { act } from "../teacher";
 
 export struct Scratch {
 	input: int32[];
@@ -254,7 +254,7 @@ test "the node and attack heads read only what the short self observation writes
 	const short = zeros(SELF_FEATURES);
 	for (let index = 0; index < world.pets.length; index++) {
 		const around = world.surroundingsOf(index);
-		const persona = personaKindOf(index);
+		const persona = world.personaOf(index);
 		for (let position = 0; position < SELF_FEATURES; position++) {
 			full[position] = 0;
 			short[position] = 0;

@@ -26,7 +26,7 @@ import {
 	robberOf,
 	staggered,
 } from "../sim/world";
-import { act, personaKindOf } from "../sim/teacher";
+import { act } from "../sim/teacher";
 import {
 	Head,
 	actionCount,
@@ -149,7 +149,7 @@ function contextOf(this world: World, index: int32, epoch: uint64, round: int32)
 		epoch: epoch,
 		round: round,
 		actor: (index % BLOCK_SLOTS) as BlockSlot,
-		persona: personaKindOf(index),
+		persona: world.personaOf(index),
 		robber: dated.robberOf(index),
 		market: dated.marketViewOf(index),
 		economySeed: mixSeeds(mixSeeds(mixSeeds(world.seed, 7919), index as uint64), turnSeed),

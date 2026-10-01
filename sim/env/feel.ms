@@ -20,9 +20,10 @@ import {
 	statBonusBps,
 	itemCount,
 	focusStat,
+	StrengthMeasure,
+	strengthOf,
 } from "../../rules/index";
 import { World, WorldStats, blockStart } from "../world";
-import { personaKindOf } from "../teacher";
 import { Head, zeros } from "./observe";
 
 export const RECKLESS_WIN_CHANCE_BPS: int32 = 4000;
@@ -85,9 +86,13 @@ export enum FeelCounter {
 	MarketSales,
 	MarketEarned,
 	FocusGearSum,
+	LopsidedAttacks,
+	LopsidedLootLost,
+	YoungDeaths,
 }
 
-export const FEEL_COUNTERS: int32 = (FeelCounter.FocusGearSum as int32) + 1;
+export const FEEL_COUNTERS: int32 = (FeelCounter.YoungDeaths as int32) + 1;
+export const LOPSIDED_RATIO: uint64 = 2;
 
 export enum Milestone {
 	EarlyLevel,
@@ -151,6 +156,55 @@ export function create(this typeof Feel, envCount: int32, pets: int32): Feel {
 		scars: scars,
 		pets: pets,
 	};
+}
+
+export function forgetGrudges(this feel: Feel, env: int32): void {
+	const grudges = feel.grudges;
+	for (let index = 0; index < feel.pets; index++) {
+		grudges[env * feel.pets + index] = { robber: BlockSlot.First, epoch: 0 };
+	}
+}
+
+export function permuted(this feel: Feel, env: int32, origins: int32[]): void {
+	const base = env * feel.pets;
+	const counters: int32[] = [];
+	const grudges: Grudge[] = [];
+	const larders: Larder[] = [];
+	const lifeBorns: uint64[] = [];
+	const milestones: BitSet<Milestone>[] = [];
+	const harvests: uint64[] = [];
+	const scars: int32[] = [];
+	for (let index = 0; index < feel.pets; index++) {
+		const origin = base + origins[index];
+		for (let counter = 0; counter < FEEL_COUNTERS; counter++) {
+			counters.push(feel.counters[origin * FEEL_COUNTERS + counter]);
+		}
+		grudges.push(feel.grudges[origin]);
+		larders.push(feel.larders[origin]);
+		lifeBorns.push(feel.lifeBorns[origin]);
+		milestones.push(feel.milestones[origin]);
+		harvests.push(feel.harvests[origin]);
+		scars.push(feel.scars[origin]);
+	}
+	const allCounters = feel.counters;
+	const allGrudges = feel.grudges;
+	const allLarders = feel.larders;
+	const allLifeBorns = feel.lifeBorns;
+	const allMilestones = feel.milestones;
+	const allHarvests = feel.harvests;
+	const allScars = feel.scars;
+	for (let index = 0; index < feel.pets; index++) {
+		const key = base + index;
+		for (let counter = 0; counter < FEEL_COUNTERS; counter++) {
+			allCounters[key * FEEL_COUNTERS + counter] = counters[index * FEEL_COUNTERS + counter];
+		}
+		allGrudges[key] = grudges[index];
+		allLarders[key] = larders[index];
+		allLifeBorns[key] = lifeBorns[index];
+		allMilestones[key] = milestones[index];
+		allHarvests[key] = harvests[index];
+		allScars[key] = scars[index];
+	}
 }
 
 export function tallied(this feel: Feel, key: int32, counter: FeelCounter): int32 {
@@ -236,7 +290,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	const level = (moment.action % STAKE_LEVELS) as StakeLevel;
 	const facing = defender.combatantFacing(attacker);
 	const winChance = attacker.combatantFacing(defender).winChanceFromTable(facing);
-	const persona = Persona.of(personaKindOf(moment.index));
+	const persona = Persona.of(world.personaOf(moment.index));
 	feel.tally(key, FeelCounter.Attacks, 1);
 	feel.tally(key, FeelCounter.WinChanceSum, winChance);
 	feel.tally(key, FeelCounter.StakeShareSum, stakeShareBps(level));
@@ -273,6 +327,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 		return;
 	}
 	feel.tally(victim, FeelCounter.Robbed, 1);
+	const lopsided = attacker.strengthOf(StrengthMeasure.Combat) >= LOPSIDED_RATIO * defender.strengthOf(StrengthMeasure.Combat);
 	const last = grudges[victim];
 	const again = last.epoch != 0 && world.epoch <= last.epoch + REVENGE_EPOCHS;
 	if (again && last.robber == attacker.blockSlot()) {
@@ -284,7 +339,12 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	const lost = ((defender.harvest - struck.harvest) / HBRN_UNIT) as int32;
 	feel.tally(victim, FeelCounter.LootLost, lost);
 	feel.tally(victim, FeelCounter.HeartsBitten, bitten);
+	if (lopsided) {
+		feel.tally(key, FeelCounter.LopsidedAttacks, 1);
+		feel.tally(victim, FeelCounter.LopsidedLootLost, lost);
+	}
 	if (!struck.alive) { feel.tally(victim, FeelCounter.Bitten, 1); }
+	if (!struck.alive && (defender.level as int32) < EARLY_LEVEL) { feel.tally(victim, FeelCounter.YoungDeaths, 1); }
 }
 
 export function note(this feel: Feel, moment: Moment, world: World): void {
@@ -373,6 +433,7 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 			continue;
 		}
 		feel.tally(key, FeelCounter.Starved, 1);
+		if ((pet.level as int32) < EARLY_LEVEL) { feel.tally(key, FeelCounter.YoungDeaths, 1); }
 		if (larder == Larder.Funded) { feel.tally(key, FeelCounter.StarvedFunded, 1); }
 	}
 }

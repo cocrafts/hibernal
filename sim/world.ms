@@ -60,6 +60,11 @@ import {
 	attackMask,
 	actorPet,
 	combatant,
+	PersonaKind,
+	StrengthMeasure,
+	strengthOf,
+	resortsAt,
+	movedTo,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -102,6 +107,16 @@ export struct Masks {
 	attacks: AttackMask;
 }
 
+export struct Resort {
+	every: uint64;
+	measure: StrengthMeasure;
+	wildDefenders: boolean;
+}
+
+export function fixed(this typeof Resort): Resort {
+	return { every: 0, measure: StrengthMeasure.Combat, wildDefenders: true };
+}
+
 export struct WorldStats {
 	fights: int32;
 	wins: int32;
@@ -124,6 +139,10 @@ export struct World {
 	buildTargets: int32[];
 	owners: OwnerKind[];
 	ownerLedgers: OwnerLedger[];
+	personas: PersonaKind[];
+	origins: int32[];
+	movedEpoch: uint64;
+	resort: Resort;
 	global: GlobalConfig;
 	epoch: uint64;
 	round: int32;
@@ -145,6 +164,8 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const buildTargets: int32[] = [];
 	const owners: OwnerKind[] = [];
 	const ownerLedgers: OwnerLedger[] = [];
+	const personas: PersonaKind[] = [];
+	const origins: int32[] = [];
 	const turns: int32[] = [];
 	const wilds: Pet[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
@@ -152,6 +173,8 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		turns.push(index);
 		owners.push(ownerKindFor(seed, index));
 		ownerLedgers.push({ visits: 0, skr: 0, refusals: 0, banked: 0 });
+		personas.push(((slot / 3) % 3) as PersonaKind);
+		origins.push(index);
 		grudges.push(Grudge.none());
 		buildTargets.push(PERSONA_BUILD);
 		const hatched = Pet.born(
@@ -179,6 +202,10 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		buildTargets: buildTargets,
 		owners: owners,
 		ownerLedgers: ownerLedgers,
+		personas: personas,
+		origins: origins,
+		movedEpoch: 0,
+		resort: Resort.fixed(),
 		global: { ...global, floorSlots: (blocks * BLOCK_SLOTS) as uint32 },
 		epoch: 0,
 		round: 0,
@@ -310,7 +337,121 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		market: market,
 		stats: { ...world.stats, heirs: heirs },
 	};
-	return begun.ownersVisited().wildsAwake(botShare).inRound(0);
+	const placed = resortsAt(epoch, world.resort.every) ? begun.resorted() : begun.newbornsPlacedWeak();
+	return placed.ownersVisited().wildsAwake(botShare).inRound(0);
+}
+
+export function personaOf(this world: World, index: int32): PersonaKind {
+	return world.personas[index];
+}
+
+function isFree(this world: World, index: int32): boolean {
+	return !world.pets[index].alive && world.claimEpochs[index] == 0;
+}
+
+export function strengthOrder(this world: World): int32[] {
+	const measure = world.resort.measure;
+	const strengths: uint64[] = [];
+	const order: int32[] = [];
+	for (let index = 0; index < world.pets.length; index++) {
+		strengths.push(world.pets[index].strengthOf(measure));
+		if (!world.pets[index].alive) { continue; }
+		let position = order.length;
+		order.push(index);
+		while (position > 0 && strengths[order[position - 1]] < strengths[index]) {
+			order[position] = order[position - 1];
+			position -= 1;
+		}
+		order[position] = index;
+	}
+	for (let index = 0; index < world.pets.length; index++) {
+		if (!world.pets[index].alive) { order.push(index); }
+	}
+	return order;
+}
+
+export function permuted(this world: World, origins: int32[]): World {
+	const pets: Pet[] = [];
+	const wilds: Pet[] = [];
+	const claimEpochs: uint64[] = [];
+	const deathEpochs: uint64[] = [];
+	const levelTenEpochs: uint64[] = [];
+	const levelTwentyEpochs: uint64[] = [];
+	const grudges: Grudge[] = [];
+	const buildTargets: int32[] = [];
+	const owners: OwnerKind[] = [];
+	const ownerLedgers: OwnerLedger[] = [];
+	const personas: PersonaKind[] = [];
+	for (let index = 0; index < origins.length; index++) {
+		const origin = origins[index];
+		const blockId = (index / BLOCK_SLOTS) as uint32;
+		const slot = (index % BLOCK_SLOTS) as BlockSlot;
+		const moved = origin != index;
+		pets.push(moved ? world.pets[origin].movedTo(blockId, slot) : world.pets[origin]);
+		wilds.push(world.wilds[origin].movedTo(blockId, slot));
+		claimEpochs.push(world.claimEpochs[origin]);
+		deathEpochs.push(world.deathEpochs[origin]);
+		levelTenEpochs.push(world.levelTenEpochs[origin]);
+		levelTwentyEpochs.push(world.levelTwentyEpochs[origin]);
+		grudges.push(moved ? Grudge.none() : world.grudges[origin]);
+		buildTargets.push(world.buildTargets[origin]);
+		owners.push(world.owners[origin]);
+		ownerLedgers.push(world.ownerLedgers[origin]);
+		personas.push(world.personas[origin]);
+	}
+	return {
+		...world,
+		pets: pets,
+		wilds: wilds,
+		claimEpochs: claimEpochs,
+		deathEpochs: deathEpochs,
+		levelTenEpochs: levelTenEpochs,
+		levelTwentyEpochs: levelTwentyEpochs,
+		grudges: grudges,
+		buildTargets: buildTargets,
+		owners: owners,
+		ownerLedgers: ownerLedgers,
+		personas: personas,
+		origins: origins,
+		movedEpoch: world.epoch,
+	};
+}
+
+export function resorted(this world: World): World {
+	const pets = world.pets;
+	for (const listing of world.market) {
+		const seller = listing.seller as int32;
+		pets[seller] = pets[seller].boughtBack(listing);
+	}
+	const unlisted: World = { ...world, market: [] };
+	const order = unlisted.strengthOrder();
+	const everyone: World = unlisted.permuted(order);
+	const forgotten = everyone.pets;
+	const grudges = everyone.grudges;
+	for (let index = 0; index < forgotten.length; index++) {
+		forgotten[index] = forgotten[index].movedTo(forgotten[index].blockId, forgotten[index].blockSlot());
+		grudges[index] = Grudge.none();
+	}
+	return everyone;
+}
+
+export function newbornsPlacedWeak(this world: World): World {
+	if (world.resort.every == 0) { return world; }
+	const origins: int32[] = [];
+	for (let index = 0; index < world.pets.length; index++) { origins.push(index); }
+	let moved = false;
+	let free = world.pets.length - 1;
+	for (let index = 0; index < world.pets.length; index++) {
+		const pet = world.pets[index];
+		if (!pet.alive || pet.bornEpoch != world.epoch) { continue; }
+		while (free > index && !(world.isFree(origins[free]) && origins[free] == free)) { free -= 1; }
+		if (free / BLOCK_SLOTS <= index / BLOCK_SLOTS) { continue; }
+		origins[index] = free;
+		origins[free] = index;
+		free -= 1;
+		moved = true;
+	}
+	return moved ? world.permuted(origins) : world;
 }
 
 export function wildsAwake(this world: World, harvest: uint64): World {
@@ -318,7 +459,7 @@ export function wildsAwake(this world: World, harvest: uint64): World {
 	const level = Math.max(world.medianLevel(), 1);
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = world.pets[index];
-		if (pet.alive) {
+		if (pet.alive || !world.resort.wildDefenders) {
 			wilds[index] = { ...wilds[index], alive: false };
 			continue;
 		}
@@ -923,4 +1064,43 @@ test "a robbery leaves a grudge for three epochs and striking back settles it" {
 	const struckBack = robbed.applyAttack(5, attackChoice(BlockSlot.Fourth, StakeLevel.Quarter));
 	assert struckBack.stats.fights == 2;
 	assert !struckBack.robberOf(5).ok;
+}
+
+test "a re-sort puts the strongest ten in the first block and forgets every grudge" {
+	const start = World.create(3, 11);
+	const world: World = { ...start, resort: { every: 7, measure: StrengthMeasure.Combat, wildDefenders: false } };
+	const pets = world.pets;
+	const grudges = world.grudges;
+	for (let index = 0; index < pets.length; index++) {
+		pets[index] = { ...pets[index], might: (100 + ((index * 37) % 29) * 10) as uint16, rage: 1, grudgeSlot: 2 };
+	}
+	pets[25] = { ...pets[25], alive: false };
+	grudges[4] = { robber: BlockSlot.Third, epoch: 5 };
+	const persona = world.personaOf(17);
+	const might = pets[17].might;
+	const sorted = world.resorted();
+	for (let index = 1; index < 29; index++) {
+		assert sorted.pets[index - 1].strengthOf(StrengthMeasure.Combat) >= sorted.pets[index].strengthOf(StrengthMeasure.Combat);
+	}
+	assert !sorted.pets[29].alive;
+	for (let index = 0; index < sorted.pets.length; index++) {
+		const pet = sorted.pets[index];
+		assert pet.blockId == ((index / BLOCK_SLOTS) as uint32) && (pet.slot as int32) == index % BLOCK_SLOTS;
+		assert pet.rage == 0 && sorted.grudges[index].epoch == 0;
+		if (sorted.origins[index] == 17) {
+			assert sorted.personaOf(index) == persona && pet.might == might;
+		}
+	}
+}
+
+test "a newborn takes a free slot in a weaker block between two re-sorts" {
+	const start = World.create(3, 11);
+	const world: World = { ...start, epoch: 9, resort: { every: 7, measure: StrengthMeasure.Combat, wildDefenders: false } };
+	const pets = world.pets;
+	pets[27] = { ...pets[27], alive: false };
+	pets[3] = { ...pets[3], bornEpoch: 9 };
+	const placed = world.newbornsPlacedWeak();
+	assert placed.pets[27].alive && placed.pets[27].bornEpoch == 9 && placed.pets[27].blockId == 2;
+	assert !placed.pets[3].alive;
+	assert placed.origins[27] == 3 && placed.origins[3] == 27;
 }

@@ -67,10 +67,6 @@ export const TEACHER_GEAR_SLOTS: int32 = 1023;
 export const REVENGE_WIN_CHANCE_BPS: int32 = 4000;
 export const NEVER_RANK: int32 = 1000;
 
-export function personaKindOf(index: int32): PersonaKind {
-	return (((index % BLOCK_SLOTS) / 3) % 3) as PersonaKind;
-}
-
 function eatAction(food: Food): EconomyAction {
 	return match (food) {
 		Food.Small => EconomyAction.EatSmall,
@@ -89,7 +85,7 @@ function buyAction(food: Food): EconomyAction {
 
 export function teachEconomy(this world: World, index: int32, masks: Masks): EconomyAction {
 	const pet = world.pets[index];
-	const persona = Persona.of(personaKindOf(index));
+	const persona = Persona.of(world.personaOf(index));
 	const hearts = pet.hearts as int32;
 	const meal = persona.pickMeal(hearts, pet.maxHearts as int32, pet.pantry);
 	if (meal.ok && masks.economy.has(eatAction(meal.value))) { return eatAction(meal.value); }
@@ -158,7 +154,7 @@ function targetCluster(start: Region, keystone: int32): int32 {
 
 export function buildTargetOf(this world: World, index: int32): int32 {
 	const target = world.buildTargets[index];
-	return target == PERSONA_BUILD ? keystoneOf(personaKindOf(index)) : target;
+	return target == PERSONA_BUILD ? keystoneOf(world.personaOf(index)) : target;
 }
 
 export function nodeRank(id: int32, start: Region, keystone: int32): int32 {
@@ -216,7 +212,7 @@ export function revengeOn(this world: World, index: int32, masks: Masks): int32 
 
 export function teachAttack(this world: World, index: int32, masks: Masks): int32 {
 	const pet = world.pets[index];
-	const kind = personaKindOf(index);
+	const kind = world.personaOf(index);
 	const persona = Persona.of(kind);
 	const attacker = pet.combatant();
 	if (!attacker.attacksLeft(pet.fightsOutOn(world.epoch)).ok) { return ATTACK_HOLD; }
@@ -332,8 +328,8 @@ test "a vengeful pet strikes back at its robber with a quarter stake while it ca
 	const world = armedBlock();
 	const pets = world.pets;
 	const grudges = world.grudges;
-	assert personaKindOf(7) == PersonaKind.Vengeful;
-	assert personaKindOf(1) == PersonaKind.Cautious;
+	assert world.personaOf(7) == PersonaKind.Vengeful;
+	assert world.personaOf(1) == PersonaKind.Cautious;
 	grudges[7] = { robber: BlockSlot.Second, epoch: 9 };
 	grudges[1] = { robber: BlockSlot.Eighth, epoch: 9 };
 	pets[7] = { ...pets[7], might: 900 };
@@ -348,7 +344,7 @@ test "a vengeful pet strikes back at its robber with a quarter stake while it ca
 test "a greedy pet goes for the biggest harvest it can win" {
 	const world = armedBlock();
 	const pets = world.pets;
-	assert personaKindOf(4) == PersonaKind.Greedy;
+	assert world.personaOf(4) == PersonaKind.Greedy;
 	pets[4] = { ...pets[4], might: 900 };
 	pets[8] = { ...pets[8], harvest: 900 * HBRN_UNIT };
 	const choice = world.teachAttack(4, world.masksFor(4));
@@ -368,7 +364,7 @@ test "the teacher takes only its persona's keystone" {
 	}
 	for (let index = 0; index < BLOCK_SLOTS; index++) {
 		const pet = world.pets[index];
-		const mine = keystoneOf(personaKindOf(index));
+		const mine = keystoneOf(world.personaOf(index));
 		assert pet.tree.has(mine) == keystoneTouches(mine, pet.startRegion());
 		for (let keystone = KEYSTONE_GLASS_CANNON; keystone < TREE_NODES; keystone++) {
 			if (keystone != mine) { assert !pet.tree.has(keystone); }

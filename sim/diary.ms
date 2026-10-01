@@ -16,7 +16,7 @@ import {
 	at,
 } from "../rules/index";
 import { ACTS_PER_EPOCH, WORLD_BLOCKS, EPISODE_EPOCHS, World, blockStart } from "./world";
-import { personaKindOf, teachEconomy, teachNode, teachAttack } from "./teacher";
+import { teachEconomy, teachNode, teachAttack } from "./teacher";
 
 export const DIARY_SEED: uint64 = 7;
 
@@ -34,8 +34,8 @@ function change(before: uint64, after: uint64): string {
 	return delta >= 0 ? `+${delta}` : `${delta}`;
 }
 
-function nameOf(index: int32): string {
-	return `#${index % BLOCK_SLOTS} ${personaKindOf(index).toString()}`;
+function nameOf(this world: World, index: int32): string {
+	return `#${index % BLOCK_SLOTS} ${world.personaOf(index).toString()}`;
 }
 
 function note(this diary: Diary, index: int32, text: string): void {
@@ -127,8 +127,8 @@ function marketNote(this world: World, index: int32, before: Pet, diary: Diary):
 function purchaseNote(this world: World, index: int32, bought: Item, diary: Diary): void {
 	const seller = blockStart(index) + world.stats.lastSeller % BLOCK_SLOTS;
 	const price = money(world.stats.lastPrice);
-	diary.note(index, `bought ${itemName(bought)} from ${nameOf(seller)} for ${price}`);
-	diary.note(seller, `sold its ${itemName(bought)} to ${nameOf(index)} for ${price}`);
+	diary.note(index, `bought ${itemName(bought)} from ${world.nameOf(seller)} for ${price}`);
+	diary.note(seller, `sold its ${itemName(bought)} to ${world.nameOf(index)} for ${price}`);
 }
 
 function economyStep(this world: World, index: int32, diary: Diary): World {
@@ -181,7 +181,7 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 	const attackerAfter = after.pets[index];
 	const defenderAfter = after.defenderAt(target);
 	const wild = world.isWild(target);
-	const targetName = wild ? `a wild ${defender.startRegion().toString()}` : nameOf(target);
+	const targetName = wild ? `a wild ${defender.startRegion().toString()}` : world.nameOf(target);
 	const terms = `${level.toString()} stake ${staked} odds ${odds}%${revenge}`;
 	const opening = `attack ${targetName} ${terms}`;
 	if (after.stats.wins > won) {
@@ -189,13 +189,13 @@ function attackStep(this world: World, index: int32, diary: Diary): World {
 		diary.note(index, `${opening} -> won, took ${loot}`);
 		if (wild) { return after; }
 		const bitten = defenderAfter.hearts < defender.hearts ? ", bitten" : "";
-		diary.note(target, `robbed by ${nameOf(index)} -${loot}${bitten}`);
+		diary.note(target, `robbed by ${world.nameOf(index)} -${loot}${bitten}`);
 		return after;
 	}
 	const hearts = `hearts ${attacker.hearts}->${attackerAfter.hearts}`;
 	diary.note(index, `${opening} -> lost, burrow ${change(attacker.burrow, attackerAfter.burrow)} ${hearts}`);
 	if (wild) { return after; }
-	diary.note(target, `held off ${nameOf(index)}, burrow ${change(defender.burrow, defenderAfter.burrow)}`);
+	diary.note(target, `held off ${world.nameOf(index)}, burrow ${change(defender.burrow, defenderAfter.burrow)}`);
 	return after;
 }
 
@@ -239,7 +239,7 @@ function main(): int32 {
 		const pet = world.pets[index];
 		const owner = world.owners[index].toString();
 		const origin = `start ${pet.startRegion().toString()}, owner ${owner}`;
-		console.log(`== ${nameOf(index)}, ${origin}, seed ${DIARY_SEED}`);
+		console.log(`== ${world.nameOf(index)}, ${origin}, seed ${DIARY_SEED}`);
 		for (let day = 0; day < EPISODE_EPOCHS; day++) {
 			console.log(pages[day * diary.pets.length + row]);
 		}

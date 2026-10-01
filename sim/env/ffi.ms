@@ -1,9 +1,9 @@
-import { WORLD_BLOCKS, EPISODE_EPOCHS } from "../world";
+import { WORLD_BLOCKS, EPISODE_EPOCHS, Resort } from "../world";
 import { engineVersion } from "../digests";
-import { BLOCK_SLOTS, PersonaKind, checkPolicy } from "../../rules/index";
+import { BLOCK_SLOTS, PersonaKind, StrengthMeasure, checkPolicy } from "../../rules/index";
 import { Head, observationSize, actionCount, largestActionCount, zeros } from "./observe";
 import { selfInputs, selfInput } from "./actor";
-import { POLICY_SLOTS, Batch, RewardTerm, withTerm } from "./batch";
+import { POLICY_SLOTS, Batch, RewardTerm, withTerm, withResort } from "./batch";
 
 function copyOut(target: Ptr<void>, source: Span<int32>, count: int32): void {
 	const cells = target as Ptr<int32>;
@@ -198,6 +198,15 @@ function ffiReward(persona: int32, term: int32, value: int32): int32 {
 	if (batch.rows() == 0 || !knownPersona || !knownTerm) { return FFI_REFUSED; }
 	const weights = batch.weights[persona].withTerm(term as RewardTerm, value as int64);
 	batch.setWeights(persona as PersonaKind, weights);
+	return 0;
+}
+
+@exportName("hibernal_resort")
+function ffiResort(every: int32, measure: int32, wildDefenders: int32): int32 {
+	const knownMeasure = measure >= 0 && measure <= (StrengthMeasure.Combat as int32);
+	if (batch.rows() == 0 || every < 0 || !knownMeasure || wildDefenders < 0 || wildDefenders > 1) { return FFI_REFUSED; }
+	const resort: Resort = { every: every as uint64, measure: measure as StrengthMeasure, wildDefenders: wildDefenders == 1 };
+	batch = batch.withResort(resort);
 	return 0;
 }
 
