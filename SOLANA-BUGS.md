@@ -17,18 +17,19 @@ Entries are in execution order, grouped by the compiler change they share. A gro
 - **open** — reproduced, not fixed.
 
 Re-measured 2026-09-22 on installed `d757c7e1`: nothing below has landed except #1. Blockers are parked on inbox cards `~/metascript/.inbox/compiler/2026-09-22-*.md`, claimed by recompiler worktrees `wt/solana-const-fold` (#6 and a dead-`if` crash) and `wt/std-solana` (the rest, card `~/metascript/.wt/std-solana.md`).
+Re-measured 2026-09-30 on installed `013853dd`: #18, #4 and #8 are fixed as their entries record. Unparked per the 2026-09-26 sync note from the std-solana lane (deleted after unparking). #6's aggregate part stays open behind the committed lane `wt/solana-const-fold-2` (waits merge-train).
 
 | # | Group | Bug | Kind | Depends on | Status |
 |---|---|---|---|---|---|
 | 1 | A | Generic parameter under `ref`, `out`, `Borrow` or `Cursor` does not bind `T` | unification and substitution gap | — | **landed** `9565b257` + `48d9f015` |
-| 18 | A | A generic `distinct` instance as a plain parameter never matches its argument | argument checked before its type parameters are bound | — | **fixed, not landed** |
+| 18 | A | A generic `distinct` instance as a plain parameter never matches its argument | argument checked before its type parameters are bound | — | **landed** (in `d9d5e4a2`, 2026-09-26) |
 | 2 | A | Indexing a `ref` array parameter fails in C | native lowering | — | open |
 | 3 | A | `try` does not check the error type | checker type rule | 12 (instance part, fixed with it) | **fixed, not landed** |
-| 4 | A | `.length` and `for..of` on a fixed array `T[N]` fail in C | native lowering | — | **fixed, not landed** |
+| 4 | A | `.length` and `for..of` on a fixed array `T[N]` fail in C | native lowering | — | **landed** (in `d9d5e4a2`, 2026-09-26) |
 | 5 | A | `==` on structs fails for every struct in JS (the C case over 24 bytes is fixed on `d101b611`) | hook generation on the JS backend | — | open (JS only) |
-| 6 | A | Module `const` does not link on Solana | codegen of module bindings | — | scalars **landed** `8be46044..e5f0ec68`; aggregates open (after #8) |
+| 6 | A | Module `const` does not link on Solana | codegen of module bindings | — | scalars **landed** `8be46044..e5f0ec68`; aggregates: fix committed on `wt/solana-const-fold-2`, waits merge-train |
 | 7 | A | Type mismatch message drops type arguments | diagnostic | — | open |
-| 8 | A | `const` bindings and value parameters are writable | missing assignability check (soundness) | — | open |
+| 8 | A | `const` bindings and value parameters are writable | missing assignability check (soundness) | — | **landed** (in `d9d5e4a2`, 2026-09-26) |
 | 9 | B | Macro called with method syntax | macro dispatch | B core | open |
 | 10 | B | `this x: Ptr<T>` receiver is never found | checker receiver matching | B core | open |
 | 11 | B | `this ref` receiver: does not parse, and the receiver skips every `Var` rule | parser gap, JS lowering order, receiver outside argument checks | 1 (landed), 8, B core | open |
@@ -112,7 +113,7 @@ peel(a);
     - corpus 1189 pass, 30 fail, 6 xfail: the 17 known cells (`704` and `762` on every lane, `619`, `628`, `630`, `711`, `773`, `775` on `js`/`esm`) plus 13 cell timeouts (`255`, `256`, `259`, `260`, `624`, `410`) taken while the machine ran at load 120. Re-run alone, the first five pass 6/6 cells on the patched build; `410-awaitStructSpawnStored` hangs on one cell on the patched build and on one cell on the unpatched build, the intermittent hang already recorded under #1;
     - sanitizer lane 206 pass, 8 fail, the same eight as under #1 (`253`, `254`, `258`, `259`, `260` ledger, `704`, `762` build, `410` hang);
     - Hibernal `msc test rules/index.ms` 349/349, and the seven `sim/determinism.ms` digests are identical on native, JS and the unpatched compiler.
-  - Not landed: waiting on approval to commit.
+  - Landed on `main` by `d9d5e4a2` (2026-09-26). Re-measured 2026-09-30 on installed `013853dd`: `peel(5 as Wrap<int32>)` prints `5` on C and JS; an argument that cannot bind reports `Argument type mismatch in 'peel' arg 0` at the argument.
 
 ### 2. Indexing a `ref` array parameter fails in C
 
@@ -184,7 +185,8 @@ for (const fighter of account.fighters) { total = total + fighter.power; }
   - `for..of` lowering reads `$iter.length` (`src/transform/lowering/forOfLower.ms:142`), so it inherits the error.
 - Reference: `len` of an `array[N, T]` folds to the constant `N` (`semfold.nim:139`, `of mLengthArray`). Twin: `for fighter in account.fighters` through `ptr Account`, then `account.fighters.len`, prints `9 4`.
 - Fix direction: `.length` on a `SizedArray` lowers to the integer literal of its `typeValue`, the way the reference folds `mLengthArray`; `for..of` then needs no change.
-- Fix, in a private worktree off `f8a913e5` (`/tmp/hib-bugs/wt-fix4`): exactly that, in `rewriteMemberExpr` (`src/transform/native/nativeLower.ms`); the reference folds it whatever the argument is (`semfold.nim:684-687`). Measured: both repros print `9 4` and `8 4` on C; regression test `bug181FixedArrayLength.ms` is green on the patched build and red on the unpatched one (five clang `no member named 'len'` errors); self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; guard ALL GREEN, 332 probes; corpus 1200 pass, 19 fail, 6 xfail (the 17 known cells and two timeouts of `419-leakSendMovedArgAsync`); sanitizer lane 206 pass, 8 fail (seven of the known eight and a timeout of `405-lockedSharedCounter`); Hibernal rules suite green, seven digests identical on native, JS and the unpatched compiler. The C this build emits for `419` and for `405` is byte-identical to the unpatched compiler's, so those hangs are not this change: `405`, `410` and `419` are the corpus's threading programs and hang intermittently on this tip with either compiler. Not landed: waiting on approval to commit.
+- Fix, in a private worktree off `f8a913e5` (`/tmp/hib-bugs/wt-fix4`): exactly that, in `rewriteMemberExpr` (`src/transform/native/nativeLower.ms`); the reference folds it whatever the argument is (`semfold.nim:684-687`). Measured: both repros print `9 4` and `8 4` on C; regression test `bug181FixedArrayLength.ms` is green on the patched build and red on the unpatched one (five clang `no member named 'len'` errors); self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; guard ALL GREEN, 332 probes; corpus 1200 pass, 19 fail, 6 xfail (the 17 known cells and two timeouts of `419-leakSendMovedArgAsync`); sanitizer lane 206 pass, 8 fail (seven of the known eight and a timeout of `405-lockedSharedCounter`); Hibernal rules suite green, seven digests identical on native, JS and the unpatched compiler. The C this build emits for `419` and for `405` is byte-identical to the unpatched compiler's, so those hangs are not this change: `405`, `410` and `419` are the corpus's threading programs and hang intermittently on this tip with either compiler.
+- Landed on `main` by `d9d5e4a2` (2026-09-26). Re-measured 2026-09-30 on installed `013853dd`: a local `const fighters: Fighter[4]` prints `10` for `for..of` and `4` for `.length` on C and JS. The value-struct-field and `Ptr<T>`-overlay cases were measured on `d9d5e4a2` by the std-solana lane.
 
 ### 5. `==` on structs fails over 24 bytes in C, and for every struct in JS
 
@@ -212,7 +214,7 @@ if (owner == signer) { … }
 
 ### 6. Module `const` does not link on Solana
 
-Scalars landed `8be46044..e5f0ec68` (arc `wt/solana-const-fold`, 2026-09-23), with the dead-`if` crash below. Re-measured 2026-09-24 on installed `cce059c8`: `tools/rulesProbe.ms` builds a 17 KB `.so` and `tools/fightProbe.ms` a 68 KB `.so` with `--os=solana`; `msc test rules/index.ms` 353/353; the seven `sim/determinism.ms` digests are identical on native and JS; a module `const` of struct type fails at compile time with `FREESTANDING E02` at the binding. Aggregate consts in `.rodata` stay open behind #8. The history below is the trace and the first fix.
+Scalars landed `8be46044..e5f0ec68` (arc `wt/solana-const-fold`, 2026-09-23), with the dead-`if` crash below. Re-measured 2026-09-24 on installed `cce059c8`: `tools/rulesProbe.ms` builds a 17 KB `.so` and `tools/fightProbe.ms` a 68 KB `.so` with `--os=solana`; `msc test rules/index.ms` 353/353; the seven `sim/determinism.ms` digests are identical on native and JS; a module `const` of struct type fails at compile time with `FREESTANDING E02` at the binding. Aggregate consts in `.rodata` stay open: the fix is committed on `wt/solana-const-fold-2` and waits merge-train. The history below is the trace and the first fix.
 
 ```ms
 import { DAMAGE } from "./knobs";
@@ -250,7 +252,7 @@ main();
   - Found after the first full gate, while diffing emitted C for corpus program `419`: the integer arm of the unary fold wrapped a literal that did not fit the type the checker gave it, so `value < -9007199254740992` became `value < 0` and `-1 < -9007199254740992` folded to `true`. No lane caught it (inside the compiler it only turned `-1` into `-1.0`). Fixed by folding in the integer domain only when the literal fits (`literalFitsWidth`), a case added to `bug180`; the gate is re-running. A corpus-wide emitted-C diff against the unpatched compiler (214 programs, 36 differing files, `/tmp/hib-bugs/emitdiff6/`) was then read in full: 123 line pairs are a const name replaced by exactly its declared value, and the other 23 are correct folds (`128 | 1` → `129`, `(uint64_t)(-1)` → `18446744073709551615ULL`, `7.5 % 2.0` → `1.5`, `300 as uint8` → `44`, `static const t = 1` → `1`, a dead `if (3 != 3)` removed, and the `Init000` and `extern` of modules whose consts all fold).
   - Gates on `f8a913e5` with the final code (2026-09-18, third run): self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; `bug180` (5) and `bug184` (2) green standalone; guard ALL GREEN, 332 probes; corpus 1199 pass, 20 fail, 6 xfail — the 17 known cells plus timeouts of `405 [orc]`, `419 [orc]` and `419 [danger]`; sanitizer lane 206 pass, 8 fail — seven of the known eight plus a timeout of `405`; Hibernal rules suite green, seven digests identical on native, JS and the unpatched compiler. The #4 and #3 builds, whose C for `405` and `419` is byte-identical to the unpatched compiler's, hang on the same cells at the same rate, so these timeouts are the tip's intermittent threading hangs, not this change. Not landed: waiting on approval to commit.
   - Gates BEFORE that last fix, kept for reference: self-host fixpoint 313 C files, 0 differ; `msc test src/index.ms` 180/180 files, 3717/3717; `bug180` (4) and `bug184` (2) green standalone; guard ALL GREEN, 332 probes; corpus 1200 pass, 19 fail, 6 xfail — the 17 known cells, the known `410` hang, and one timeout of `419-leakSendMovedArgAsync [danger]` that three re-runs of all its cells did not reproduce on the patched or the unpatched compiler; sanitizer lane 207 pass, 7 fail, all among the known eight; Hibernal rules suite green and the seven digests identical on native, JS and the unpatched compiler. These numbers predate the `literalFitsWidth` fix.
-  - Open part: a `const` of struct, `T[N]` or string type belongs in `.rodata` as the reference does. It waits on #8, because a `const` struct is still writable today and a program that writes one would fault once the storage is read-only. `Pubkey` constants in `std/solana` need it; `rules/` does not.
+  - Open part: a `const` of struct, `T[N]` or string type belongs in `.rodata` as the reference does. #8 has landed, so what is left is the emission itself: fix committed on `wt/solana-const-fold-2` (2026-09-29, waits merge-train; card `~/metascript/.inbox/compiler/2026-09-29-solana-module-const-aggregate-needs-rodata.md`). `Pubkey` constants in `std/solana` need it; `rules/` does not.
 
 ### 7. Type mismatch message drops type arguments
 
@@ -325,6 +327,9 @@ count = 2;
     - an rvalue is not assignable.
   - Name the root in diagnostics, for example `'pet.hunger' cannot be assigned to: 'pet' is const`. Say `ref` or `out` according to the formal.
   - Record the deep `const` rule for value structs in `docs/LANG.md` and `docs/LANG-STRUCT.md`, and add a `docs/NIM-REF.md` row (SAME as `let`).
+- Landed on `main` by `d9d5e4a2` (2026-09-26). The std-solana lane's sync note reported the full matrix above verified on C and JS on that build, including the scalar value parameter passed to `ref`; that note was deleted after unparking.
+- Local re-check, 2026-09-30, installed `013853dd`: on C, a module-level const reassignment, a const struct field write and passing a const struct to `ref` each fail and name the root — `cannot assign to 'count' — 'count' is const (use 'let')`, `cannot write 'pet.hunger' — 'pet' is const (use 'let')`, `cannot pass 'pet' to a 'ref' parameter — 'pet' is const (use 'let')`. Passing a literal to a `ref` formal still says `'bump' arg 0: out parameter requires a variable, not an expression`. These error probes were not re-run on JS here.
+- The legal local probe prints `2 10 5 5` on C and JS: a scalar `let` passed to `ref`, an intact const struct and its mutated `let` copy, and a write through a const interface binding. Settled rule, measured by the std-solana lane on `d9d5e4a2`: `const` is deep on a declared `struct`, `T[N]` and `Vec`; `type {…}`, `interface`, `class` and `T[]` keep the shallow binding-only `const`. The local re-check is a subset, not a new full-matrix verification.
 
 
 ### 19. A 64-bit integer literal expression folds through a double
