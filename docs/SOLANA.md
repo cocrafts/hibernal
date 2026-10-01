@@ -169,6 +169,15 @@ If step 3 or 4 does not pass inside the agreed timebox, do not rewrite everythin
    - The act runs on the pets in place in the account: 413,983 CU typical and 553,889 busiest on LiteSVM, against 416,320 / 556,226 for the same act on ten pet accounts built by the same compiler; the ER ran the busiest in 553,889 CU, fee 0, same choice. 0 of 7,336 Block bytes and 0 of 64 `GlobalConfig` bytes differ from the native host's, read from the ER and through the router.
    - Delegating the Block cost 28,526 CU on L1; the ER served it 355 ms later. `commit` without undelegating (22,814 CU, fee 0) put all 7,336 bytes on L1 2.6 s after the send, 0 differing; commit-and-undelegate of Block and `GlobalConfig` had both back on L1 in 3.5 s, 0 differing, rent untouched. Writing the Block from L1 took nine 900-byte transactions.
    - Claim from a slot: the owner signs on L1, the program reads the delegated Block's committed bytes, checks the slot's identity owner and its `paid` ledger PDA, and mints `giftOwed − paid` (item 11's cap). Devnet: 3,000,000 gifted in the ER, committed, claimed in 10,326 CU and 5,000 lamports, a second claim paid 0. LiteSVM also refused a stranger, the neighbour slot the owner does not own, the neighbour's ledger, another account passed as the Block, and a Block owned by another program.
+17. Re-sorting blocks by strength (`BRIEF.md` D39), measured 2026-09-30 (`tools/resortProbe.ms`, `node tools/chain/resortLiteSvm.mjs out/resortProbe.so 200,1000,10000 combat`). Three steps on the delegated Blocks: `snapshot` writes each pet's strength and admission mint into a `Ladder` account (11.7k CU a block), a merge sort in place in bounded transactions, then `swap`s that the program checks against the Ladder (the pet moved into position q must hold the mint ranked q; a placed position cannot be moved again) and that rewrite the two `["pet", mint]` indexes; `finish` fails until every position is placed. LiteSVM, every slot ends on its rank's pet and every index points at it:
+
+   | Pets | Transactions | CU | Swaps | `Ladder`, rent once |
+   |---|---|---|---|---|
+   | 200 | 33 | 3.7M | 191 | 19,257 B, 0.098 SOL |
+   | 1,000 | 154 | 19.8M | 991 | 96,157 B, 0.49 SOL |
+   | 10,000 | 1,474 | 209M | 9,990 | 961,282 B, 4.88 SOL |
+
+   Swaps are 16–19k CU each and fill a transaction at about eight (the account limit). ER fees and wall time are not measured: on devnet the 19,257-byte `Ladder` could not be delegated, the delegation program's CPI fails with `InvalidRealloc` "Account data size realloc limited to 10240 in inner instructions". **Every delegated account stays at or under 10,240 bytes**: the Block (7,336) fits, the `Ladder` has to be split into pages. The probe accounts were closed afterwards and their 1.01 SOL of rent came back.
 
 ## 8. Toolchain on the dev machine — Measured
 
