@@ -177,7 +177,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
   - a free choice of region, so the family tries another class;
   - 1–2 heirloom slots (§11);
   - a slightly better talent rarity roll (§8).
-- Existing hooks: `lineage_generation` and `scars` on `Pet`, Fading badge at epoch 80, Bloodline keystone, Winter every 90 epochs with a 3-point refund. `BRIEF.md` §3.7 currently has aging start at epoch 80 at −2%/epoch and lists aging, heirs and lineage as post-hackathon; this proposal brings them into the hackathon build, moves decline to day 50 and ties death to day 90.
+- Existing hooks: `lineage_generation` and `scars` on `Pet`, Fading badge at epoch 80, Bloodline keystone, Winter every 90 epochs with a 3-point refund. `BRIEF.md` §3.7 had aging start at epoch 80 at −2%/epoch and deferred aging, heirs and lineage; this proposal brought them into the launch build, moved decline to day 50 and tied death to day 90.
 - Risk being answered: after max level at day 30 a pet had nothing left to chase (endgame dead end).
 
 ## 8. Hidden talent — Decided
@@ -407,7 +407,7 @@ Applied on 2026-09-14 as `BRIEF.md` rev 4 (D6, D13, D18, D19, D21, D25, D26 rewr
 | BRIEF §5.1 | delegation, crank scheduling, VRF CPI in the program | §12, now |
 | BRIEF §3.9 | ring tree, 1 point per node, node count, attribute nodes | §5 decided |
 | BRIEF D6, §3.4, §6.1 | XP leveling, cap 20, level fee | §6 decided |
-| BRIEF §3.7, §7.1, §7.2 | lifespan 90, decline from day 50, heir package in the hackathon build | §7 decided |
+| BRIEF §3.7, §7.1, §7.2 | lifespan 90, decline from day 50, heir package in the launch build | §7 decided |
 | BRIEF §3.1 | `Pet` fields: `talentKind` + `talentGrade` (2 bytes), `xp` (u32), `bonding` (i8), equipment (4 × 8 bytes), heirloom slots, generation bonus, persona and soft signals; `Block.relationships` (45 bytes) | §6, §7, §8, §11, §12, §13, §14 |
 | BRIEF §3.3, §10 Q7, §6.3 | convex reward weight `workPower²`, 500-slot denominator floor, wild pets | §9, §10 decided |
 | ROADMAP R6 | CPI on the critical path (delegation, VRF, crank) | §12, now |

@@ -215,7 +215,7 @@
 
 ### B3. ROI của người chơi — Mở · Đo được (strawman)
 
-- `$SKR` đã có giá fiat; `$HBRN` ngoài đời có thể là tiền thật (bản hackathon là điểm không chuyển được, D17).
+- `$SKR` đã có giá fiat; `$HBRN` ngoài đời có thể là tiền thật (token thật từ ngày launch, D38; D17 đã bỏ).
 - Chỉ số: SKR bỏ vào so với `$HBRN` nhận về theo thời gian, theo mức bonding và theo từng loại tương tác; thời gian hoà vốn; ROI của chủ chăm, chủ thỉnh thoảng, chủ bỏ mặc.
 - Đo (strawman ở B1, B2): chủ chăm tiêu 2.85 SKR mỗi ngày, nhận ~200 `$HBRN` mỗi ngày (70 `$HBRN` cho mỗi SKR); chủ thỉnh thoảng 0.3 SKR mỗi ngày, ~5 `$HBRN` cho mỗi SKR; chủ bỏ mặc 0 / 0. Tỉ giá SKR / `$HBRN` để quy ra ROI còn mở.
 

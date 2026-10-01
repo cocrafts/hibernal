@@ -31,10 +31,10 @@ Non-goal: photorealism, high tri counts, 3D character animation rigs beyond simp
 | **Live Wallpaper** | `WallpaperService` | **Primary surface.** Full-screen, appears on home **and** lock screen. Receives `onTouchEvent`. Auto-pauses via `onVisibilityChanged` → near-zero battery when not visible. |
 | **App Widget** | Jetpack Glance | Hearts, unclaimed harvest, Winter countdown, one-tap Claim. Updated via WorkManager. |
 | **Ongoing notification** | Foreground service + custom RemoteViews | Closest thing Android has to a taskbar. Sprite + hearts + feed action. |
-| **Bubble** | Bubbles API (via notification) | Floating pet over other apps **without** `SYSTEM_ALERT_WINDOW`. Optional. |
+| **Bubble** | Bubbles API (via notification) | Floating pet over other apps **without** `SYSTEM_ALERT_WINDOW`. |
 | **Quick Settings tile** | `TileService` | Cheap. ~30 min of work. |
 
-**Tier 1 — requires user to grant in Settings (defer to post-hackathon):**
+**Tier 1 — requires user to grant in Settings (launch scope, not built yet: debt):**
 - `SYSTEM_ALERT_WINDOW` — Shimeji-style pet wandering over all apps. Caveats: Android 15 only lets an app with SAW start a foreground service while an overlay is visible; Android 15 "Restricted settings" may block sensitive permissions for apps from unrecognised installers — **untested whether the dApp Store counts as a recognised installer. Test on device before relying on this.**
 - Accessibility Service — would let the pet react to which app you're using. **Do not build.** Highest-trust-cost permission on Android; reads as spyware; heavily gated.
 
@@ -144,7 +144,7 @@ This, not the rendering, is where this work actually gets difficult.
 
 **Ongoing notification:** optional, user-toggleable. Custom RemoteViews with the pet sprite (a pre-rendered still, not live GL), hearts, and a feed action. Note the Android 15 constraint if `SYSTEM_ALERT_WINDOW` is ever added: foreground service start is restricted while no overlay is visible.
 
-**Quick Settings tile:** hearts at a glance, tap to open. Low cost, do it if time allows.
+**Quick Settings tile:** hearts at a glance, tap to open. Low cost; launch scope.
 
 ---
 
@@ -191,7 +191,7 @@ Revised plan (see `BRIEF.md` §8 for the full 14 days):
 | 5 | glTF loader, first pet on screen, idle animation, touch. |
 | 6 | Lifecycle hardening: preview mode, context loss, visibility, battery measurement. |
 | 7 | Widget + notification. State cache wiring. |
-| later | Variants, day/night, Winter palette, harvest objects in scene. |
+| 8+ | Variants, day/night, Winter palette, harvest objects in scene (launch scope; debt until built). |
 
 ---
 

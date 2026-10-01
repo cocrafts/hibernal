@@ -2,7 +2,7 @@
 
 > Companion to `BRIEF.md` (game + architecture) and `RENDERER-BRIEF.md` (renderer + Android surfaces). This file answers three questions: **what can start today**, **what is blocked and on which repo**, and **what unblocks what**, so work can be split across people and across the three repos (`hibernal`, `recompiler`, `void`, plus `neon`).
 >
-> Status legend: **READY** = no upstream blocker, start now · **BLOCKED:R / V / N** = waiting on recompiler / void / neon work · **BLOCKED:dep** = waiting on another package in this file · **OPT** = optional, cut first.
+> Status legend: **READY** = no upstream blocker, start now · **BLOCKED:R / V / N** = waiting on recompiler / void / neon work · **BLOCKED:dep** = waiting on another package in this file. Nothing is optional: a package not done by a date is launch debt (`BRIEF.md` §7.1).
 > Estimates are person-days for someone who knows the stack. Last updated 2026-09-14 (BRIEF rev 4: brain on chain in the MagicBlock ER, VRF, lifespan, talent, items, bonding, wild pets).
 >
 > Release decision, 2026-09-30: use [LAUNCH.md](LAUNCH.md) for the approved two-milestone plan: a functional devnet/ER beta submission by October 8, then mainnet after security and operational readiness gates. Mainnet deployment and dApp Store approval do not gate the submission. The estimates and fallback paths below are historical planning, not proof of readiness or approval to reduce game scope.
@@ -269,7 +269,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 | **A6** | `hib_sync`: read pet and block from the ER, state cache for wallpaper and widget, owner-signature requests (claim, SKR) to MWA; optional session key for owner-driven play | 1.5 | A5 P11 A7 |
 | **A7** | MWA `clientlib-ktx`: connect, claim signing, `create_session` (built natively, owner-signed), SKR purchases | 1.5 | A0 P10 |
 | **A8** | HUD: campfire home + neighbor fires + Monte-Carlo odds, My Pet, Tree, Replay, Shop, Digest, Settings; talent reveal, items, bonding and talk, lineage | 4 | A3 A5 N1 (or fallback) |
-| **A9** | Glance widget: hearts, harvest, Winter countdown, owner-signed emergency Claim | 1 | A6 · **OPT** |
+| **A9** | Glance widget: hearts, harvest, Winter countdown, owner-signed emergency Claim | 1 | A6 |
 | **A10** | Lifecycle hardening + battery measurement (Battery Historian, < 2%/h) | 1.5 | A3 V6 |
 | **A11** | Variants, day/night palette, Winter snow, harvest objects, Fading desaturation | 2 | A4 |
 
@@ -291,7 +291,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 - **Chain lane:** R2 + R12 → R3 → R6 → E1 → P1 → P2/P3 → P4 → P6 → P11 → P12 → P8/P9 → P5 → P13 → P10 → P7 → P14. Pulls R7 and P0b/S1/S2 in the gaps.
 - **Device lane:** A0 → R9 → A1/A2 → V1/V2 → V5 → A3 → V3/V4/T1 → A4 → A5 (R10) → A7 → A6 → A8 (V7/N1) → A10 → A11 → A9.
 
-**Solo:** P0 + A0 + T1 (all READY) on day 0 while thinking; then chain lane through P2 (days 1–5, it gates the demo), then device lane through A6 (days 6–11), then A8/A10 in buffer week 1, polish in buffer week 2. Cut order: P14 → A9 → A11 → A8 polish; S3/S4 fall back to the heuristic brain. Never A2/A10 (the wallpaper is the opener).
+**Solo:** P0 + A0 + T1 (all READY) on day 0 while thinking; then chain lane through P2 (days 1–5, it gates the demo), then device lane through A6 (days 6–11), then A8/A10 in buffer week 1, polish in buffer week 2. Nothing is cut and S3/S4 have no heuristic-brain fallback (`LAUNCH.md`); a package not reached by a date is debt. A2/A10 come first among the device packages (the wallpaper is the opener).
 
 **Third person / spare hours:** P0b, S1, S3, T1, R7, V3, V4, X1 and E1 step 1 are all independent and unblock the most.
 

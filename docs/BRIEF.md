@@ -1,6 +1,6 @@
 # PROJECT BRIEF — Hibernal (working title) · token $HBRN
 
-> Purpose of this document: give every contributor full context, every decision already made, and the specs needed to scaffold and build the hackathon MVP. Treat the **Decisions** section as settled unless explicitly reopened. Treat numbers marked `[strawman]` as tunable defaults, not requirements.
+> Purpose of this document: give every contributor full context, every decision already made, and the specs needed to scaffold and build the game for launch. Treat the **Decisions** section as settled unless explicitly reopened. Treat numbers marked `[strawman]` as tunable defaults, not requirements.
 >
 > **Rev 4 (2026-09-14).** Brain on chain and game state in the MagicBlock Ephemeral Rollup (D18, D19, D21 rewritten), VRF inside the ER for every draw with no slot-hash fallback (D25), XP leveling without a `$HBRN` fee (D6), 64-node ring tree (D13), and the systems D32–D37: lifespan and lineage, hidden talent, reward weight `work_power²` with a 500-slot floor, items, pet-owned money and bonding, wild pets. Details, measurements and open numbers live in `GAME-DESIGN.md`; the on-chain surface in `SOLANA.md`.
 >
@@ -92,7 +92,7 @@ Pitch framing (for deck, not for code): *"Bitcoin mining on your phone, but the 
 | **D28** | **Rent:** claimer pays Pet account rent (~0.0029 SOL, refundable when a dead pet is closed after grace). Protocol pays Block rent (~0.017 SOL per 10 pets). Owner tops up the session key. | Protocol capital at 20k pets ≈ 34 SOL, all recoverable. Users already sign the claim tx. |
 | **D29** | Names: token **$HBRN**, project working title **Hibernal**, event **Winter**. Final project name is §10 Q1. | — |
 | ~~D30~~ | ~~Client in Kotlin + Compose with a hand-written GLES 3.0 renderer.~~ **Superseded by D31**; the surfaces (Live Wallpaper primary, widget, in-app SurfaceView) and the no-engine renderer recipe from `RENDERER-BRIEF.md` stand. | — |
-| **D32** | **Lifespan 90 days, in the hackathon build.** Decline from day 50 on every tree stat (70% on day 60, 50% on day 90), natural death on day 90, the heir inherits 70% of the wallet (30% inheritance tax to the pot) plus a lineage package (§3.7). | Progress repeats every generation instead of running dry at max level; death becomes a milestone. |
+| **D32** | **Lifespan 90 days, at launch.** Decline from day 50 on every tree stat (70% on day 60, 50% on day 90), natural death on day 90, the heir inherits 70% of the wallet (30% inheritance tax to the pot) plus a lineage package (§3.7). | Progress repeats every generation instead of running dry at max level; death becomes a milestone. |
 | **D33** | **Hidden talent** revealed at level 10 by VRF in the ER: a grade multiplier (Common ×1.0–1.1 · Rare ×1.1–1.2 · Epic ×1.3–1.4 · Legendary ×1.6 · Mythic ×2 `[numbers to lock]`) on one whole core stat, `forage`, `might` or `grit`: base, start, tree and level growth together (§3.11; `docs/SIM.md` F1, G1). | Raise a pet to find out; chain data is public, so a talent computed at mint would be known to everyone on day 0. |
 | **D34** | **Reward weight `(work_power + 50)²` with a 500-slot denominator floor.** Target: a few pets ×20 the median (Mythic talent plus gear), the rest ×1–3. No per-pet pot cap (§3.3, §3.14). | An income tail worth sharing, driven by luck; early players eat well but never take the whole emission. |
 | **D35** | **Items with rarity** (same grades as talent), 4 slots, stat bonuses, rare skills (revive, anti-robbery, damage reduction). Pets mint with `$HBRN` (VRF roll), sell back at a formula price (difference burned), trade in an ER market; items wear (§3.12). | The `$HBRN` sink once levels are free; stacks with talent toward ×20. |
@@ -219,7 +219,7 @@ Every owner purchase and `feed` raises bonding (D36); below the refusal threshol
 - **Rage** `[agent proposal, 2026-09-25]`: a pet robbed or bitten by the same neighbor again stacks rage against it (+1, at most 3, kept 3 days after the last hit; `grudge_slot`, `rage`, `rage_epoch` on `Pet`). In any fight with that neighbor, in either role, its might and grit are +10% per stack; winning a fight against it clears the rage. Odds tables and the brain see the raged stats (`combatantFacing`). Teacher world: robberies repeated by the same robber within 3 days 17% → 13%, total loot unchanged (`docs/SIM.md` D1).
 - **Record:** append `FightRecord` to the Block ring buffer (§3.8); emit an event with the same payload.
 - **Odds UI:** client runs `fight` over 2,000 random seeds with both snapshots → p_win, expected loot, round distribution. On chain the brain scores targets with its policy or a precomputed odds table (§3.10); Monte Carlo stays client-side.
-- **Hunt** *(post-hackathon)*: district-scope target, loot ×1.3, no odds preview. **Bounty**, **Auto-policy UI** *(post-hackathon)*.
+- **Hunt**: district-scope target, loot ×1.3, no odds preview. **Bounty**, **Auto-policy UI** (§7.1).
 
 ### 3.7 Death, aging and lineage (D32)
 - Trigger: `hearts == 0` after tick or bite, or **age 90 days** (natural death).
@@ -432,10 +432,12 @@ Write the offchain simulator early (`sim/`, MetaScript on `rules/`) — seed 200
 
 ## 7. Scope
 
-### 7.1 Hackathon MVP (must ship)
+### 7.1 Launch scope
+Everything below ships at launch, on the dates of `docs/LAUNCH.md` (user, 2026-09-30). Nothing waits for after the hackathon: an item not built yet is **debt** of the launch, tracked in `ROADMAP.md` and `LAUNCH.md`, not a later phase.
+
 - Claim gated by SGT (admission_groups config with SGT only populated)
 - Pet state delegated to the MagicBlock ER; `act` runs from the ER crank; session keys only for owner-driven play (D19, D21)
-- Brain v1 heuristic on chain (`act`): eat, bank, allocate, trade items, attack by policy or odds table
+- Brain on chain in `act`: the trained integer policies (`ON-CHAIN-AI.md`), no heuristic stand-in: eat, bank, allocate, trade items, attack by policy or odds table
 - Hearts, hunger, `eat` with $HBRN, auto-eat floor, newborn slow hunger, starvation death, 50/50 inheritance to block
 - 3 core stats + 5 combat attributes; XP leveling to 20 without a $HBRN fee (D6)
 - **64-node** PoE-style ring tree with adjacency rule and keystones (D13)
@@ -443,7 +445,7 @@ Write the offchain simulator early (`sim/`, MetaScript on `rules/`) — seed 200
 - Fights: multi-round `fight()`, VRF seed in the ER, stat-driven loot, FightRecord ring buffer, in-scene replay, Monte-Carlo odds, bite rule, newborn shield, no-bite-under-50%, 1 bite/target/epoch
 - Lifespan 90 days, decline, natural death, heir with inheritance tax and lineage package (D32)
 - Hidden talent revealed at level 10 by VRF (D33)
-- Reward weight `work_power²` with the 500-slot floor; wild pets as formulas (D34, D37)
+- Reward weight `work_power²` with the 500-slot floor; wild pets (D34, D37), as real accounts driven by the same `act` (`GAME-DESIGN.md` §10)
 - Items: mint, equip, wear, buyback; the ER market last (D35)
 - Pet-owned $HBRN, bonding, `talk`, owner food refusal, gift ledger (D36)
 - Automated balance tuner on the sim (§6)
@@ -458,17 +460,15 @@ Write the offchain simulator early (`sim/`, MetaScript on `rules/`) — seed 200
 - Recompiler Solana backend items 1–7 and void items 1–6 landed upstream with tests
 - `guard.ms` + adversarial LiteSVM tests + differential fuzz green (§5.7)
 
-### 7.2 Post-hackathon (deck roadmap only)
-- Trained specialist policies and social interactions, if they miss the deadline
+- Trained specialist policies and social interactions (§3.10, §3.15, `GAME-DESIGN.md` §13)
 - Winter: emission step, block merge, 3-point refund, season titles
 - District leaderboard, Hunt, Bounty, Move
 - Owner-facing auto-policy editor
 - Protocol fee payer (gasless for users)
 - DEX liquidity for $HBRN, from player activity only
-- Real-account wild pet army once ER throughput is measured
 - Recompiler: Solana backend polish (realloc helpers, `noalloc` check, static CU tooling), `std/solana` published as a package
 
-### 7.3 Explicitly not doing
+### 7.2 Explicitly not doing
 - Glossy realtime 3D à la NOMI; the 3D pipeline exists only to produce the pixel look (D14). No free camera, no cosmetics that break the pixel grid.
 - GPS / sensor-driven behavior
 - Prediction markets, yield, perps, anything trading-shaped
@@ -506,7 +506,7 @@ Commit daily in this repo and in the compiler/void repos with meaningful message
 - [ ] Live wallpaper survives lock/unlock/rotate/launcher-switch/preview; pet visible on the lock screen (RENDERER-BRIEF §9)
 - [ ] Repo public, clean history, README with architecture + how to run devnet demo, pinned recompiler/void commits and a "what we built in the compiler for this" section
 - [ ] Demo video ≤ 3 min: opens on unlocking the phone with the pet already there, then a full life cycle in demo mode including one fight replay
-- [ ] Deck: problem (retention) · one-per-Seeker scarcity · autonomous pet with its own money · permadeath · block/hawk-dove · replayable RPG fights · PoE tree · fair-launch tokenomics incl. **why no token yet** · SKR role · brain on chain via the ER crank + VRF · hidden talent and the ×20 tail · lifespan and lineage · pet-owned money and bonding · roadmap (§7.2) · team
+- [ ] Deck: problem (retention) · one-per-Seeker scarcity · autonomous pet with its own money · permadeath · block/hawk-dove · replayable RPG fights · PoE tree · fair-launch tokenomics incl. **the real token from launch day (D38)** · SKR role · brain on chain via the ER crank + VRF · hidden talent and the ×20 tail · lifespan and lineage · pet-owned money and bonding · launch scope and its debt (§7.1) · team
 - [ ] SKR track write-up: SKR as the currency owners spend to keep characters alive; growth-mult cap design; Seed Vault for money, session key for play
 - [ ] Determinism green: js, native and LiteSVM builds of `rules/` agree on 10k seeds
 - [ ] Differential fuzz + invariants green on the pinned compiler; UBSan clean
@@ -527,9 +527,9 @@ Commit daily in this repo and in the compiler/void repos with meaningful message
 9. ~~Session validity max~~ — **read: 7 days** (magicblock-labs/gum-program-library `91c631e`, `create_session_token_internal` in `programs/gpl_session/src/lib.rs` refuses a later `valid_until` with `ValidityTooLong`; the default is 1 hour). Only owner-driven play uses a session (D19); the pet itself needs none (D38).
 14. Where the unclaimed bot share of the 500-slot floor goes: burn, back to the pot, or not minted (D34).
 15. The shape of the $HBRN mint (D38): SPL Token or Token-2022; when emission becomes tokens (minted each epoch into a program vault, or only when a balance leaves the game as a gift); how a token movement crosses from the ER's `u64` balances to L1 (`SOLANA.md` §7 items 11, 15); whether an external audit happens before launch.
-10. **Team size.** The chain track and the device track (§8) each need a full-time person for the first week. Solo means serializing them: chain days 1–4 first (it gates everything), then device; the buffer weeks absorb the rest. Cut order if needed: item market → widget → HUD polish; never the wallpaper.
-12. Does `std/http` + `std/tls` link and run under the NDK build? Verify in the day-1 device spike; fallback is routing RPC through the Kotlin shell (OkHttp) for the hackathon.
-13. Neon-on-void on Android: text and input have only been exercised headless. If it is not solid by day 9, the HUD is drawn directly with void 2D calls (imperative), Neon later.
+10. **Team size.** The chain track and the device track (§8) each need a full-time person for the first week. Solo means serializing them: chain days 1–4 first (it gates everything), then device; the buffer weeks absorb the rest. Nothing is cut (§7.1): what a solo run has not reached by a date is debt.
+12. Does `std/http` + `std/tls` link and run under the NDK build? Verify in the day-1 device spike; fallback is routing RPC through the Kotlin shell (OkHttp).
+13. Neon-on-void on Android: text and input have only been exercised headless. If it is not solid by day 9, the HUD is drawn directly with void 2D calls (imperative) and Neon stays debt.
 11. Does the Seeker lock screen render the live wallpaper (RENDERER-BRIEF §10 Q1)? Load-bearing for the demo opener; verify on device day 1.
 
 ---
