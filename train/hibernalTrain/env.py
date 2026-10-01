@@ -14,6 +14,7 @@ DONE_RUNNING, DONE_DIED, DONE_TRUNCATED = 0, 1, 2
 CONTROL_LEARNER, CONTROL_TEACHER = -2, -1
 PERSONAS = ("cautious", "greedy", "vengeful")
 REWARD_TERMS = ("heart", "death", "comfort", "lossAversion")
+MEASURES = ("level", "power", "combat")
 STAT_FIELDS = ("fights", "wins", "deaths", "heirs", "illegal", "living", "levels", "wealth")
 
 
@@ -142,6 +143,10 @@ class HibernalEnv:
         loaded = self.lib.hibernal_load_policy(slot, policyBytes, len(policyBytes))
         if loaded != len(policyBytes):
             raise ValueError(f"hibernal_load_policy refused the policy: {loaded}")
+
+    def resort(self, every, measure, wildDefenders):
+        if self.lib.hibernal_resort(int(every), MEASURES.index(measure), int(wildDefenders)) != 0:
+            raise ValueError("hibernal_resort refused")
 
     def assign(self, env, slot, controller):
         if self.lib.hibernal_assign(env, slot, controller) != 0:

@@ -58,6 +58,9 @@ FEEL_FIELDS = (
     "marketSales",
     "marketEarned",
     "focusGearSum",
+    "lopsidedAttacks",
+    "lopsidedLootLost",
+    "youngDeaths",
 )
 SLOTS = 10
 PERSONA_OF_SLOT = np.array([(slot // 3) % 3 for slot in range(SLOTS)])

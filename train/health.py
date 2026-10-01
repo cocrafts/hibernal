@@ -43,6 +43,7 @@ def bounds(low, high):
 
 def play(arguments):
     env = HibernalEnv(seed=arguments.seed, envCount=arguments.worlds, epochs=arguments.epochs)
+    env.resort(arguments.resort, arguments.measure, arguments.wilds)
     if arguments.policy == TEACHER:
         env.assignAll(lambda index, slot: CONTROL_TEACHER)
     else:
@@ -136,6 +137,9 @@ def scorecard(counters, stats, epochs):
         ("market spend, % of income", 100 * ratio(field(counters, "marketSpent").sum(), earned.sum()), None, None, "BRIEF 3.12"),
         ("loot from wild pets, % of income", 100 * ratio(field(counters, "wildLoot").sum(), earned.sum()), None, None, "BRIEF 3.14"),
         ("loot lost, % of income", 100 * ratio(field(counters, "lootLost").sum(), earned.sum()), None, None, "SIM C6"),
+        ("deaths before level 10 per 100 lives", 100 * ratio(field(counters, "youngDeaths").sum(), lives), None, None, "D39"),
+        ("robberies by a pet 2x stronger, %", 100 * ratio(field(counters, "lopsidedAttacks").sum(), field(counters, "robbed").sum()), None, None, "D39"),
+        ("loot lost to a pet 2x stronger, % of income", 100 * ratio(field(counters, "lopsidedLootLost").sum(), earned.sum()), None, None, "D39"),
         ("attacks under 40% odds, %", 100 * ratio(field(counters, "recklessAttacks").sum(), attacks), None, 1.0, "SIM C1"),
         ("attacks per pet per day", ratio(attacks, livingDays), None, None, "SIM C"),
         ("incoming fights per pet per day", ratio(field(counters, "fightsInSum").sum(), livingDays), None, None, "SIM C2"),
@@ -154,13 +158,16 @@ def main():
     parser.add_argument("--epochs", type=int, default=120)
     parser.add_argument("--seed", type=int, default=9001)
     parser.add_argument("--save", default="")
+    parser.add_argument("--resort", type=int, default=0, help="days between re-sorts by strength, 0 for fixed blocks")
+    parser.add_argument("--measure", default="combat", choices=("level", "power", "combat"))
+    parser.add_argument("--wilds", type=int, default=1, choices=(0, 1), help="wild pets defend empty slots")
     arguments = parser.parse_args()
     started = time.perf_counter()
     env, stats, counters, owners = play(arguments)
     if arguments.save:
         np.save(arguments.save, counters)
     print(
-        f"health {arguments.policy} · engine {env.engineVersion} · {arguments.worlds} worlds x {env.blocks * SLOTS} pets "
+        f"health {arguments.policy} · resort {arguments.resort or 'fixed'} {arguments.measure} wilds {arguments.wilds} · engine {env.engineVersion} · {arguments.worlds} worlds x {env.blocks * SLOTS} pets "
         f"x {arguments.epochs} days · seed {arguments.seed} · {time.perf_counter() - started:.0f}s"
     )
     off = 0
