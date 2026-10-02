@@ -8,40 +8,16 @@
 
 ## 1. Target shape
 
-- One program written in MetaScript, built with `msc build --os=solana`.
-- **Pinocchio-shaped** (BRIEF §5.1): accounts are fixed-size structs read and written in place; 1-byte `kind` + 1-byte `version` head; instruction data = 1-byte opcode + fixed args; no Borsh, no Anchor, no IDL. `rules/layout.ms` is shared by program and client.
-- Game state is delegated to MagicBlock's Ephemeral Rollup. The brain is an instruction (`act`) triggered by the ER's native crank. Dice come from MagicBlock VRF inside the ER.
+One program in MetaScript on `std/solana`, built with `msc build program/main.ms --os=solana`. The code is the reference: accounts, seeds, arguments and errors in `program/layout.ms`, the instruction list in `program/main.ms` `dispatch`, the Anchor IDL printed by `program/idl.cms` (23 instructions, 9 accounts on tree `26d654de`). The on-chain format is Anchor's (8-byte discriminators, zero-copy `repr(C)` accounts, Borsh arguments, errors from 6000), because `std/solana` emits it; the earlier plan of a 1-byte `kind`/`version` head and opcodes is dropped. Workarounds the port still carries are listed in `WORKAROUND.md`.
 
-### Accounts
+Why the program has this shape, where the code cannot say it:
 
-| Account | Seeds | Lives |
-|---|---|---|
-| `GlobalConfig` | `["config"]` | delegated to ER |
-| `Block` | `["block", id]` | delegated to ER |
-| `Pet` | `["pet", admission_mint]` | delegated to ER |
-| `FightPending` | `["fight", attacker, counter]` | ER, open between request and VRF callback |
-| MagicBlock session token | owned by `KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5` | L1, read only (owners who drive their pet themselves) |
-| Policy weights | program-derived, `["policy"]` | L1, read by `act`; updated by the config authority (`BRIEF.md` D15) |
-
-### Instructions by layer
-
-| Instruction | Layer | Signer | Needs |
-|---|---|---|---|
-| `init_config`, `update_config` | L1 | authority | R2, R3 |
-| `claim` | L1 | owner | R2, R3, SGT TLV read, System `create_account` (R6) |
-| `delegate_pet`, `delegate_block`, `delegate_config` | L1 | payer | R6 → delegation program |
-| `undelegate` callback | L1 | delegation program (CPI) | fixed discriminator, System `create_account` signed by PDA (R6) |
-| `buy_growth`, `buy_insurance`, `buy_skin`, `feed` | L1 | owner | Token-2022 `transfer_checked` (R6); interaction with a delegated `Pet` is **Unknown** (§7) |
-| `close_dead_pet` | L1 | anyone | R2, realloc/close helper |
-| `schedule_act` | ER | payer | R6 → magic program `ScheduleTask` |
-| `act` | ER | crank (validator) | R2, R12, brain inference |
-| `tick`, `eat`, `harvest_claim`, `allocate` | ER | crank or owner | R2, R12 |
-| `level_up` | ER | crank or owner | R2, R12; at level 10 also a VRF request (R6) |
-| `attack` | ER | crank or owner | R2, R12, VRF request (R6), opens `FightPending` |
-| `consume_fight`, `consume_talent` | ER | VRF program identity | R2, R12, callback signer check |
-| `commit` | ER | payer | R6 → magic program |
-
----
+- **A pet is its own `["pet", mint]` account holding its block and seat; a Block holds ten member keys** (user, 2026-10-01, measured in §7 items 16–18). A block-moving re-sort writes the Block and each pet; pets inside the Block cost 209M CU for 10k pets.
+- **VRF requests are paid by a delegated `["vrf-payer"]` PDA**, signed by the program with two seed sets, because a Hydra crank hands the scheduled instruction no signer. The ephemeral queue is fee-exempt, so the PDA is never charged (`ephemeral-vrf` `request_randomness.rs`, `fees.rs`, read by the std/solana session).
+- **An SKR purchase is an L1 receipt the ER consumes once** (`program/shop.ms`): a delegated pet cannot be written on L1, so `Buy` transfers SKR to the treasury and creates and delegates a `["receipt", pet, nonce]` account; `Consume` applies it in the ER.
+- **`ClaimReward` reads the delegated pet's last commit on L1 through `Delegated<T>`** (owner = delegation program, PDA checked); the L1 `Paid` ledger is the replay guard, since the pet cannot be written there.
+- **A re-sort clears every block before refilling** (`program/resort.ms` `ResortClear`): a listing's seller must be in the transaction to get the item back, and it is not once the blocks are being refilled.
+- **Every account layout has its fields ordered by alignment with explicit pads** (`rules/layout.ms` `Pet`, `FightRecord`, `Listing`, `Combatant`): Anchor's client reads IDL fields back to back and refuses C padding; `anchorIdl` now rejects interior padding at compile time.
 
 ## 2. What MetaScript does on Solana today — Measured
 
@@ -187,6 +163,14 @@ If step 3 or 4 does not pass inside the agreed timebox, do not rewrite everythin
    - One Hydra crank per block, its act listing the Block and its ten pets: 20 creates in 20 transactions, 175,880 CU, 5.0 s, fees 0, 23,264 lamports of rent each from the sponsor's ER balance; a trigger ran block 0's act in 424,426 CU (94 ms, fee 0, same choice, 0 bytes differing from the host's). After the re-sort every crank changes: 20 cancels in one transaction (29,750 CU, rent back in full) and 20 creates (184,880 CU), 6.3 s, fees 0.
    - `getProgramAccounts` with a `memcmp` on the pet's block id: the ER answers in 42–44 ms with exactly the block's ten; the Magic Router answers `-32601 Method not found`; L1 returns none, since a delegated pet is owned by the delegation program there.
    - Not measured: an ER lookup table, sending a re-sort's blocks in parallel. The 225 probe accounts were closed after each run; the runs cost 0.0686 and 0.0690 SOL of L1 fees.
+
+19. The game program itself on devnet, and the mechanics a flow has to rest on. Measured 2026-10-02/03 on devnet-as.
+   - Setup and one day (program `GZPi89Fk1diESQ8Gz87x56y6ZGeVy5CFP2TzFDo2DjCw` built from tree `8ebe471b`, since closed; `STAGE=setup|day|shop|claim node tools/chain/hibernalDevnet.mjs <program> train/checkpoints/p29s5.policy`, 20 pets on 20 DevAdmission members of group `6jXij…`, 2 blocks): initialize 22,180 CU; policy upload 35,671 CU per 900-byte chunk; claim ~39k; delegate world/block/pet 30–52k / 33k; place on the ER 16.8k, fee 0. One whole day for both blocks on the ER: dawn 153k, eight real VRF rounds signed by the `vrf-payer` PDA, 80 brain acts 72,300–204,915 CU at ~90 ms, fee 0, dusk 18k. SKR `Buy` on L1 66,026 CU, `Consume` on the ER 13,581 CU, a second consume refused; `CommitPet` 27,708 CU; `ClaimReward` read the delegated pet and refused `NothingOwed` (no gift after one day). SKR food on a full pet is refused `Full` and the receipt stays.
+   - Re-laid-out program `DijB8iVZD3tLSwcQWMFgMf4vasTjcdMdQQR31H19ogyn` (tree `26d654de`) set up the same way in 2 minutes.
+   - ER clock (`STAGE=clock node tools/chain/flowProbe.mjs`, tree `2ddf8595`): 10.000 ms a slot over 4 minutes, 9.9992 ms over 20 hours (7,320,588 slots), about 7 s a day early against the wall clock; the ER's `Clock.unix_timestamp` stays within 1 s of the wall clock.
+   - Hydra (`STAGE=hydra`, MagicBlock `hydra-cranker` 0.2.0 `--ephemeral`): due slots are absolute, `start + k·interval`; a crank created with five runs already overdue had all of them fired back to back, one a slot. With the default preflight the cranker parks a crank after 10 consecutive failures; with `--trigger-skip-preflight` it sends a failing trigger every slot. The scheduled instruction runs top level after the trigger and must match the stored template, so a crank listing a block's pets is stale once the members change.
+   - Commits without a delegated fee payer (`STAGE=commits`): 10 commits of one pet landed on L1, the 11th was refused by the magic program (`Custom 0xA0000000`). An owner's 11th claim would stop there.
+   - What this rules out for the day loop: a `step` that answers "not yet" with an error. Hydra keeps the run due, the cranker retries, and after 10 failures the block stops until the cranker restarts. The first Hydra run of the old loop (one day packed into three minutes after dawn, then `TooEarly` for 23 hours) triggered 30 times in 6 s before it was stopped.
 
 ## 8. Toolchain on the dev machine — Measured
 
