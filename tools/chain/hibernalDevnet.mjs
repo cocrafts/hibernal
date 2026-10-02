@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { address, getProgramDerivedAddress } from "@solana/kit";
+import { cancelCrank, crankAddress, createCrank, newCrankSeed, sponsorDelegated, triggerCrank } from "./hydra.mjs";
 import {
 	ASSOCIATED_TOKEN_PROGRAM,
 	SLOT_HASHES,
@@ -212,6 +213,68 @@ async function day() {
 	}
 }
 
-const stages = { setup, day };
+
+const INTERVAL_SLOTS = BigInt(process.env.INTERVAL_SLOTS ?? 300);
+const CRANK_RUNS = BigInt(process.env.CRANK_RUNS ?? 5000);
+const WATCH_MINUTES = Number(process.env.WATCH_MINUTES ?? 10);
+
+async function hydra() {
+	const sponsor = await keypairAt("out/hydraSponsor.json");
+	const delegatedNow = await sponsorDelegated({ sponsor, funder: authority, base, baseRead, ephemeralUrl: process.env.ER_RPC ?? "https://devnet-as.magicblock.app", validator, lamports: 30_000_000n, send });
+	console.log(`  sponsor ${sponsor.address} ${delegatedNow ? "delegated now" : "already delegated"}`);
+	state.cranks ??= {};
+	const slot = await ephemeral.getSlot().send();
+	for (let id = 0; id < BLOCKS; id++) {
+		if (state.cranks[id]) continue;
+		const seed = newCrankSeed();
+		const crank = await crankAddress(seed);
+		const scheduled = await stepInstruction(id, (await blockState(id)).members);
+		const sent = await send(ephemeral, ephemeral, `crank block ${id}`, [createCrank({ sponsor, crank, seed, startSlot: slot + 100n, interval: INTERVAL_SLOTS, remaining: CRANK_RUNS, computeUnits: 1_400_000, scheduled })], sponsor);
+		report(`crank block ${id} ${crank}`, sent);
+		state.cranks[id] = { crank, seed: Buffer.from(seed).toString("hex") };
+		save();
+	}
+}
+
+async function crank() {
+	const until = Date.now() + WATCH_MINUTES * 60_000;
+	const last = {};
+	let triggers = 0;
+	let failures = 0;
+	while (Date.now() < until) {
+		for (let id = 0; id < BLOCKS; id++) {
+			const entry = state.cranks?.[id];
+			if (!entry) continue;
+			try {
+				const sent = await send(ephemeral, ephemeral, `trigger ${id}`, [triggerCrank({ crank: entry.crank, caller: authority })], authority);
+				triggers++;
+				const ran = sent.logs.find((line) => line.includes(`Program ${programAddress} consumed`));
+				const refused = sent.logs.find((line) => line.includes("custom program error") || line.includes("failed:"));
+				if (ran || refused) console.log(`  block ${id} trigger: ${ran ?? refused}`);
+			} catch (error) {
+				failures++;
+			}
+			const now = await blockState(id);
+			const label = `epoch ${now.epoch} ${PHASES[now.phase]} round ${now.round} cursor ${now.cursor}`;
+			if (last[id] !== label) {
+				console.log(`${new Date().toISOString()} block ${id}: ${label}`);
+				last[id] = label;
+			}
+		}
+		await sleep(Number(INTERVAL_SLOTS) * 10);
+	}
+	console.log(`triggers sent ${triggers}, trigger transactions failed ${failures}`);
+}
+
+async function cancel() {
+	const sponsor = await keypairAt("out/hydraSponsor.json");
+	for (const [id, entry] of Object.entries(state.cranks ?? {})) {
+		report(`cancel crank ${id}`, await send(ephemeral, ephemeral, `cancel ${id}`, [cancelCrank({ sponsor, crank: entry.crank })], sponsor));
+		delete state.cranks[id];
+		save();
+	}
+}
+
+const stages = { setup, day, hydra, crank, cancel };
 if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}`);
 await stages[STAGE]();
