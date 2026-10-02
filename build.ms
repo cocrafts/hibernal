@@ -1,7 +1,7 @@
 const config = {
 	fmt: { useTabs: true },
 	deps: {
-		"@metascript/void": "file:../void-touch",
+		"@metascript/void": "file:./vendor/void",
 	},
 };
 

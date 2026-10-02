@@ -9,3 +9,4 @@ build/
 android/.gradle/
 android/local.properties
 android/.kotlin/
+vendor/

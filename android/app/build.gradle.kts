@@ -15,8 +15,8 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
-    // Hibernal's assets/ and void's (font.ttf, the scene's meshes) ride in the APK;
+    // Hibernal's assets/ and void's (font.ttf) ride in the APK;
     // VoidNative.prepare extracts them. -PvoidDir points at the void checkout.
-    val voidDir = (project.findProperty("voidDir") as String?) ?: "../../../void-touch"
+    val voidDir = (project.findProperty("voidDir") as String?) ?: "../../vendor/void"
     sourceSets["main"].assets.srcDirs("../../assets", "$voidDir/assets")
 }
