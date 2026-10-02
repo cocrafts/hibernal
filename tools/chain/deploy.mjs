@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { AccountRole, address, getProgramDerivedAddress } from "@solana/kit";
-import { SYSTEM_PROGRAM, cluster, encoder, joined, keypairAt, read, send, sleep, u32, u64 } from "./hibernal.mjs";
+import { AccountRole, address, appendTransactionMessageInstructions, createTransactionMessage, getBase64EncodedWireTransaction, getProgramDerivedAddress, getSignatureFromTransaction, pipe, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash, signTransactionMessageWithSigners } from "@solana/kit";
+import { SYSTEM_PROGRAM, cluster, encoder, joined, keypairAt, patiently, read, send, sleep, u32, u64 } from "./hibernal.mjs";
 
 const LOADER = address("BPFLoaderUpgradeab1e11111111111111111111111");
 const RENT = address("SysvarRent111111111111111111111111111111111");
@@ -57,16 +57,43 @@ for (let offset = 0; offset < elf.length; offset += CHUNK) {
 }
 console.log(`${offsets.length} of ${Math.ceil(elf.length / CHUNK)} chunks to write, ${PARALLEL} at a time`);
 const started = Date.now();
-for (let start = 0; start < offsets.length; start += PARALLEL) {
-	await Promise.all(offsets.slice(start, start + PARALLEL).map((offset) => {
-		const chunk = elf.subarray(offset, Math.min(offset + CHUNK, elf.length));
-		return quiet(`write ${offset}`, [{
-			programAddress: LOADER,
-			accounts: [{ address: bufferKey.address, role: AccountRole.WRITABLE }, { address: payer.address, role: AccountRole.READONLY_SIGNER, signer: payer }],
-			data: joined(u32(1), u32(offset), u64(chunk.length), chunk),
-		}]);
-	}));
-	process.stdout.write(`\r  written ${Math.min(start + PARALLEL, offsets.length)}/${offsets.length} (${Math.round((Date.now() - started) / 1000)} s)`);
+const writeOf = (offset) => {
+	const chunk = elf.subarray(offset, Math.min(offset + CHUNK, elf.length));
+	return {
+		programAddress: LOADER,
+		accounts: [{ address: bufferKey.address, role: AccountRole.WRITABLE }, { address: payer.address, role: AccountRole.READONLY_SIGNER, signer: payer }],
+		data: joined(u32(1), u32(offset), u64(chunk.length), chunk),
+	};
+};
+let pending = offsets;
+for (let round = 1; pending.length > 0; round++) {
+	const { value: blockhash } = await patiently(() => base.getLatestBlockhash().send());
+	const sent = [];
+	for (let start = 0; start < pending.length; start += PARALLEL) {
+		const batch = pending.slice(start, start + PARALLEL);
+		const signed = await Promise.all(batch.map(async (offset) => {
+			const message = pipe(
+				createTransactionMessage({ version: 0 }),
+				(m) => setTransactionMessageFeePayerSigner(payer, m),
+				(m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+				(m) => appendTransactionMessageInstructions([writeOf(offset)], m),
+			);
+			const transaction = await signTransactionMessageWithSigners(message);
+			return { offset, transaction, signature: getSignatureFromTransaction(transaction) };
+		}));
+		await Promise.all(signed.map(({ transaction }) => base.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send().catch(() => null)));
+		sent.push(...signed);
+		await sleep(Number(process.env.PAUSE_MS ?? 1000));
+	}
+	await sleep(8000);
+	const confirmed = new Set();
+	for (let start = 0; start < sent.length; start += 200) {
+		const slice = sent.slice(start, start + 200);
+		const { value } = await patiently(() => baseRead.getSignatureStatuses(slice.map((entry) => entry.signature)).send());
+		value.forEach((status, index) => { if (status && !status.err && status.confirmationStatus) confirmed.add(slice[index].offset); });
+	}
+	pending = pending.filter((offset) => !confirmed.has(offset));
+	console.log(`round ${round}: ${confirmed.size} confirmed, ${pending.length} left (${Math.round((Date.now() - started) / 1000)} s)`);
 }
 console.log("");
 const check = await read(baseRead, bufferKey.address);
