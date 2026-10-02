@@ -54,6 +54,8 @@ export struct Combatant {
 	bleed: int32;
 	hearts: int32;
 	mods: BitSet<Mod>;
+	pad: uint8;
+	pad2: uint16;
 }
 
 export function noMods(): BitSet<Mod> {

@@ -29,11 +29,14 @@ export const LISTING_DAYS: uint64 = 3;
 export const FAIR_SCORE_BPS: int32 = 360 * ITEM_BONUS_PERCENT / 100;
 
 export struct Listing {
-	item: Item;
 	price: uint64;
-	seller: uint32;
 	sellerBorn: uint64;
 	listedEpoch: uint64;
+	seller: uint32;
+	item: Item;
+	pad: uint8;
+	pad2: uint16;
+	pad3: uint32;
 }
 
 export struct Listed {

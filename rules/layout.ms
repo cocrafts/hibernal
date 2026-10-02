@@ -32,53 +32,55 @@ export enum BlockSlot {
 }
 
 export struct Pet {
-	blockId: uint32;
-	slot: uint8;
-	alive: boolean;
-	region: uint8;
-	hearts: uint8;
-	maxHearts: uint8;
-	forage: uint16;
-	might: uint16;
-	grit: uint16;
-	level: uint16;
-	pointsUnspent: uint8;
-	xp: uint32;
 	tree: Tree;
-	foodBps: int32;
-	experienceBps: int32;
-	lootBps: int32;
-	biteGuardBps: int32;
-	mods: BitSet<Mod>;
 	harvest: uint64;
 	burrow: uint64;
 	rewardSnapshot: uint64;
 	bornEpoch: uint64;
 	lastTickEpoch: uint64;
+	fightDay: uint64;
+	growthMultiplierExpiry: uint64;
+	giftOwed: uint64;
+	ownerBankedAt: uint64;
+	rageEpoch: uint64;
+	blockId: uint32;
+	xp: uint32;
+	foodBps: int32;
+	experienceBps: int32;
+	lootBps: int32;
+	biteGuardBps: int32;
+	forage: uint16;
+	might: uint16;
+	grit: uint16;
+	level: uint16;
+	slotsAttackedToday: BitSet<BlockSlot>;
+	growthMultiplierBps: uint16;
+	talentBps: uint16;
+	lineageGeneration: uint16;
+	slot: uint8;
+	alive: boolean;
+	region: uint8;
+	hearts: uint8;
+	maxHearts: uint8;
+	pointsUnspent: uint8;
+	mods: BitSet<Mod>;
 	fightsOutToday: uint8;
 	fightsInToday: uint8;
 	bitesInToday: uint8;
-	slotsAttackedToday: BitSet<BlockSlot>;
-	fightDay: uint64;
-	growthMultiplierBps: uint16;
-	growthMultiplierExpiry: uint64;
 	minHearts: uint8;
 	pantry: Pantry;
 	foodBoughtToday: uint8;
 	talentKind: uint8;
-	talentBps: uint16;
 	insurance: uint8;
 	scars: uint8;
-	lineageGeneration: uint16;
 	bonding: int8;
 	talksToday: uint8;
 	ownerFedToday: uint8;
-	giftOwed: uint64;
-	ownerBankedAt: uint64;
 	gear: Gear;
 	grudgeSlot: uint8;
 	rage: uint8;
-	rageEpoch: uint64;
+	pad: uint8;
+	pad2: uint32;
 }
 
 export struct GlobalConfig {
@@ -96,14 +98,16 @@ export struct GlobalConfig {
 export struct FightRecord {
 	epoch: uint64;
 	seed: uint64;
-	attackerSlot: int32;
-	defenderSlot: int32;
-	attacker: Combatant;
-	defender: Combatant;
 	stake: uint64;
 	loot: uint64;
-	outcome: Outcome;
+	attackerSlot: int32;
+	defenderSlot: int32;
 	rounds: int32;
+	attacker: Combatant;
+	defender: Combatant;
+	outcome: uint8;
+	pad: uint8;
+	pad2: uint16;
 }
 
 export function ownStats(this pet: Pet): Stats {
@@ -196,6 +200,10 @@ export function wallet(this pet: Pet): uint64 {
 export function charged(this pet: Pet, amount: uint64): Pet {
 	const fromHarvest = Math.min(pet.harvest, amount);
 	return { ...pet, harvest: pet.harvest - fromHarvest, burrow: pet.burrow - (amount - fromHarvest) };
+}
+
+export function fightOutcome(this record: FightRecord): Outcome {
+	return (record.outcome as int32) as Outcome;
 }
 
 export function startRegion(this pet: Pet): Region {

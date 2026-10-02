@@ -475,7 +475,7 @@ export function openingAgainst(this attacker: Pet, defender: Pet, stake: uint64,
 			defender: defenderCombatant,
 			stake: stake,
 			loot: 0,
-			outcome: result.outcome,
+			outcome: result.outcome as uint8,
 			rounds: result.rounds,
 		},
 	};
@@ -566,7 +566,7 @@ export function settleAttack(
 ): Result<FightSettlement, AttackError> {
 	const stake = try attacker.stakeFor(defender, level, epoch);
 	const opening = attacker.openingAgainst(defender, stake, epoch, seed);
-	const settled = opening.record.outcome == Outcome.AttackerWins
+	const settled = opening.record.fightOutcome() == Outcome.AttackerWins
 		? opening.attackerWon(global, epoch)
 		: opening.defenderHeld(global);
 	return Result.ok(settled);
@@ -857,7 +857,7 @@ test "attack settlement conserves money and counts the fight" {
 		assert after.attacker.fightsOutToday == 1;
 		assert after.defender.fightsInToday == 1;
 		assert after.attacker.attackedOn(BlockSlot.Second, DUEL_EPOCH);
-		if (after.record.outcome == Outcome.AttackerWins) {
+		if (after.record.fightOutcome() == Outcome.AttackerWins) {
 			wins += 1;
 			assert after.record.loot == duel.defender.harvest - after.defender.harvest;
 			assert after.attacker.hearts == 5;
@@ -875,7 +875,7 @@ test "a winning attacker that takes back its stake leaves the hearts alone" {
 	let won = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
-		if (after.record.outcome == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
+		if (after.record.fightOutcome() == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
 			assert after.defender.hearts == 5;
 			assert after.defender.bitesInToday == 0;
 			won += 1;
@@ -889,7 +889,7 @@ test "a winning attacker bites an empty harvest" {
 	let bitten = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
-		if (after.record.outcome == Outcome.AttackerWins) {
+		if (after.record.fightOutcome() == Outcome.AttackerWins) {
 			const bite = biteHearts(
 				after.record.stake,
 				after.record.loot,
@@ -923,7 +923,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert !after.defender.alive;
 		assert after.defender.burrow == frail.burrow / 2;
 		assert after.attacker.burrow == cannibal.burrow + frail.burrow / 2;
@@ -939,7 +939,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 			seed,
 		);
 		if (!plain.ok) { unreachable; }
-		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
+		if (plain.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert plain.value.defender.burrow == frail.burrow;
 	}
 }
@@ -960,7 +960,7 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert after.defender.alive;
 		assert after.defender.insurance == (Insurance.Used as uint8);
 		assert after.defender.scars == 1;
@@ -991,7 +991,7 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert after.defender.alive;
 		assert after.defender.burrow == charmed.burrow;
 		assert !after.defender.gear.hasSkill(ItemSkill.Revive);
@@ -1021,8 +1021,8 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 			seed,
 		);
 		if (!plain.ok || !guarded.ok) { unreachable; }
-		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
-		if (guarded.value.record.outcome != Outcome.AttackerWins) { continue; }
+		if (plain.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (guarded.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert guarded.value.record.loot < plain.value.record.loot;
 		compared += 1;
 	}
