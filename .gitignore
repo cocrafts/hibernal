@@ -8,3 +8,4 @@ build/
 *.log
 android/.gradle/
 android/local.properties
+android/.kotlin/
