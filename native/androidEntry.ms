@@ -1,7 +1,7 @@
-// Hibernal on Android: void's campfire scene with the HUD over it.
+// Hibernal on Android: the campfire scene with the HUD over it.
 // Build with scripts/buildAndroid.sh.
 
-import { initLab, frameLab, setLabHud } from "@metascript/void/src/examples/grassLabScene";
+import { initLab, frameLab, setLabHud } from "./scene/campfireScene";
 import { embedRegister } from "@metascript/void/src/sokol/gpu";
 import { initHud, frameHud } from "./hud/hud";
 
