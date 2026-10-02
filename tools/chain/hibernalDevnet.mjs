@@ -22,6 +22,7 @@ import {
 	send,
 	sleep,
 	writable,
+	writableSigner,
 } from "./hibernal.mjs";
 
 const STAGE = process.env.STAGE ?? "setup";
@@ -214,6 +215,47 @@ async function day() {
 }
 
 
+async function shop() {
+	const mint = mints[0];
+	const nonce = BigInt(Date.now());
+	const source = await associated(authority.address, skrMint.address, TOKEN_PROGRAM);
+	const treasury = await associated(treasuryOwner.address, skrMint.address, TOKEN_PROGRAM);
+	const before = await read(ephemeral, await program.address(program.seeds.pet(mint)));
+	report("buy growth tier 1 with SKR (L1)", await onL1("buy", [await program.buy(authority, mint, { item: 1, tier: 0, nonce, skrMint: skrMint.address, source, treasury })]));
+	const receipt = await program.receipt(mint, nonce);
+	await readWhenCloned(receipt);
+	report("consume the receipt (ER)", await onEr("consume", [await program.consume(mint, nonce)]));
+	try {
+		await onEr("consume again", [await program.consume(mint, nonce)]);
+		console.log("  consume again: ACCEPTED (wrong)");
+	} catch {
+		console.log("  consume again: refused");
+	}
+	const after = await read(ephemeral, await program.address(program.seeds.pet(mint)));
+	const changed = after.data.findIndex((byte, index) => byte !== before.data[index]);
+	console.log(`  pet bytes changed from offset ${changed}`);
+}
+
+async function claim() {
+	const mint = mints[0];
+	const hbrn = await program.address(program.seeds.mint());
+	const destination = await associated(authority.address, hbrn, TOKEN_PROGRAM);
+	if (!(await read(baseRead, destination))) {
+		await onL1("create HBRN account", [{
+			programAddress: ASSOCIATED_TOKEN_PROGRAM,
+			accounts: [writableSigner(authority), writable(destination), readonly(authority.address), readonly(hbrn), readonly(SYSTEM_PROGRAM), readonly(TOKEN_PROGRAM)],
+			data: Uint8Array.of(1),
+		}]);
+	}
+	report("commit the pet (ER)", await onEr("commit", [await program.commitPet(authority, mint)]));
+	await sleep(8000);
+	try {
+		report("claim HBRN (L1)", await onL1("claim", [await program.claimReward(authority, mint, destination)]));
+	} catch (error) {
+		console.log(`  claim refused: ${error.message}`);
+	}
+}
+
 const INTERVAL_SLOTS = BigInt(process.env.INTERVAL_SLOTS ?? 300);
 const CRANK_RUNS = BigInt(process.env.CRANK_RUNS ?? 5000);
 const WATCH_MINUTES = Number(process.env.WATCH_MINUTES ?? 10);
@@ -275,6 +317,6 @@ async function cancel() {
 	}
 }
 
-const stages = { setup, day, hydra, crank, cancel };
+const stages = { setup, day, shop, claim, hydra, crank, cancel };
 if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}`);
 await stages[STAGE]();
