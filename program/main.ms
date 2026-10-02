@@ -1,7 +1,7 @@
 import { ProgramError, failWith, selectInstruction } from "std/solana";
 import { instruction } from "std/solana/macro";
 import { Op } from "./layout";
-import { createBlock, initialize, writePolicy } from "./admin";
+import { createBlock, delegateVrfPayer, initialize, writePolicy } from "./admin";
 import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "./admission";
 import { seeded, step } from "./day";
 import { bank, talk } from "./owner";
@@ -31,6 +31,7 @@ export function dispatch(): Result<uint64, ProgramError> {
 		Op.ResortAssign => resortAssign(),
 		Op.ResortFinish => resortFinish(),
 		Op.DelegateResort => delegateResort(),
+		Op.DelegateVrfPayer => delegateVrfPayer(),
 		Op.CommitPet => commitPet(),
 		Op.ClaimReward => claimReward(),
 	};

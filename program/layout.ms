@@ -32,6 +32,7 @@ export enum Op {
 	ResortAssign,
 	ResortFinish,
 	DelegateResort,
+	DelegateVrfPayer,
 	CommitPet,
 	ClaimReward,
 }
@@ -178,6 +179,15 @@ export function discriminator(this typeof Resort): Discriminator {
 	return @comptime { return accountDiscriminator("Resort"); };
 }
 
+export struct VrfPayer {
+	bump: uint8;
+	pad: uint8[7];
+}
+
+export function discriminator(this typeof VrfPayer): Discriminator {
+	return @comptime { return accountDiscriminator("VrfPayer"); };
+}
+
 export enum HibernalError {
 	NotAuthority,
 	PolicySealed,
@@ -242,6 +252,10 @@ export function mintSeeds(): Seeds {
 
 export function resortSeeds(): Seeds {
 	return Seeds.empty(1).addText("resort");
+}
+
+export function vrfPayerSeeds(): Seeds {
+	return Seeds.empty(1).addText("vrf-payer");
 }
 
 export function blockSeeds(id: uint32): Seeds {

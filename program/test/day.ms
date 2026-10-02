@@ -1,5 +1,7 @@
 import { ACTS_PER_EPOCH, BLOCK_SLOTS, Pet, checkPolicy } from "../../rules/index";
-import { HostRun, run, setClock } from "std/solana/host";
+import { HostRun, invocations, run, setClock } from "std/solana/host";
+import { Pubkey } from "std/solana";
+import { vrfProgram } from "std/solana/vrf";
 import { actorAt, beginEpoch, endEpoch, inRound } from "../../sim/world";
 import { GRUDGE_EPOCHS as SIM_GRUDGE_EPOCHS } from "../../sim/world";
 import { engineVersion } from "../../sim/digests";
@@ -14,6 +16,7 @@ import {
 	WORLD_SEED,
 	at,
 	blockOf,
+	keyOf,
 	globalOf,
 	instructionBytes,
 	petsOf,
@@ -117,4 +120,21 @@ test "a block refuses an early dawn, a second request, a stale or forged callbac
 	assert blockOf(step).phase == (Phase.Acting as uint8);
 	step[2] = { ...step[2], data: withResorting(step[2].data) };
 	assert run(programKey(), step, instructionBytes("Step"), entry).result != 0;
+}
+
+test "the block's VRF request is paid and signed by the program's payer PDA, and another payer is refused" {
+	const policy = policyBytes();
+	const world = worldBeforeDay(TEST_DAY);
+	setClock(at(TEST_DAY));
+	const impostor = stepAccounts(world, TEST_DAY - 1, policy);
+	impostor[0] = { ...impostor[0], key: keyOf(1) };
+	assert run(programKey(), impostor, instructionBytes("Step"), entry).result != 0;
+	const step = stepAccounts(world, TEST_DAY - 1, policy);
+	assert !step[0].signer;
+	assert passed(run(programKey(), step, instructionBytes("Step"), entry));
+	const calls = invocations();
+	const request = calls[calls.length - 1];
+	assert request.program == Pubkey.vrfProgram();
+	assert request.accounts[0].key == step[0].key && request.accounts[0].signer && request.accounts[0].writable;
+	assert request.signers == 2;
 }

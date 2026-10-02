@@ -27,7 +27,7 @@ import { Head, actionCount, largestActionCount, legalInto, observationSize, obse
 import { Scratch, bestLegal, create, logitsInto } from "../../sim/env/actor";
 import { engineVersion } from "../../sim/digests";
 import { ALLOCATE_HOLD, ATTACK_HOLD } from "../../rules/index";
-import { Block, Config, Phase, PetAccount, Policy, World as WorldAccount } from "../layout";
+import { Block, Config, Phase, PetAccount, Policy, VrfPayer, World as WorldAccount, vrfPayerSeeds } from "../layout";
 
 export const WORLD_SEED: uint64 = 9001;
 export const PET_OFFSET: int32 = 88;
@@ -215,9 +215,16 @@ export function programIdentity(): Pubkey {
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
+export function vrfPayerAccount(): HostAccount {
+	const found = vrfPayerSeeds().findProgramAddress(programKey());
+	const payers: VrfPayer[] = [{ bump: found.ok ? found.value.bump : 0, pad: [] }];
+	const key = found.ok ? found.value.key : Pubkey.zero();
+	return owned(key, withDiscriminator(VrfPayer.discriminator(), bytesAt(payers[0] as Ptr<void>, sizeof VrfPayer as int32)));
+}
+
 export function stepAccounts(world: World, epoch: uint64, policy: uint8[]): HostAccount[] {
 	const held: HostAccount[] = [
-		plain(keyOf(1), true, true),
+		vrfPayerAccount(),
 		{ ...owned(keyOf(5), configData()), writable: false },
 		owned(keyOf(6), worldData(world, epoch)),
 		owned(keyOf(7), blockData(world, epoch)),

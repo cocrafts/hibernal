@@ -1,6 +1,7 @@
 import { Instruction, ProgramError, Seeds, account, accountCount, failWith, instructionData, programId } from "std/solana";
 
 const CALLBACK: uint8 = 0xaa;
+const REQUEST: uint8 = 10;
 
 function calledBack(): Result<uint64, ProgramError> {
 	const data = instructionData();
@@ -18,10 +19,22 @@ function calledBack(): Result<uint64, ProgramError> {
 	return instruction.invokeSigned(Seeds.empty(3).addText("identity").addPubkey(target.key()).addU8(found.bump));
 }
 
+function requested(): Result<uint64, ProgramError> {
+	const payer = try account(0);
+	const identity = try account(1);
+	if (!payer.isSigner() || !payer.isWritable() || !identity.isSigner()) {
+		return Result.err(ProgramError.missingRequiredSignature());
+	}
+	return Result.ok(0);
+}
+
 function dispatch(): Result<uint64, ProgramError> {
 	const data = instructionData();
-	if (data.length > 0 && (try data.readU8(0)) == CALLBACK) { return calledBack(); }
-	return Result.ok(0);
+	if (data.length == 0) { return Result.err(ProgramError.invalidInstructionData()); }
+	const kind = try data.readU8(0);
+	if (kind == CALLBACK) { return calledBack(); }
+	if (kind == REQUEST) { return requested(); }
+	return Result.err(ProgramError.invalidInstructionData());
 }
 
 function entry(): void {

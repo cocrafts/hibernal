@@ -1,6 +1,7 @@
 import {
 	Account,
 	Mutable,
+	Owned,
 	Program,
 	ProgramError,
 	Pubkey,
@@ -16,6 +17,7 @@ import {
 	readArgs,
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
+import { DelegationAccounts, DelegationConfig, anyValidator, delegate, delegationProgram, onValidator } from "std/solana/magicblock";
 import { initializeMint2 } from "std/solana/token";
 import { GlobalConfig, PolicyError, checkPolicy, genesis } from "../rules/index";
 import {
@@ -27,6 +29,7 @@ import {
 	POLICY_BYTES,
 	Phase,
 	Policy,
+	VrfPayer,
 	World,
 	WritePolicyArgs,
 	blockSeeds,
@@ -34,6 +37,7 @@ import {
 	hibernalError,
 	mintSeeds,
 	policySeeds,
+	vrfPayerSeeds,
 	worldSeeds,
 } from "./layout";
 
@@ -61,6 +65,18 @@ export struct CreateBlockAccounts {
 	authority: WritableSigner;
 	config: Mutable<Config>;
 	block: Writable;
+	systemProgram: Program<System>;
+}
+
+export struct DelegateVrfPayerAccounts {
+	authority: WritableSigner;
+	config: Owned<Config>;
+	vrfPayer: Writable;
+	ownerProgram: Account;
+	buffer: Writable;
+	delegationRecord: Writable;
+	delegationMetadata: Writable;
+	delegationProgram: Account;
 	systemProgram: Program<System>;
 }
 
@@ -155,4 +171,34 @@ export function createBlock(): Result<uint64, ProgramError> {
 	block.phase = Phase.Dawn as uint8;
 	config.blocks = config.blocks + 1;
 	return Result.ok(a.id as uint64);
+}
+
+export function delegateVrfPayer(): Result<uint64, ProgramError> {
+	const x = try accounts<DelegateVrfPayerAccounts>();
+	if (x.config.data().authority != x.authority.key()) { return Result.err(hibernalError(HibernalError.NotAuthority)); }
+	if (x.ownerProgram.key() != programId()) { return Result.err(ProgramError.incorrectProgramId()); }
+	if (x.delegationProgram.key() != Pubkey.delegationProgram()) { return Result.err(ProgramError.incorrectProgramId()); }
+	const holder = x.vrfPayer as Account;
+	let bump: uint8 = 0;
+	if (holder.lamports() == 0) {
+		const made = try createPda<VrfPayer>(x.authority, x.vrfPayer, vrfPayerSeeds());
+		made.account.data().bump = made.bump;
+		bump = made.bump;
+	} else {
+		const found = try vrfPayerSeeds().findProgramAddress(programId());
+		if (found.key != holder.key()) { return Result.err(ProgramError.constraintSeeds()); }
+		bump = found.bump;
+	}
+	const validator = x.config.data().validator;
+	const config = validator.isZero() ? DelegationConfig.anyValidator() : DelegationConfig.onValidator(validator);
+	const delegation: DelegationAccounts = {
+		payer: x.authority as Account,
+		delegated: holder,
+		ownerProgram: x.ownerProgram,
+		buffer: x.buffer as Account,
+		delegationRecord: x.delegationRecord as Account,
+		delegationMetadata: x.delegationMetadata as Account,
+		systemProgram: x.systemProgram as Account,
+	};
+	return delegate(delegation, vrfPayerSeeds(), bump, config);
 }

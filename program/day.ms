@@ -11,6 +11,7 @@ import {
 	clock,
 	instructionDiscriminator,
 	mutable,
+	pdaWithBump,
 	readArgs,
 	selectInstruction,
 } from "std/solana";
@@ -72,8 +73,10 @@ import {
 	Policy,
 	SEATS,
 	SeededArgs,
+	VrfPayer,
 	World,
 	hibernalError,
+	vrfPayerSeeds,
 } from "./layout";
 import {
 	ActContext,
@@ -95,7 +98,7 @@ export const SEEDED_PET_ACCOUNT: int32 = 3;
 export const SEED_RETRY_SECONDS: int64 = 30;
 
 export struct StepAccounts {
-	payer: Account;
+	payer: Mutable<VrfPayer>;
 	config: Owned<Config>;
 	world: Mutable<World>;
 	block: Mutable<Block>;
@@ -489,6 +492,7 @@ function callerSeedOf(block: Ptr<Block>): Pubkey {
 }
 
 function seedRequested(step: StepAccounts, block: Ptr<Block>): Result<uint64, ProgramError> {
+	const bump = step.payer.data().bump;
 	block.requests = block.requests + 1;
 	block.pendingRequest = block.requests;
 	block.requestedAt = clock().unixTimestamp;
@@ -505,7 +509,7 @@ function seedRequested(step: StepAccounts, block: Ptr<Block>): Result<uint64, Pr
 	const argumentBytes: Bytes = { address: msSolAlloc(8), length: 8 };
 	const _written = try argumentBytes.writeU64(0, block.pendingRequest);
 	const request: RandomnessRequest = {
-		payer: step.payer,
+		payer: step.payer as Account,
 		programIdentity: step.programIdentity,
 		oracleQueue: step.oracleQueue,
 		systemProgram: step.systemProgram,
@@ -517,6 +521,7 @@ function seedRequested(step: StepAccounts, block: Ptr<Block>): Result<uint64, Pr
 		seededDiscriminator(),
 		callbackAccounts,
 		argumentBytes,
+		vrfPayerSeeds().withBump(bump),
 	);
 }
 
@@ -584,6 +589,7 @@ function seedingStep(step: StepAccounts, block: Ptr<Block>): Result<uint64, Prog
 
 export function step(): Result<uint64, ProgramError> {
 	const accountsOfStep = try accounts<StepAccounts>();
+	const _payer = try pdaWithBump(accountsOfStep.payer, vrfPayerSeeds(), accountsOfStep.payer.data().bump);
 	if (accountsOfStep.world.data().resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
 	const block = accountsOfStep.block.data();
 	const heap = try loadedPets(block, STEP_PET_ACCOUNT);
