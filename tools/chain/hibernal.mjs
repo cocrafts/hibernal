@@ -337,3 +337,38 @@ export function hibernal(programAddress, authority) {
 		},
 	};
 }
+
+const PRIMITIVE_SIZES = { u8: 1, i8: 1, bool: 1, u16: 2, i16: 2, u32: 4, i32: 4, u64: 8, i64: 8, pubkey: 32 };
+
+export function idlAt(path = new URL("../../out/idl/hibernal.json", import.meta.url)) {
+	return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function sizeOfType(idl, type) {
+	if (typeof type === "string") {
+		if (!(type in PRIMITIVE_SIZES)) throw new Error(`IDL type ${type} has no fixed size`);
+		return PRIMITIVE_SIZES[type];
+	}
+	if (type.array) return sizeOfType(idl, type.array[0]) * type.array[1];
+	if (type.defined) return fieldsOf(idl, type.defined.name).size;
+	throw new Error(`IDL type ${JSON.stringify(type)} has no fixed size`);
+}
+
+export function fieldsOf(idl, name) {
+	const declared = idl.types.find((entry) => entry.name === name);
+	if (!declared) throw new Error(`IDL has no type ${name}`);
+	const offsets = {};
+	let offset = 0;
+	for (const field of declared.type.fields) {
+		offsets[field.name] = offset;
+		offset += sizeOfType(idl, field.type);
+	}
+	return { offsets, size: offset };
+}
+
+export function accountOffsets(idl, name) {
+	const { offsets, size } = fieldsOf(idl, name);
+	const shifted = {};
+	for (const [field, offset] of Object.entries(offsets)) shifted[field] = offset + 8;
+	return { ...shifted, size: size + 8 };
+}

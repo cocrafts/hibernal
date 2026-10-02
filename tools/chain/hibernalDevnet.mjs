@@ -2,6 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { address, getProgramDerivedAddress } from "@solana/kit";
 import { cancelCrank, crankAddress, createCrank, newCrankSeed, sponsorDelegated, triggerCrank } from "./hydra.mjs";
 import {
+	accountOffsets,
+	idlAt,
 	ASSOCIATED_TOKEN_PROGRAM,
 	SLOT_HASHES,
 	SYSTEM_PROGRAM,
@@ -32,11 +34,14 @@ const BLOCKS = Math.ceil(PETS / SEATS);
 const CHUNK = 900;
 const GROUP = address(process.env.GROUP ?? "6jXijzhCm1Njikk3vLTmrw1mjPzWrwKherDYvELgwCpR");
 const STATE_PATH = "out/hibernalDevnet.json";
-const BLOCK_PHASE = 13;
-const BLOCK_ROUND = 14;
-const BLOCK_CURSOR = 15;
-const BLOCK_EPOCH = 16;
-const BLOCK_MEMBERS = 96;
+const idl = idlAt();
+const blockAt = accountOffsets(idl, "Block");
+const policyAt = accountOffsets(idl, "Policy");
+const BLOCK_PHASE = blockAt.phase;
+const BLOCK_ROUND = blockAt.round;
+const BLOCK_CURSOR = blockAt.cursor;
+const BLOCK_EPOCH = blockAt.epoch;
+const BLOCK_MEMBERS = blockAt.members;
 const PHASES = ["Dawn", "Seeding", "Acting", "Dusk"];
 
 const [programArgument, policyPath] = process.argv.slice(2);
@@ -83,7 +88,7 @@ async function setup() {
 		save();
 	}
 	const policyHolder = await read(baseRead, await program.address(program.seeds.policy()));
-	const written = policyHolder ? Number(new DataView(policyHolder.data.buffer).getUint32(16, true)) : 0;
+	const written = policyHolder ? Number(new DataView(policyHolder.data.buffer).getUint32(policyAt.written, true)) : 0;
 	for (let offset = written; offset < policy.length; offset += CHUNK) {
 		const end = Math.min(offset + CHUNK, policy.length);
 		report(`policy ${offset}..${end}`, await onL1("policy", [await program.writePolicy(offset, policy.subarray(offset, end), end === policy.length)]));
