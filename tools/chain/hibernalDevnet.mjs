@@ -33,7 +33,7 @@ const SEATS = 10;
 const BLOCKS = Math.ceil(PETS / SEATS);
 const CHUNK = 900;
 const GROUP = address(process.env.GROUP ?? "6jXijzhCm1Njikk3vLTmrw1mjPzWrwKherDYvELgwCpR");
-const STATE_PATH = "out/hibernalDevnet.json";
+
 const idl = idlAt();
 const blockAt = accountOffsets(idl, "Block");
 const policyAt = accountOffsets(idl, "Policy");
@@ -50,6 +50,7 @@ if (!programArgument || !policyPath) {
 	process.exit(2);
 }
 const programAddress = address(programArgument);
+const STATE_PATH = `out/hibernalDevnet-${programArgument}.json`;
 const { base, baseRead, ephemeral, validator } = cluster();
 const authority = await keypairAt(`${process.env.HOME}/.config/solana/id.json`);
 const program = hibernal(programAddress, authority);
@@ -72,7 +73,7 @@ async function associated(owner, mint, tokenProgram) {
 async function setup() {
 	const config = await program.address(program.seeds.config());
 	if (!(await read(baseRead, config))) {
-		const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000) - 86_400 - 600);
+		const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000) - 86_400 + Number(process.env.FIRST_DAWN_IN_SECONDS ?? -600));
 		const treasury = await associated(treasuryOwner.address, skrMint.address, TOKEN_PROGRAM);
 		report("initialize", await onL1("initialize", [await program.initialize({
 			admissionGroup: GROUP,
