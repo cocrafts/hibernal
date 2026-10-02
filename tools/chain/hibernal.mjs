@@ -178,6 +178,7 @@ export function hibernal(programAddress, authority) {
 		world: () => pda(programAddress, "world"),
 		mint: () => pda(programAddress, "mint"),
 		resort: () => pda(programAddress, "resort"),
+		vrfPayer: () => pda(programAddress, "vrf-payer"),
 		block: (id) => pda(programAddress, "block", u64(id)),
 		pet: (mint) => pda(programAddress, "pet", key(mint)),
 		paid: (mint) => pda(programAddress, "paid", key(mint)),
@@ -247,6 +248,10 @@ export function hibernal(programAddress, authority) {
 		async delegateResort() {
 			const resort = await address(seeds.resort());
 			return call("DelegateResort", [writableSigner(authority), readonly(await address(seeds.config())), writable(resort), ...(await delegation(resort))]);
+		},
+		async delegateVrfPayer() {
+			const vrfPayer = await address(seeds.vrfPayer());
+			return call("DelegateVrfPayer", [writableSigner(authority), readonly(await address(seeds.config())), writable(vrfPayer), ...(await delegation(vrfPayer))]);
 		},
 		async place(id, mint) {
 			return call("Place", [

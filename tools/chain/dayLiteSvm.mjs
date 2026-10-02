@@ -49,7 +49,6 @@ svm.addProgramFromFile(VRF_PROGRAM, stubPath);
 
 for (const holder of accounts) {
 	if (holder.owner === "executable") continue;
-	if (holder.index === 0) { accounts[0] = { ...holder, key: payer.address }; continue; }
 	svm.setAccount({
 		address: holder.key,
 		data: holder.data,
@@ -84,14 +83,12 @@ async function send(instruction) {
 	return { failed, error: failed ? result.err().toString() : null, units: Number(meta.computeUnitsConsumed()), logs: meta.logs() };
 }
 
-const role = (holder) => holder.index === 0
-	? AccountRole.WRITABLE_SIGNER
-	: holder.writable ? AccountRole.WRITABLE : AccountRole.READONLY;
+const role = (holder) => holder.writable ? AccountRole.WRITABLE : AccountRole.READONLY;
 
 function stepInstruction() {
 	return {
 		programAddress: program,
-		accounts: accounts.map((holder) => ({ address: holder.key, role: role(holder), ...(holder.index === 0 ? { signer: payer } : {}) })),
+		accounts: accounts.map((holder) => ({ address: holder.key, role: role(holder) })),
 		data: discriminator("step"),
 	};
 }
@@ -137,6 +134,7 @@ const blockData = () => svm.getAccount(accounts[3].key).data;
 let differingBytes = 0;
 let pendingKind = null;
 let steps = 0;
+let requests = 0;
 for (const line of lines) {
 	const [kind, value] = fields(line);
 	if (kind === "clock") {
@@ -158,6 +156,7 @@ for (const line of lines) {
 		const headBefore = blockData()[FIGHT_HEAD];
 		const sent = await send(stepInstruction());
 		if (sent.failed) { console.log(`${label} step ${steps}: ${sent.error}\n${sent.logs.slice(-60).join("\n")}`); process.exit(1); }
+		requests += sent.logs.filter((line) => line === `Program ${VRF_PROGRAM} success`).length;
 		const after = blockData();
 		const fought = label === "act" && after[FIGHT_HEAD] !== headBefore;
 		const won = fought && after[FIGHTS + ((after[FIGHT_HEAD] + 31) % 32) * FIGHT_RECORD + OUTCOME] === 1;
@@ -169,5 +168,5 @@ for (const line of lines) {
 }
 
 const range = (values) => values.length === 0 ? "none" : `${Math.min(...values)}–${Math.max(...values)} CU (mean ${Math.round(values.reduce((a, b) => a + b, 0) / values.length)})`;
-console.log(`day loop on LiteSVM: ${steps} instructions, ${differingBytes} bytes differing from the host simulator`);
+console.log(`day loop on LiteSVM: ${steps} instructions, ${differingBytes} bytes differing from the host simulator, ${requests} VRF requests accepted by the stub with the payer PDA signing (no wallet signs a step)`);
 for (const [kind, values] of Object.entries(units)) console.log(`  ${kind.padEnd(16)} ${values.length} × ${range(values)}`);

@@ -21,7 +21,6 @@ import {
 	send,
 	sleep,
 	writable,
-	writableSigner,
 } from "./hibernal.mjs";
 
 const STAGE = process.env.STAGE ?? "setup";
@@ -98,6 +97,7 @@ async function setup() {
 	}
 	const delegated = async (key) => (await read(baseRead, key))?.owner === "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh";
 	if (!(await delegated(await program.address(program.seeds.world())))) report("delegate world", await onL1("delegate world", [await program.delegateWorld()]));
+	if (!(await delegated(await program.address(program.seeds.vrfPayer())))) report("delegate VRF payer", await onL1("delegate VRF payer", [await program.delegateVrfPayer()]));
 	for (let id = 0; id < BLOCKS; id++) {
 		if (await delegated(await program.address(program.seeds.block(id)))) continue;
 		report(`delegate block ${id}`, await onL1("delegate block", [await program.delegateBlock(id)]));
@@ -159,7 +159,7 @@ async function stepInstruction(id, members) {
 	return {
 		programAddress,
 		accounts: [
-			writableSigner(authority),
+			writable(await program.address(program.seeds.vrfPayer())),
 			readonly(await program.address(program.seeds.config())),
 			writable(await program.address(program.seeds.world())),
 			writable(await program.address(program.seeds.block(id))),
