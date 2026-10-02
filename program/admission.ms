@@ -29,12 +29,12 @@ import {
 	undelegate,
 } from "std/solana/magicblock";
 import {
-	ExtensionType,
 	Mint,
 	TokenAccount,
 	expectTokenMint,
 	expectTokenOwner,
-	mintExtension,
+	groupMemberPointer,
+	tokenGroupMember,
 } from "std/solana/token";
 import { BlockSlot, GlobalConfig, Pet, Region, born, epochOf, genesis } from "../rules/index";
 import {
@@ -128,17 +128,15 @@ function configIn(config: Owned<Config>): Result<Readonly<Ptr<Config>>, ProgramE
 
 function admitted(mint: External<Mint>, group: Pubkey): Result<uint64, ProgramError> {
 	const mintAccount = mint as Account;
-	const pointer = mintAccount.mintExtension(ExtensionType.GroupMemberPointer);
-	if (!pointer.ok) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
-	const member = mintAccount.mintExtension(ExtensionType.TokenGroupMember);
-	if (!member.ok) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
-	const memberAddress = try pointer.value.readPubkey(32);
-	const memberMint = try member.value.readPubkey(0);
-	const memberGroup = try member.value.readPubkey(32);
-	if (memberAddress != mintAccount.key() || memberMint != mintAccount.key() || memberGroup != group) {
+	const pointer = mintAccount.groupMemberPointer();
+	const member = mintAccount.tokenGroupMember();
+	if (!pointer.ok || !member.ok) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
+	const memberAddress = pointer.value.memberAddress;
+	if (memberAddress == null) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
+	if (memberAddress != mintAccount.key() || member.value.mint != mintAccount.key() || member.value.group != group) {
 		return Result.err(hibernalError(HibernalError.NotAdmitted));
 	}
-	return member.value.readU64(64);
+	return Result.ok(member.value.memberNumber);
 }
 
 export function claim(): Result<uint64, ProgramError> {

@@ -297,12 +297,6 @@ export function paidSeeds(mint: Pubkey): Seeds {
 	return Seeds.empty(2).addText("paid").addPubkey(mint);
 }
 
-export struct WritePolicyArgs {
-	offset: uint32;
-	length: uint32;
-	seal: boolean;
-}
-
 export struct InitializeArgs {
 	admissionGroup: Pubkey;
 	engine: uint64;

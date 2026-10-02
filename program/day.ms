@@ -3,6 +3,7 @@ import {
 	Account,
 	AccountMeta,
 	Bytes,
+	borshBuffer,
 	Discriminator,
 	Mutable,
 	Owned,
@@ -506,8 +507,7 @@ function seedRequested(step: StepAccounts, block: Ptr<Block>): Result<uint64, Pr
 			? AccountMeta.readonlyKey(Pubkey.systemProgram())
 			: AccountMeta.writableKey(member);
 	}
-	const argumentBytes: Bytes = { address: msSolAlloc(8), length: 8 };
-	const _written = try argumentBytes.writeU64(0, block.pendingRequest);
+	const argumentBytes = try borshBuffer(8).u64(block.pendingRequest).written();
 	const request: RandomnessRequest = {
 		payer: step.payer as Account,
 		programIdentity: step.programIdentity,

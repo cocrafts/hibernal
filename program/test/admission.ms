@@ -214,8 +214,8 @@ function policyBlob(engine: uint64): uint8[] {
 function writeData(blob: uint8[], offset: int32, length: int32, seal: boolean): uint8[] {
 	const bytes = instructionBytes("WritePolicy");
 	pushU32(bytes, offset as uint32);
-	pushU32(bytes, length as uint32);
 	pushU8(bytes, seal ? 1 : 0);
+	pushU32(bytes, length as uint32);
 	for (let i = 0; i < length; i++) { bytes.push(blob[offset + i]); }
 	return bytes;
 }

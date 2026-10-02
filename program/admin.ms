@@ -10,15 +10,14 @@ import {
 	Writable,
 	WritableSigner,
 	createPda,
-	createProgramAccount,
-	instructionData,
+	Bytes,
 	pdaWithBump,
 	programId,
 	readArgs,
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
 import { DelegationAccounts, DelegationConfig, anyValidator, delegate, delegationProgram, onValidator } from "std/solana/magicblock";
-import { initializeMint2 } from "std/solana/token";
+import { createMintPda } from "std/solana/token";
 import { GlobalConfig, PolicyError, checkPolicy, genesis } from "../rules/index";
 import {
 	Block,
@@ -31,7 +30,6 @@ import {
 	Policy,
 	VrfPayer,
 	World,
-	WritePolicyArgs,
 	blockSeeds,
 	configSeeds,
 	hibernalError,
@@ -41,9 +39,7 @@ import {
 	worldSeeds,
 } from "./layout";
 
-const MINT_BYTES: uint64 = 82;
 const HBRN_DECIMALS: uint8 = 6;
-const POLICY_CHUNK_START: uint64 = 17;
 
 export struct InitializeAccounts {
 	authority: WritableSigner;
@@ -94,16 +90,7 @@ export function initialize(): Result<uint64, ProgramError> {
 	const madePolicy = try createPda<Policy>(x.authority, x.policy, policySeeds());
 	const madeWorld = try createPda<World>(x.authority, x.world, worldSeeds());
 	const mint = x.mint as Account;
-	const mintAddress = try mintSeeds().findProgramAddress(programId());
-	if (mintAddress.key != mint.key()) { return Result.err(ProgramError.constraintSeeds()); }
-	const _created = try createProgramAccount(
-		x.authority as Account,
-		mint,
-		MINT_BYTES,
-		Pubkey.tokenProgram(),
-		mintSeeds().withBump(mintAddress.bump),
-	);
-	const _initialized = try initializeMint2(Pubkey.tokenProgram(), mint, HBRN_DECIMALS, mint.key(), null);
+	const mintBump = try createMintPda(x.authority, x.mint, mintSeeds(), Pubkey.tokenProgram(), HBRN_DECIMALS, mint.key(), null);
 	const config = madeConfig.account.data();
 	config.authority = x.authority.key();
 	config.admissionGroup = a.admissionGroup;
@@ -115,7 +102,7 @@ export function initialize(): Result<uint64, ProgramError> {
 	config.skrMint = a.skrMint;
 	config.treasury = a.treasury;
 	config.bump = madeConfig.bump;
-	config.mintBump = mintAddress.bump;
+	config.mintBump = mintBump;
 	config.policyBump = madePolicy.bump;
 	config.worldBump = madeWorld.bump;
 	const policy = madePolicy.account.data();
@@ -128,6 +115,12 @@ export function initialize(): Result<uint64, ProgramError> {
 	return Result.ok(0);
 }
 
+export struct WritePolicyArgs {
+	offset: uint32;
+	seal: boolean;
+	chunk: Bytes;
+}
+
 export function writePolicy(): Result<uint64, ProgramError> {
 	const a = try args<WritePolicyArgs>();
 	const x = try accounts<WritePolicyAccounts>();
@@ -136,15 +129,15 @@ export function writePolicy(): Result<uint64, ProgramError> {
 	const _verified = try pdaWithBump(x.policy, policySeeds(), policy.bump);
 	if (policy.sealed != 0) { return Result.err(hibernalError(HibernalError.PolicySealed)); }
 	const total = POLICY_BYTES as uint32;
-	if (a.offset != policy.written || a.length > total - a.offset) {
+	const length = a.chunk.length as uint32;
+	if (a.offset != policy.written || length > total - a.offset) {
 		return Result.err(hibernalError(HibernalError.PolicyOutOfRange));
 	}
-	if (a.seal && a.offset + a.length != total) { return Result.err(hibernalError(HibernalError.PolicyUnsealed)); }
-	const chunk = try instructionData().range(POLICY_CHUNK_START, a.length as uint64);
-	for (let index: uint32 = 0; index < a.length; index++) {
-		policy.bytes[(a.offset + index) as int32] = try chunk.readU8(index as uint64);
+	if (a.seal && a.offset + length != total) { return Result.err(hibernalError(HibernalError.PolicyUnsealed)); }
+	for (let index: uint32 = 0; index < length; index++) {
+		policy.bytes[(a.offset + index) as int32] = try a.chunk.readU8(index as uint64);
 	}
-	policy.written = a.offset + a.length;
+	policy.written = a.offset + length;
 	if (!a.seal) { return Result.ok(policy.written as uint64); }
 	if (policy.engine != config.engine) { return Result.err(hibernalError(HibernalError.EngineMismatch)); }
 	const checked = checkPolicy(policy.bytes, config.engine);
