@@ -332,9 +332,10 @@ function now(epoch: uint64): void {
 
 const PET_RECORD: int32 = 8;
 const PET_ORDINAL: int32 = PET_RECORD + 64;
-const PET_BLOCK: int32 = PET_RECORD + 88;
-const PET_SLOT: int32 = PET_BLOCK + 4;
-const PET_ALIVE: int32 = PET_BLOCK + 5;
+const PET_DATA: int32 = PET_RECORD + 88;
+const PET_BLOCK: int32 = PET_DATA + 88;
+const PET_SLOT: int32 = PET_DATA + 128;
+const PET_ALIVE: int32 = PET_DATA + 129;
 const WORLD_LIVING: int32 = 8 + 56;
 const WORLD_PLACED: int32 = 8 + 104;
 const WORLD_RESORTING: int32 = 8 + 97;

@@ -1,0 +1,103 @@
+import { anchorIdl } from "std/solana/idl";
+import { BlockSlot, FightRecord, GlobalConfig, Listing, Pet } from "../rules/index";
+import { Combatant, Mod } from "../rules/stats";
+import { Gear, Item } from "../rules/items";
+import { Pantry } from "../rules/pantry";
+import { Tree } from "../rules/tree";
+import {
+	Block,
+	BuyArgs,
+	Config,
+	CreateBlockArgs,
+	Grudge,
+	HibernalError,
+	InitializeArgs,
+	Op,
+	Paid,
+	PetAccount,
+	Policy,
+	Receipt,
+	Resort,
+	ResortAssignArgs,
+	ResortBeginArgs,
+	SeededArgs,
+	VrfPayer,
+	World,
+} from "./layout";
+import {
+	CreateBlockAccounts,
+	DelegateVrfPayerAccounts,
+	InitializeAccounts,
+	WritePolicyAccounts,
+	WritePolicyArgs,
+} from "./admin";
+import {
+	ClaimAccounts,
+	DelegateBlockAccounts,
+	DelegatePetAccounts,
+	DelegateWorldAccounts,
+	PlaceAccounts,
+	UndelegationAccounts,
+} from "./admission";
+import { SeededAccounts, StepAccounts } from "./day";
+import { OwnerAccounts } from "./owner";
+import { BuyAccounts, ConsumeAccounts } from "./shop";
+import { ClaimRewardAccounts, CommitPetAccounts } from "./payout";
+import {
+	DelegateResortAccounts,
+	ResortAssignAccounts,
+	ResortBeginAccounts,
+	ResortClearAccounts,
+	ResortFinishAccounts,
+} from "./resort";
+
+export function hibernalIdl(): string {
+	return anchorIdl<Op>({
+		name: "hibernal",
+		address: "",
+		Initialize: [InitializeAccounts, InitializeArgs],
+		WritePolicy: [WritePolicyAccounts, WritePolicyArgs],
+		CreateBlock: [CreateBlockAccounts, CreateBlockArgs],
+		Claim: [ClaimAccounts],
+		DelegatePet: [DelegatePetAccounts],
+		DelegateBlock: [DelegateBlockAccounts],
+		DelegateWorld: [DelegateWorldAccounts],
+		ProcessUndelegation: [UndelegationAccounts],
+		Place: [PlaceAccounts],
+		Step: [StepAccounts],
+		Seeded: [SeededAccounts, SeededArgs],
+		Talk: [OwnerAccounts],
+		Bank: [OwnerAccounts],
+		Buy: [BuyAccounts, BuyArgs],
+		Consume: [ConsumeAccounts],
+		ResortBegin: [ResortBeginAccounts, ResortBeginArgs],
+		ResortClear: [ResortClearAccounts],
+		ResortAssign: [ResortAssignAccounts, ResortAssignArgs],
+		ResortFinish: [ResortFinishAccounts],
+		DelegateResort: [DelegateResortAccounts],
+		DelegateVrfPayer: [DelegateVrfPayerAccounts],
+		CommitPet: [CommitPetAccounts],
+		ClaimReward: [ClaimRewardAccounts],
+		accounts: [Config, Policy, World, Block, PetAccount, Paid, Resort, Receipt, VrfPayer],
+		events: [],
+		errors: HibernalError,
+	});
+}
+
+when (!testBuild) {
+	console.log(hibernalIdl());
+}
+
+test "the Hibernal IDL is Anchor's JSON with every instruction and account" {
+	const parsed = JSON.parseValue(hibernalIdl());
+	assert parsed.ok;
+	if (parsed.ok) {
+		const idl = parsed.value;
+		assert idl.instructions.length() == 23;
+		assert idl.instructions.at(7).name.asString() == "process_undelegation";
+		assert idl.instructions.at(7).discriminator.at(0).asInt32() == 196;
+		assert idl.accounts.length() == 9;
+		assert idl.errors.at(0).code.asInt32() == 6000;
+		assert idl.types.at(0).serialization.asString() == "bytemuck";
+	}
+}
