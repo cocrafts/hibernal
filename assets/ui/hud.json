@@ -1,0 +1,2658 @@
+{
+  "meta": {
+    "image": "hud.png",
+    "size": {
+      "w": 1024,
+      "h": 128
+    },
+    "scale": 1,
+    "padding": 1,
+    "sampling": "nearest",
+    "palette": "hudPalette.json",
+    "sourceCoordinates": "Original source sheet pixels, x0/y0/x1/y1 exclusive",
+    "iconSizes": [
+      16,
+      24
+    ],
+    "heartSizes": [
+      12,
+      16
+    ]
+  },
+  "sprites": {
+    "sheetFrame": {
+      "x": 600,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        573,
+        174,
+        874,
+        520
+      ],
+      "state": "normal",
+      "notes": "8px source-matched charred stones, large diagonal corner blocks, broken ember glow and warm plank wood. Tile edges and centre.",
+      "sliceMode": "tile"
+    },
+    "cardBack": {
+      "x": 50,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        34,
+        1106,
+        191,
+        1311
+      ],
+      "state": "normal",
+      "notes": "8px source-matched charred stones, large diagonal corner blocks, broken ember glow and warm plank wood. Fixed back; render question mark in code.",
+      "sliceMode": "tile"
+    },
+    "cardFace": {
+      "x": 105,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        212,
+        1106,
+        378,
+        1311
+      ],
+      "state": "normal",
+      "notes": "Compatibility alias artwork for cardFaceCommon; prefer explicit cardFaceCommon/Rare/Epic/Legendary/Mythic.",
+      "sliceMode": "tile"
+    },
+    "cardFaceCommon": {
+      "x": 160,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        212,
+        1106,
+        378,
+        1311
+      ],
+      "state": "common",
+      "notes": "Common rarity highlights on carved stones; warm wood interior. Source shape from sheet 6 Epic face; labels/glyphs rendered separately.",
+      "sliceMode": "tile"
+    },
+    "cardFaceEpic": {
+      "x": 215,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        212,
+        1106,
+        378,
+        1311
+      ],
+      "state": "epic",
+      "notes": "Epic rarity highlights on carved stones; warm wood interior. Source shape from sheet 6 Epic face; labels/glyphs rendered separately.",
+      "sliceMode": "tile"
+    },
+    "cardFaceLegendary": {
+      "x": 270,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        212,
+        1106,
+        378,
+        1311
+      ],
+      "state": "legendary",
+      "notes": "Legendary rarity highlights on carved stones; warm wood interior. Source shape from sheet 6 Epic face; labels/glyphs rendered separately.",
+      "sliceMode": "tile"
+    },
+    "cardFaceMythic": {
+      "x": 325,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        212,
+        1106,
+        378,
+        1311
+      ],
+      "state": "mythic",
+      "notes": "Mythic rarity highlights on carved stones; warm wood interior. Mythic uses mythicCyan, never alertRed. Source shape from sheet 6 Epic face; labels/glyphs rendered separately.",
+      "sliceMode": "tile"
+    },
+    "cardFaceRare": {
+      "x": 380,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        212,
+        1106,
+        378,
+        1311
+      ],
+      "state": "rare",
+      "notes": "Rare rarity highlights on carved stones; warm wood interior. Source shape from sheet 6 Epic face; labels/glyphs rendered separately.",
+      "sliceMode": "tile"
+    },
+    "panelCard": {
+      "x": 490,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        39,
+        108,
+        474,
+        228
+      ],
+      "state": "card",
+      "notes": "Source-scale 8px carved charred rim, diagonal corner stones, broken ember segments; warm soot/woodDark planks. Tile edges/centre. Alert adds hotter glow, not flat red fill.",
+      "sliceMode": "tile"
+    },
+    "panelDashed": {
+      "x": 545,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        977,
+        108,
+        1410,
+        228
+      ],
+      "state": "dashed",
+      "notes": "Separated ash/wood stones with dark gaps, full diagonal corner stones; 8px rim, warm plank field, tile edges/centre.",
+      "sliceMode": "tile"
+    },
+    "panelAlert": {
+      "x": 435,
+      "y": 1,
+      "w": 54,
+      "h": 44,
+      "slice": [
+        11,
+        11,
+        11,
+        11
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        519,
+        108,
+        933,
+        228
+      ],
+      "state": "alert",
+      "notes": "Source-scale 8px carved charred rim, diagonal corner stones, broken ember segments; warm soot/woodDark planks. Tile edges/centre. Alert adds hotter glow, not flat red fill.",
+      "sliceMode": "tile"
+    },
+    "dockFrame": {
+      "x": 655,
+      "y": 1,
+      "w": 48,
+      "h": 36,
+      "slice": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        30,
+        1488,
+        912,
+        1646
+      ],
+      "state": "normal",
+      "notes": "8px source-matched charred stones, large diagonal corner blocks, broken ember glow and warm plank wood. Tile edges and centre.",
+      "sliceMode": "tile"
+    },
+    "btnFrameDanger": {
+      "x": 1,
+      "y": 50,
+      "w": 46,
+      "h": 31,
+      "slice": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        149,
+        677,
+        337,
+        738
+      ],
+      "state": "danger",
+      "notes": "7px source-style segmented charred rim, diagonal corner stones, warm plank interior. Continuous broken red danger glow. Tile edges/centre.",
+      "sliceMode": "tile"
+    },
+    "btnFrameDangerDisabled": {
+      "x": 48,
+      "y": 50,
+      "w": 46,
+      "h": 31,
+      "slice": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        563,
+        677,
+        746,
+        738
+      ],
+      "state": "disabled",
+      "notes": "7px source-style segmented charred rim, diagonal corner stones, warm plank interior. Grey ash stones, no ember/glow. Tile edges/centre.",
+      "sliceMode": "tile"
+    },
+    "btnFrame": {
+      "x": 931,
+      "y": 1,
+      "w": 46,
+      "h": 31,
+      "slice": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        145,
+        325,
+        288,
+        388
+      ],
+      "state": "normal",
+      "notes": "7px source-style segmented charred rim, diagonal corner stones, warm plank interior. Broken ember glow segments. Tile edges/centre.",
+      "sliceMode": "tile"
+    },
+    "btnFrameDisabled": {
+      "x": 95,
+      "y": 50,
+      "w": 46,
+      "h": 31,
+      "slice": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        458,
+        326,
+        599,
+        388
+      ],
+      "state": "disabled",
+      "notes": "7px source-style segmented charred rim, diagonal corner stones, warm plank interior. Grey ash stones, no ember/glow. Tile edges/centre.",
+      "sliceMode": "tile"
+    },
+    "dockActive": {
+      "x": 1,
+      "y": 1,
+      "w": 48,
+      "h": 48,
+      "slice": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "frameWeight": "heavy",
+      "source": "sheet7",
+      "sourceRect": [
+        61,
+        1509,
+        205,
+        1620
+      ],
+      "state": "normal",
+      "notes": "Quiet filled active item; no extra ember spots.",
+      "sliceMode": "stretch"
+    },
+    "segFrame": {
+      "x": 189,
+      "y": 50,
+      "w": 46,
+      "h": 31,
+      "slice": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        28,
+        140,
+        331,
+        204
+      ],
+      "state": "normal",
+      "notes": "7px source-style segmented charred rim, diagonal corner stones, warm plank interior. Broken ember glow segments. Tile edges/centre.",
+      "sliceMode": "tile"
+    },
+    "inputFrame": {
+      "x": 142,
+      "y": 50,
+      "w": 46,
+      "h": 31,
+      "slice": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "frameWeight": "heavy",
+      "source": "styleReference",
+      "sourceRect": [
+        25,
+        684,
+        229,
+        737
+      ],
+      "state": "normal",
+      "notes": "6px source-matched charred stones, large diagonal corner blocks, broken ember glow and warm plank wood. Tile edges and centre.",
+      "sliceMode": "tile"
+    },
+    "bubblePet": {
+      "x": 704,
+      "y": 1,
+      "w": 112,
+      "h": 32,
+      "slice": [
+        12,
+        5,
+        5,
+        12
+      ],
+      "frameWeight": "light",
+      "source": "sheet6",
+      "sourceRect": [
+        98,
+        573,
+        331,
+        637
+      ],
+      "state": "normal",
+      "notes": "Pet: plain dark interior, light rim, left tail in fixed corner.",
+      "sliceMode": "tile"
+    },
+    "segActive": {
+      "x": 817,
+      "y": 1,
+      "w": 64,
+      "h": 32,
+      "slice": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        40,
+        151,
+        133,
+        193
+      ],
+      "state": "normal",
+      "notes": "Bright ember-orange active segment as sheet 4; use ashDark text. No nested heavy frame.",
+      "sliceMode": "tile"
+    },
+    "toggleTrack": {
+      "x": 882,
+      "y": 1,
+      "w": 48,
+      "h": 32,
+      "slice": [],
+      "frameWeight": "heavy",
+      "source": "sheet4",
+      "sourceRect": [
+        640,
+        141,
+        709,
+        200
+      ],
+      "state": "normal",
+      "notes": "6px source-matched charred stones, large diagonal corner blocks, broken ember glow and warm plank wood. Fixed size; 48x48 interaction target."
+    },
+    "bubbleOwner": {
+      "x": 236,
+      "y": 50,
+      "w": 112,
+      "h": 24,
+      "slice": [
+        5,
+        5,
+        12,
+        9
+      ],
+      "frameWeight": "light",
+      "source": "sheet6",
+      "sourceRect": [
+        444,
+        490,
+        655,
+        533
+      ],
+      "state": "normal",
+      "notes": "Owner: ember-red rim, dark red interior, bottom-right tail in fixed corner.",
+      "sliceMode": "tile"
+    },
+    "syncChip": {
+      "x": 276,
+      "y": 82,
+      "w": 32,
+      "h": 24,
+      "slice": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "frameWeight": "light",
+      "source": "sheet7",
+      "sourceRect": [
+        708,
+        537,
+        912,
+        608
+      ],
+      "state": "normal",
+      "notes": "Stepped rounded corners, 1\u20132px rim, plain interior. No ember pixels.",
+      "sliceMode": "tile"
+    },
+    "tooltipFrame": {
+      "x": 309,
+      "y": 82,
+      "w": 32,
+      "h": 24,
+      "slice": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "frameWeight": "light",
+      "source": "sheet4",
+      "sourceRect": [
+        492,
+        896,
+        697,
+        940
+      ],
+      "state": "normal",
+      "notes": "Stepped rounded corners, 1\u20132px rim, plain interior. No ember pixels.",
+      "sliceMode": "tile"
+    },
+    "frameLight": {
+      "x": 349,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "frameWeight": "light",
+      "source": "sheet7",
+      "sourceRect": [
+        813,
+        193,
+        909,
+        295
+      ],
+      "state": "normal",
+      "notes": "Stepped rounded corners, 1\u20132px rim, plain interior. No ember pixels.",
+      "sliceMode": "tile"
+    },
+    "iconAte24": {
+      "x": 374,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        68,
+        508,
+        128,
+        577
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconBack24": {
+      "x": 399,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        662,
+        335,
+        721,
+        385
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconBlock24": {
+      "x": 424,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1258,
+        507,
+        1321,
+        578
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconBurrow24": {
+      "x": 449,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        518,
+        145,
+        574,
+        215
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconCheck24": {
+      "x": 474,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        665,
+        898,
+        706,
+        931
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconCopy24": {
+      "x": 499,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        518,
+        332,
+        573,
+        394
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconCrackedHeart24": {
+      "x": 524,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        212,
+        151,
+        283,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconDigest24": {
+      "x": 549,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1412,
+        508,
+        1465,
+        577
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconFading24": {
+      "x": 574,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1264,
+        141,
+        1314,
+        212
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconFightLost24": {
+      "x": 599,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        810,
+        510,
+        877,
+        575
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconFightWon24": {
+      "x": 624,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        660,
+        510,
+        726,
+        575
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGear24": {
+      "x": 649,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        360,
+        327,
+        430,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGearBought24": {
+      "x": 674,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        364,
+        512,
+        429,
+        571
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGearSold24": {
+      "x": 699,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        519,
+        514,
+        573,
+        577
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGift24": {
+      "x": 724,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        959,
+        508,
+        1024,
+        578
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGrowth24": {
+      "x": 749,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        959,
+        149,
+        1019,
+        211
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconHarvest24": {
+      "x": 774,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        127,
+        836,
+        194,
+        892
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconHeart24": {
+      "x": 799,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        66,
+        151,
+        133,
+        211
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconHome24": {
+      "x": 824,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet5",
+      "sourceRect": [
+        466,
+        899,
+        512,
+        944
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconInsured24": {
+      "x": 849,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1103,
+        142,
+        1173,
+        211
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconLeft24": {
+      "x": 874,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        806,
+        338,
+        832,
+        385
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconLevelUp24": {
+      "x": 899,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        211,
+        515,
+        276,
+        573
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconLock24": {
+      "x": 924,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1116,
+        328,
+        1169,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconPet24": {
+      "x": 949,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1109,
+        510,
+        1174,
+        575
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconRage24": {
+      "x": 974,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1415,
+        138,
+        1473,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconRecenter24": {
+      "x": 999,
+      "y": 50,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        1035,
+        652,
+        1074,
+        685
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconRight24": {
+      "x": 1,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        852,
+        338,
+        878,
+        385
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconSend24": {
+      "x": 26,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        959,
+        335,
+        1024,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconShield24": {
+      "x": 51,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        808,
+        144,
+        873,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconShop24": {
+      "x": 76,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet5",
+      "sourceRect": [
+        817,
+        899,
+        864,
+        944
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconSkull24": {
+      "x": 101,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        70,
+        328,
+        127,
+        391
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconSpinner24": {
+      "x": 126,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconUnreadDot24": {
+      "x": 151,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1275,
+        348,
+        1304,
+        378
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWallet24": {
+      "x": 176,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        215,
+        335,
+        278,
+        392
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWarning24": {
+      "x": 201,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        935,
+        892,
+        973,
+        933
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWinter24": {
+      "x": 226,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        660,
+        141,
+        728,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWorked24": {
+      "x": 251,
+      "y": 82,
+      "w": 24,
+      "h": 24,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1403,
+        328,
+        1473,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "reasonPill": {
+      "x": 342,
+      "y": 82,
+      "w": 32,
+      "h": 20,
+      "slice": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "frameWeight": "light",
+      "source": "sheet4",
+      "sourceRect": [
+        722,
+        895,
+        827,
+        940
+      ],
+      "state": "normal",
+      "notes": "Stepped rounded corners, 1\u20132px rim, plain interior. No ember pixels.",
+      "sliceMode": "tile"
+    },
+    "reasonPillAlert": {
+      "x": 375,
+      "y": 82,
+      "w": 32,
+      "h": 20,
+      "slice": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "frameWeight": "light",
+      "source": "sheet4",
+      "sourceRect": [
+        835,
+        896,
+        998,
+        940
+      ],
+      "state": "normal",
+      "notes": "Stepped rounded corners, 1\u20132px rim, plain interior. Alert red rim and dark red fill.",
+      "sliceMode": "tile"
+    },
+    "chipDashed": {
+      "x": 408,
+      "y": 82,
+      "w": 24,
+      "h": 16,
+      "slice": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        451,
+        131,
+        591,
+        173
+      ],
+      "state": "dashed",
+      "notes": "Neutral grey; tint in code. Filled text uses ashDark.",
+      "sliceMode": "tile"
+    },
+    "chipFilled": {
+      "x": 433,
+      "y": 82,
+      "w": 24,
+      "h": 16,
+      "slice": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        236,
+        131,
+        412,
+        173
+      ],
+      "state": "filled",
+      "notes": "Neutral grey; tint in code. Filled text uses ashDark.",
+      "sliceMode": "stretch"
+    },
+    "chipOutline": {
+      "x": 458,
+      "y": 82,
+      "w": 24,
+      "h": 16,
+      "slice": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        61,
+        131,
+        207,
+        173
+      ],
+      "state": "outline",
+      "notes": "Neutral grey; tint in code. Filled text uses ashDark.",
+      "sliceMode": "stretch"
+    },
+    "heartCracked16": {
+      "x": 483,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        260,
+        501,
+        307,
+        545
+      ],
+      "state": "normal",
+      "notes": "16px heart pip; base name is 12px."
+    },
+    "heartFull16": {
+      "x": 500,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        91,
+        501,
+        135,
+        545
+      ],
+      "state": "normal",
+      "notes": "16px heart pip; base name is 12px."
+    },
+    "iconAte": {
+      "x": 517,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        68,
+        508,
+        128,
+        577
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconBack": {
+      "x": 534,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        662,
+        335,
+        721,
+        385
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconBlock": {
+      "x": 551,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1258,
+        507,
+        1321,
+        578
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconBurrow": {
+      "x": 568,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        518,
+        145,
+        574,
+        215
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconCheck": {
+      "x": 585,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        665,
+        898,
+        706,
+        931
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconCopy": {
+      "x": 602,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        518,
+        332,
+        573,
+        394
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconCrackedHeart": {
+      "x": 619,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        212,
+        151,
+        283,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconDigest": {
+      "x": 636,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1412,
+        508,
+        1465,
+        577
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconFading": {
+      "x": 653,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1264,
+        141,
+        1314,
+        212
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconFightLost": {
+      "x": 670,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        810,
+        510,
+        877,
+        575
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconFightWon": {
+      "x": 687,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        660,
+        510,
+        726,
+        575
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGear": {
+      "x": 704,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        360,
+        327,
+        430,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGearBought": {
+      "x": 721,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        364,
+        512,
+        429,
+        571
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGearSold": {
+      "x": 738,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        519,
+        514,
+        573,
+        577
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGift": {
+      "x": 755,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        959,
+        508,
+        1024,
+        578
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconGrowth": {
+      "x": 772,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        959,
+        149,
+        1019,
+        211
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconHarvest": {
+      "x": 789,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        127,
+        836,
+        194,
+        892
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconHeart": {
+      "x": 806,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        66,
+        151,
+        133,
+        211
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconHome": {
+      "x": 823,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet5",
+      "sourceRect": [
+        466,
+        899,
+        512,
+        944
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconInsured": {
+      "x": 840,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1103,
+        142,
+        1173,
+        211
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconLeft": {
+      "x": 857,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        806,
+        338,
+        832,
+        385
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconLevelUp": {
+      "x": 874,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        211,
+        515,
+        276,
+        573
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconLock": {
+      "x": 891,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1116,
+        328,
+        1169,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconPet": {
+      "x": 908,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1109,
+        510,
+        1174,
+        575
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconRage": {
+      "x": 925,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1415,
+        138,
+        1473,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconRecenter": {
+      "x": 942,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        1035,
+        652,
+        1074,
+        685
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconRight": {
+      "x": 959,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        852,
+        338,
+        878,
+        385
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconSend": {
+      "x": 976,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        959,
+        335,
+        1024,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconShield": {
+      "x": 993,
+      "y": 82,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        808,
+        144,
+        873,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconShop": {
+      "x": 1,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet5",
+      "sourceRect": [
+        817,
+        899,
+        864,
+        944
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconSkull": {
+      "x": 18,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        70,
+        328,
+        127,
+        391
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconSpinner": {
+      "x": 35,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconUnreadDot": {
+      "x": 52,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1275,
+        348,
+        1304,
+        378
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWallet": {
+      "x": 69,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        215,
+        335,
+        278,
+        392
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWarning": {
+      "x": 86,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        935,
+        892,
+        973,
+        933
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWinter": {
+      "x": 103,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        660,
+        141,
+        728,
+        214
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "iconWorked": {
+      "x": 120,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1403,
+        328,
+        1473,
+        395
+      ],
+      "state": "normal",
+      "notes": "Unframed transparent glyph; base name is 16px."
+    },
+    "knobDisabled": {
+      "x": 137,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        933,
+        156,
+        961,
+        186
+      ],
+      "state": "disabled",
+      "notes": "Plain shaded disc; no extra surrounding dark ring."
+    },
+    "knobOff": {
+      "x": 154,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        648,
+        156,
+        676,
+        186
+      ],
+      "state": "off",
+      "notes": "Plain shaded disc; no extra surrounding dark ring."
+    },
+    "knobOn": {
+      "x": 171,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        768,
+        155,
+        800,
+        186
+      ],
+      "state": "on",
+      "notes": "Plain shaded disc; no extra surrounding dark ring."
+    },
+    "lineageAlive": {
+      "x": 188,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet6",
+      "sourceRect": [
+        762,
+        483,
+        799,
+        522
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "lineageDead": {
+      "x": 205,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet6",
+      "sourceRect": [
+        762,
+        570,
+        799,
+        610
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "lineageNow": {
+      "x": 222,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet6",
+      "sourceRect": [
+        762,
+        655,
+        799,
+        694
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "radioOff": {
+      "x": 239,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "light",
+      "source": "sheet4",
+      "sourceRect": [
+        42,
+        310,
+        77,
+        342
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "radioOn": {
+      "x": 256,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "light",
+      "source": "sheet4",
+      "sourceRect": [
+        42,
+        385,
+        77,
+        413
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "spinner0": {
+      "x": 273,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 0",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner1": {
+      "x": 290,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 1",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner2": {
+      "x": 307,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 2",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner3": {
+      "x": 324,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 3",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner4": {
+      "x": 341,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 4",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner5": {
+      "x": 358,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 5",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner6": {
+      "x": 375,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 6",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "spinner7": {
+      "x": 392,
+      "y": 107,
+      "w": 16,
+      "h": 16,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        413,
+        1056,
+        468,
+        1113
+      ],
+      "state": "frame 7",
+      "notes": "Eight bright ember pixel dots; clockwise emberHot lead, no dim/invisible trail."
+    },
+    "heartCracked": {
+      "x": 409,
+      "y": 107,
+      "w": 12,
+      "h": 12,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        260,
+        501,
+        307,
+        545
+      ],
+      "state": "normal",
+      "notes": "12px heart pip; base name is 12px."
+    },
+    "heartFull": {
+      "x": 422,
+      "y": 107,
+      "w": 12,
+      "h": 12,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        91,
+        501,
+        135,
+        545
+      ],
+      "state": "normal",
+      "notes": "12px heart pip; base name is 12px."
+    },
+    "bondingMarker": {
+      "x": 435,
+      "y": 107,
+      "w": 3,
+      "h": 10,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        1304,
+        679,
+        1318,
+        715
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "barFill": {
+      "x": 439,
+      "y": 107,
+      "w": 24,
+      "h": 6,
+      "slice": [
+        2,
+        2
+      ],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        134,
+        688,
+        212,
+        702
+      ],
+      "state": "normal",
+      "notes": "",
+      "sliceMode": "stretch"
+    },
+    "barTrack": {
+      "x": 464,
+      "y": 107,
+      "w": 24,
+      "h": 6,
+      "slice": [
+        2,
+        2
+      ],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        131,
+        686,
+        366,
+        705
+      ],
+      "state": "normal",
+      "notes": "",
+      "sliceMode": "stretch"
+    },
+    "bondingTrack": {
+      "x": 489,
+      "y": 107,
+      "w": 24,
+      "h": 6,
+      "slice": [
+        2,
+        2
+      ],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        1128,
+        686,
+        1466,
+        708
+      ],
+      "state": "normal",
+      "notes": "",
+      "sliceMode": "stretch"
+    },
+    "dotPagerOn": {
+      "x": 514,
+      "y": 107,
+      "w": 6,
+      "h": 6,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet6",
+      "sourceRect": [
+        68,
+        242,
+        91,
+        263
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "dotUnread": {
+      "x": 521,
+      "y": 107,
+      "w": 6,
+      "h": 6,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet1",
+      "sourceRect": [
+        1276,
+        348,
+        1303,
+        377
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "hatchHigh": {
+      "x": 528,
+      "y": 107,
+      "w": 4,
+      "h": 6,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        1406,
+        686,
+        1468,
+        707
+      ],
+      "state": "normal",
+      "notes": "Tile horizontally; zone width is code-owned.",
+      "tile": "x"
+    },
+    "hatchLow": {
+      "x": 533,
+      "y": 107,
+      "w": 4,
+      "h": 6,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet3",
+      "sourceRect": [
+        1130,
+        686,
+        1192,
+        707
+      ],
+      "state": "normal",
+      "notes": "Tile horizontally; zone width is code-owned.",
+      "tile": "x"
+    },
+    "tooltipTail": {
+      "x": 544,
+      "y": 107,
+      "w": 7,
+      "h": 5,
+      "slice": [],
+      "frameWeight": "light",
+      "source": "sheet4",
+      "sourceRect": [
+        522,
+        929,
+        549,
+        955
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "dotPagerOff": {
+      "x": 552,
+      "y": 107,
+      "w": 4,
+      "h": 4,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet6",
+      "sourceRect": [
+        95,
+        242,
+        116,
+        263
+      ],
+      "state": "normal",
+      "notes": ""
+    },
+    "dragHandle": {
+      "x": 557,
+      "y": 107,
+      "w": 24,
+      "h": 3,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "sheet5",
+      "sourceRect": [
+        698,
+        182,
+        749,
+        196
+      ],
+      "state": "normal",
+      "notes": "Thin warm wood bar, stepped end pixels; sheet 5."
+    },
+    "tabUnderline": {
+      "x": 586,
+      "y": 107,
+      "w": 16,
+      "h": 3,
+      "slice": [
+        1,
+        1
+      ],
+      "frameWeight": "none",
+      "source": "sheet4",
+      "sourceRect": [
+        380,
+        193,
+        469,
+        202
+      ],
+      "state": "normal",
+      "notes": "",
+      "sliceMode": "stretch"
+    },
+    "underlineDisabled": {
+      "x": 603,
+      "y": 107,
+      "w": 16,
+      "h": 3,
+      "slice": [
+        1,
+        1
+      ],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        562,
+        483,
+        673,
+        490
+      ],
+      "state": "normal",
+      "notes": "",
+      "sliceMode": "stretch"
+    },
+    "underlineEmber": {
+      "x": 620,
+      "y": 107,
+      "w": 16,
+      "h": 3,
+      "slice": [
+        1,
+        1
+      ],
+      "frameWeight": "none",
+      "source": "sheet2",
+      "sourceRect": [
+        167,
+        483,
+        283,
+        490
+      ],
+      "state": "normal",
+      "notes": "",
+      "sliceMode": "stretch"
+    },
+    "emberSpark": {
+      "x": 538,
+      "y": 107,
+      "w": 5,
+      "h": 5,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "styleReference",
+      "sourceRect": [
+        1250,
+        520,
+        1300,
+        560
+      ],
+      "state": "normal",
+      "notes": "Scattered by code on heavy-frame edges, 2-4 per frame, seeded per frame."
+    },
+    "emberSparkSmall": {
+      "x": 582,
+      "y": 107,
+      "w": 3,
+      "h": 3,
+      "slice": [],
+      "frameWeight": "none",
+      "source": "styleReference",
+      "sourceRect": [
+        1250,
+        520,
+        1300,
+        560
+      ],
+      "state": "normal",
+      "notes": "Scattered by code on heavy-frame edges, 2-4 per frame, seeded per frame."
+    }
+  },
+  "codeNotes": [
+    "Button pressed: shift content down 1 logical px and brighten underline one palette step (ember to emberHot).",
+    "SignButton waiting: spinner + dimmed label are accepted; a dashed waiting rim is not required.",
+    "chipFilled: text uses ashDark, including rarity/status tinted chips.",
+    "Signed deltas: colour the entire signed number and arrow green for positive, red for negative.",
+    "Bonding: draw fill from centre tick to marker; positive +35 sits right of centre. Atlas supplies track, two tiled hatched end zones and marker; draw the centre tick and fill in code.",
+    "Day divider: draw both lines and the date label (Yesterday, Sep 27, etc.) in code.",
+    "Feed sheet: add heart pips under the header, add footer Feeding raises bonding., and replace Buy buttons with SignButton.",
+    "Expected loot must be positive: replace Exp. loot \u2212310 with a positive expected value.",
+    "Send: disabled when the input is empty; enabled when it contains text.",
+    "Skill-tree nodes and connections: draw in code at 10\u201326 logical px; small circle, notable circle, keystone hexagon; allocated, reachable, locked; use hudPalette roles.",
+    "All labels, numbers, question marks and dock labels are code-rendered Silkscreen at 8 or 16 px; atlas contains no text.",
+    "Toast is a frameless dark strip. Section headers, skeleton bars, odds chart, lineage connectors, divider lines and scene dim overlay are code-drawn.",
+    "Badge uses frameLight stretched to 40x40; gear visible box is 36x36 inside a 48x48 touch target. Toggle visual is 48x32 inside a 48x48 touch target.",
+    "A bottom sheet retains its bottom slice but positions that edge off-screen.",
+    "Pet portrait: leave a square slot for the real portrait; do not use sheet placeholder scenes or avatar.",
+    "Use neutral chip sprites tinted by rarity. Mythic uses mythicCyan; alertRed is reserved for alert/destructive states.",
+    "Home reference has 3 active badges extending down to y216, plus sync at y224; keep the central scene clear. Badge priority and overflow are handled in code.",
+    "Base icon names are 16px, suffix 24 gives 24px. Base heartFull/heartCracked are 12px, suffix 16 gives 16px.",
+    "Nine-slice arrays are [left, top, right, bottom]; three-slice arrays are [left, right]. Use nearest sampling; honour each sprite sliceMode. Redrawn heavy frames tile their edges and centre; hatches tile along x.",
+    "underlineEmber now uses emberHot / ember / emberDim rows; tabUnderline retains its existing art. Burrow and Lock intentionally share glyph pixels.",
+    "Source-matched frame revision: heavy rims are 6\u20138 logical px. Use each sprite current w/h and slice values; native patches are sampled at their source logical proportions, not a shared minimum square. Runtime can shrink/grow sliced frames down to inset sums + 2.",
+    "panelCard/panelAlert/panelDashed: 14px corners; btnFrame variants and segFrame: 12px; sheetFrame/dockFrame/cardFace variants: 14px; inputFrame: 10px. Use sliceMode tile so stone joints and plank grain retain logical scale.",
+    "inputFrame and toggleTrack are now HEAVY to match their own source sheets. toggleTrack is 48x32 with a 48x48 target. Centre the 16px knobs at y8; off x8 and on x24 within the visual track.",
+    "btnFrameDisabled and btnFrameDangerDisabled use ash stones and contain no ember colours. panelDashed keeps full corner stones and separate edge stones with dark joints. panelAlert uses hotter edge glow with sparse red accents over warm brown wood, not a red-filled panel.",
+    "segActive is ember-orange with ashDark text. reasonPillAlert has an alertRed rim and alertDark fill. bubbleOwner has a dark red body and bottom-right tail; bubblePet has a left tail. Tail pixels lie entirely inside their fixed slice corners.",
+    "Choose cardFaceCommon, cardFaceRare, cardFaceEpic, cardFaceLegendary or cardFaceMythic explicitly. All are 72x96 with [14,14,14,14] insets. cardFace remains a compatibility copy of cardFaceCommon. Rarity applies to stone highlights; Mythic is cyan.",
+    "Spinner frames use bright ember dots with an emberHot lead. Approved iconSpinner/iconSpinner24 remain unchanged; use spinner0\u2026spinner7 for animated loading.",
+    "Heavy frames come from styleReference.png (art/ui-kit/tools/framesFromReference.py). Their interior tile is one 22 px plank row; place panel content on 22 px rows so the plank seams fall between rows.",
+    "Heavy frames: tiled edges carry no ember. Scatter 2-4 emberSpark / emberSparkSmall sprites at seeded random points on the rim (outer half), never evenly spaced, as in styleReference.png."
+  ]
+}
