@@ -8,7 +8,7 @@ import { Color, rgba, tile } from "@metascript/void/src/void2d/types";
 import { addFont, faceFor } from "@metascript/void/src/void2d/labelText";
 import { TextLayout, TextStyle } from "@metascript/void/src/void2d/textLayout";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "@metascript/void/src/assets/image";
-import { Ui, text } from "@metascript/void/src/ui/ui";
+import { Ui, text } from "../ui/ui";
 import {
 	KIT_DIRECTORY,
 	REFERENCE_SCALE,

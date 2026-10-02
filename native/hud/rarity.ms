@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, TextSize, measure, say } from "./kit";
 import { ChipKind, chip } from "./buttons";
 import { outline, withAlpha } from "./shapes";

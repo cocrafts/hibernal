@@ -1,5 +1,5 @@
 import { Color } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, frame, say, INK, INK_MUTED, EMBER, EMBER_HOT, ALERT_RED, GROWTH_GREEN } from "./kit";
 import { FrameLook } from "./frame";
 import { delta, signedAmount } from "./meters";

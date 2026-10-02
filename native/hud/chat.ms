@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, TextSize, subId, measure, measureWrapped, badgeFrame, icon, say, INK, INK_MUTED, EMBER } from "./kit";
 import { ButtonStyle, button } from "./buttons";
 import { CHAR_LIGHT, lightFrame, centredY } from "./shapes";

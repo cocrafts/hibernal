@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box, pressable } from "@metascript/void/src/ui/ui";
+import { Ui, box, pressable } from "../ui/ui";
 import { Kit, say, INK, INK_MUTED, ALERT_RED, GROWTH_GREEN, DISABLED_INK } from "./kit";
 import { ChipKind, chip } from "./buttons";
 import { heartPips, balance } from "./meters";

@@ -3,7 +3,7 @@
 // the caller's to cover (screens.ms scrollChrome).
 
 import { rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box, cancelPress } from "@metascript/void/src/ui/ui";
+import { Ui, box, cancelPress } from "../ui/ui";
 
 const DRAG_SLOP: float32 = 8.0;
 const FRICTION: float32 = 0.92;

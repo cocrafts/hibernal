@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box, pressable, held } from "@metascript/void/src/ui/ui";
+import { Ui, box, pressable, held } from "../ui/ui";
 import { Kit, subId, frame, iconTinted, say, INK, EMBER, EMBER_HOT, ALERT_RED, DISABLED_INK, WHITE } from "./kit";
 import { FrameLook } from "./frame";
 

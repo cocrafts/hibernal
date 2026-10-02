@@ -3,7 +3,7 @@
 
 import { rgba } from "@metascript/void/src/void2d/types";
 import { loadNextPass } from "@metascript/void/src/sokol/gpu";
-import { Ui, createUi, beginUi, endUi, box, pressable } from "@metascript/void/src/ui/ui";
+import { Ui, createUi, beginUi, endUi, box, pressable } from "../ui/ui";
 import { Kit, createKit, beginKit, endKit, frame, badgeFrame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT, ALERT_RED,
 	SCREEN_HEIGHT } from "./kit";
 import { FrameLook } from "./frame";

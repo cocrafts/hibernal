@@ -1,4 +1,4 @@
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, say, INK, INK_MUTED, GROWTH_GREEN } from "./kit";
 import { textLink } from "./buttons";
 import { ToggleState, toggle } from "./controls";

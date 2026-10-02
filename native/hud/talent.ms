@@ -1,5 +1,5 @@
 import { Color } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, subId, frameSqueezed, icon, say, INK, INK_MUTED, EMBER_HOT, DISABLED_INK } from "./kit";
 import { FrameLook } from "./frame";
 import { ChipKind, chip } from "./buttons";

@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, subId, icon, say, INK, INK_MUTED, ALERT_RED, GROWTH_GREEN } from "./kit";
 import { RARE_BLUE } from "./rarity";
 

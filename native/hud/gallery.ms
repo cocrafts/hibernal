@@ -2,7 +2,7 @@
 
 import { rgba } from "@metascript/void/src/void2d/types";
 import { loadNextPass } from "@metascript/void/src/sokol/gpu";
-import { Ui, createUi, beginUi, endUi, pressable, held } from "@metascript/void/src/ui/ui";
+import { Ui, createUi, beginUi, endUi, pressable, held } from "../ui/ui";
 import { Kit, createKit, beginKit, endKit, frame, badgeFrame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT, EMBER_PRESSED, ALERT_RED,
 	GROWTH_GREEN } from "./kit";
 import { FrameLook } from "./frame";

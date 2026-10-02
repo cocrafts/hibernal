@@ -1,5 +1,5 @@
 import { rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box, pressable } from "@metascript/void/src/ui/ui";
+import { Ui, box, pressable } from "../ui/ui";
 import { Kit, icon, EMBER_HOT, SCREEN_WIDTH, SCREEN_HEIGHT } from "./kit";
 
 const HALF: float32 = 0.5;

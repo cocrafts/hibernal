@@ -2,7 +2,7 @@
 // top; the caller ends it with endOverlay and endKitOverlay.
 
 import { rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box, pressable, beginOverlay } from "@metascript/void/src/ui/ui";
+import { Ui, box, pressable, beginOverlay } from "../ui/ui";
 import { Kit, TextSize, subId, beginKitOverlay, measure, measureWrapped, frame, say, INK, INK_MUTED, SCREEN_WIDTH,
 	SCREEN_HEIGHT } from "./kit";
 import { FrameLook } from "./frame";

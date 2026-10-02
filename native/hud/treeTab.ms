@@ -1,4 +1,4 @@
-import { Ui, pressable } from "@metascript/void/src/ui/ui";
+import { Ui, pressable } from "../ui/ui";
 import { Kit, frame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT } from "./kit";
 import { FrameLook } from "./frame";
 import { ChipKind, textLink, chip } from "./buttons";

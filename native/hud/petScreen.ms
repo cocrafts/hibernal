@@ -1,4 +1,4 @@
-import { Ui } from "@metascript/void/src/ui/ui";
+import { Ui } from "../ui/ui";
 import { Kit, frame, badgeFrame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT, ALERT_RED, GROWTH_GREEN } from "./kit";
 import { FrameLook } from "./frame";
 import { SignState, ChipKind, textLink, signButton, chip } from "./buttons";

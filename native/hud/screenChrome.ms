@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box, beginOverlay, endOverlay } from "@metascript/void/src/ui/ui";
+import { Ui, box, beginOverlay, endOverlay } from "../ui/ui";
 import { Kit, beginKitOverlay, endKitOverlay, fill, say, INK, INK_MUTED, SCREEN_WIDTH, SCREEN_HEIGHT } from "./kit";
 import { Toasts } from "./notices";
 import { CHAR_MID } from "./shapes";

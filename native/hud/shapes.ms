@@ -1,5 +1,5 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "@metascript/void/src/ui/ui";
+import { Ui, box } from "../ui/ui";
 import { Kit, measure } from "./kit";
 
 export const CHAR_DEEP: Color = rgba(0.161, 0.110, 0.102, 1.0);
