@@ -439,6 +439,123 @@ export function attacksOn(
 	return allowed;
 }
 
+export struct FightOpening {
+	attackerToday: Pet;
+	defenderToday: Pet;
+	committed: Pet;
+	struck: Pet;
+	record: FightRecord;
+}
+
+export function openingAgainst(this attacker: Pet, defender: Pet, stake: uint64, epoch: uint64, seed: uint64): FightOpening {
+	const attackerToday = attacker.onFightDay(epoch);
+	const defenderToday = defender.onFightDay(epoch);
+	const attackerCombatant = attackerToday.combatantFacing(defenderToday);
+	const defenderCombatant = defenderToday.combatantFacing(attackerToday);
+	const result = attackerCombatant.fight(defenderCombatant, seed);
+	return {
+		attackerToday: attackerToday,
+		defenderToday: defenderToday,
+		committed: {
+			...attackerToday,
+			burrow: attackerToday.burrow - stake,
+			fightsOutToday: ((attackerToday.fightsOutToday as int32) + 1) as uint8,
+			slotsAttackedToday: attackerToday.slotsAttackedToday.incl(defender.blockSlot()),
+		},
+		struck: {
+			...defenderToday,
+			fightsInToday: ((defenderToday.fightsInToday as int32) + 1) as uint8,
+		},
+		record: {
+			epoch: epoch,
+			seed: seed,
+			attackerSlot: attacker.slot as int32,
+			defenderSlot: defender.slot as int32,
+			attacker: attackerCombatant,
+			defender: defenderCombatant,
+			stake: stake,
+			loot: 0,
+			outcome: result.outcome,
+			rounds: result.rounds,
+		},
+	};
+}
+
+export function attackerWon(this opening: FightOpening, global: GlobalConfig, epoch: uint64): FightSettlement {
+	const attackerToday = opening.attackerToday;
+	const defenderToday = opening.defenderToday;
+	const stake = opening.record.stake;
+	const harvestBefore = defenderToday.harvest;
+	const baseLoot = opening.record.defender.lootFor(
+		opening.record.attacker,
+		stake,
+		harvestBefore,
+		defenderToday.fightsInToday as int32,
+	);
+	const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
+	const boosted = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
+	const loot = defenderToday.gear.wardedLoot(boosted);
+	const [winnings, fee] = stakeSplit(loot);
+	const bites = guardedBite(
+		biteHearts(
+			stake,
+			loot,
+			attackerToday.stats().power(),
+			defenderToday.stats().power(),
+			defenderToday.maxHearts as int32,
+			defenderToday.bitesInToday as int32,
+		),
+		defenderToday.stats().biteGuardBps + defenderToday.gear.damageGuardBps(),
+	);
+	const defender = opening.struck.bittenBy(attackerToday, loot, bites, epoch, global);
+	const [remains, devoured] = defender.pet.devouredBy(attackerToday.stats().mods.has(Mod.Cannibal));
+	const paidOut: Pet = {
+		...opening.committed,
+		burrow: opening.committed.burrow + stake + winnings + devoured,
+	};
+	const paid = defender.global.withProtocolFee(fee);
+	return {
+		attacker: paidOut.calmedAgainst(defenderToday).gainXp(raidXp(loot)),
+		defender: remains.gainXp(DEFENSE_LOSS_XP),
+		global: remains.alive ? paid : paid.withDeath(remains.stats().rewardWeight()),
+		record: { ...opening.record, loot: loot },
+	};
+}
+
+export function bittenBy(this struck: Pet, attackerToday: Pet, loot: uint64, bites: int32, epoch: uint64, global: GlobalConfig): PetAndGlobal {
+	const hearts = Math.max((struck.hearts as int32) - bites, 0);
+	const struckDown: Pet = {
+		...struck,
+		alive: hearts > 0,
+		hearts: hearts as uint8,
+		harvest: struck.harvest - loot,
+		bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
+	};
+	const hurt = loot > 0 || bites > 0;
+	const robbed = hurt ? struckDown.robbedBy(attackerToday, epoch) : struckDown;
+	const [survivor, insuredGlobal] = robbed.revived(global);
+	return { pet: survivor, global: insuredGlobal };
+}
+
+export function defenderHeld(this opening: FightOpening, global: GlobalConfig): FightSettlement {
+	const committed = opening.committed;
+	const [keptStake, fee] = stakeSplit(opening.record.stake);
+	const defeat = defeatHearts(committed.maxHearts as int32);
+	const lost = guardedBite(defeat, committed.gear.damageGuardBps());
+	const hearts = Math.max((committed.hearts as int32) - lost, 0);
+	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
+	const [beaten, insuredGlobal] = fallen.revived(global);
+	const kept: Pet = { ...opening.struck, burrow: opening.struck.burrow + keptStake };
+	const holder = kept.calmedAgainst(opening.attackerToday);
+	const paid = insuredGlobal.withProtocolFee(fee);
+	return {
+		attacker: beaten,
+		defender: holder.gainXp(DEFENSE_WIN_XP),
+		global: beaten.alive ? paid : paid.withDeath(beaten.stats().rewardWeight()),
+		record: opening.record,
+	};
+}
+
 export function settleAttack(
 	this attacker: Pet,
 	defender: Pet,
@@ -448,97 +565,11 @@ export function settleAttack(
 	seed: uint64,
 ): Result<FightSettlement, AttackError> {
 	const stake = try attacker.stakeFor(defender, level, epoch);
-	const attackerToday = attacker.onFightDay(epoch);
-	const defenderToday = defender.onFightDay(epoch);
-	const attackerCombatant = attackerToday.combatantFacing(defenderToday);
-	const defenderCombatant = defenderToday.combatantFacing(attackerToday);
-	const result = attackerCombatant.fight(defenderCombatant, seed);
-	const committed: Pet = {
-		...attackerToday,
-		burrow: attackerToday.burrow - stake,
-		fightsOutToday: ((attackerToday.fightsOutToday as int32) + 1) as uint8,
-		slotsAttackedToday: attackerToday.slotsAttackedToday.incl(defender.blockSlot()),
-	};
-	const struck: Pet = {
-		...defenderToday,
-		fightsInToday: ((defenderToday.fightsInToday as int32) + 1) as uint8,
-	};
-	const record: FightRecord = {
-		epoch: epoch,
-		seed: seed,
-		attackerSlot: attacker.slot as int32,
-		defenderSlot: defender.slot as int32,
-		attacker: attackerCombatant,
-		defender: defenderCombatant,
-		stake: stake,
-		loot: 0,
-		outcome: result.outcome,
-		rounds: result.rounds,
-	};
-	if (result.outcome == Outcome.AttackerWins) {
-		const harvestBefore = defenderToday.harvest;
-		const baseLoot = defenderCombatant.lootFor(
-			attackerCombatant,
-			stake,
-			harvestBefore,
-			defenderToday.fightsInToday as int32,
-		);
-		const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
-		const boosted = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
-		const loot = defenderToday.gear.wardedLoot(boosted);
-		const [winnings, fee] = stakeSplit(loot);
-		const bites = guardedBite(
-			biteHearts(
-				stake,
-				loot,
-				attackerToday.stats().power(),
-				defenderToday.stats().power(),
-				defenderToday.maxHearts as int32,
-				defenderToday.bitesInToday as int32,
-			),
-			defenderToday.stats().biteGuardBps + defenderToday.gear.damageGuardBps(),
-		);
-		const hearts = Math.max((struck.hearts as int32) - bites, 0);
-		const struckDown: Pet = {
-			...struck,
-			alive: hearts > 0,
-			hearts: hearts as uint8,
-			harvest: struck.harvest - loot,
-			bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
-		};
-		const hurt = loot > 0 || bites > 0;
-		const robbed = hurt ? struckDown.robbedBy(attackerToday, epoch) : struckDown;
-		const [survivor, insuredGlobal] = robbed.revived(global);
-		const cannibal = attackerToday.stats().mods.has(Mod.Cannibal);
-		const [remains, devoured] = survivor.devouredBy(cannibal);
-		const paidOut: Pet = {
-			...committed,
-			burrow: committed.burrow + stake + winnings + devoured,
-		};
-		const raider = paidOut.calmedAgainst(defenderToday);
-		const paid = insuredGlobal.withProtocolFee(fee);
-		return Result.ok({
-			attacker: raider.gainXp(raidXp(loot)),
-			defender: remains.gainXp(DEFENSE_LOSS_XP),
-			global: remains.alive ? paid : paid.withDeath(remains.stats().rewardWeight()),
-			record: { ...record, loot: loot },
-		});
-	}
-	const [keptStake, fee] = stakeSplit(stake);
-	const defeat = defeatHearts(committed.maxHearts as int32);
-	const lost = guardedBite(defeat, committed.gear.damageGuardBps());
-	const hearts = Math.max((committed.hearts as int32) - lost, 0);
-	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
-	const [beaten, insuredGlobal] = fallen.revived(global);
-	const kept: Pet = { ...struck, burrow: struck.burrow + keptStake };
-	const holder = kept.calmedAgainst(attackerToday);
-	const paid = insuredGlobal.withProtocolFee(fee);
-	return Result.ok({
-		attacker: beaten,
-		defender: holder.gainXp(DEFENSE_WIN_XP),
-		global: beaten.alive ? paid : paid.withDeath(beaten.stats().rewardWeight()),
-		record: record,
-	});
+	const opening = attacker.openingAgainst(defender, stake, epoch, seed);
+	const settled = opening.record.outcome == Outcome.AttackerWins
+		? opening.attackerWon(global, epoch)
+		: opening.defenderHeld(global);
+	return Result.ok(settled);
 }
 
 function devouredBy(this victim: Pet, cannibal: boolean): [Pet, uint64] {
