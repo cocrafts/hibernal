@@ -126,7 +126,7 @@ async function fetchTransaction(rpc, signature) {
 	return null;
 }
 
-export async function send(rpc, readRpc, step, instructions, feePayer, units = COMPUTE_UNIT_LIMIT) {
+export async function send(rpc, readRpc, step, instructions, feePayer, units = COMPUTE_UNIT_LIMIT, details = true) {
 	const { value: blockhash } = await patiently(() => rpc.getLatestBlockhash().send());
 	const message = pipe(
 		createTransactionMessage({ version: 0 }),
@@ -143,7 +143,7 @@ export async function send(rpc, readRpc, step, instructions, feePayer, units = C
 		const status = value[0];
 		if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
 			const elapsed = Date.now() - started;
-			const found = await fetchTransaction(readRpc, signature);
+			const found = details || status.err ? await fetchTransaction(readRpc, signature) : null;
 			const logs = found?.meta?.logMessages ?? [];
 			if (status.err) {
 				console.log(`${step}: FAILED ${json(status.err)} ${signature}\n${logs.slice(-12).join("\n")}`);
@@ -212,7 +212,7 @@ export function hibernal(programAddress, authority) {
 				writableSigner(authority),
 				writable(await address(seeds.config())),
 				writable(await address(seeds.policy())),
-			], u32(offset), u32(bytes.length), bool(seal), bytes);
+			], u32(offset), bool(seal), u32(bytes.length), bytes);
 		},
 		async createBlock(id) {
 			return call("CreateBlock", [
