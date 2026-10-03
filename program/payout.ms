@@ -2,6 +2,7 @@ import {
 	Account,
 	Delegated,
 	ExternalMutable,
+	Instruction,
 	Mutable,
 	Owned,
 	Program,
@@ -24,18 +25,20 @@ import {
 	selectInstruction,
 } from "std/solana";
 import { accounts } from "std/solana/macro";
-import { commit, delegationProgram, magicContext, magicProgram } from "std/solana/magicblock";
+import { delegationProgram, magicContext, magicProgram } from "std/solana/magicblock";
 import { Mint, TokenAccount, expectTokenMint, expectTokenOwner, mintTokens } from "std/solana/token";
-import { EPOCH_SECONDS } from "../rules/index";
 import {
 	Config,
 	HibernalError,
 	Paid,
 	PetAccount,
+	VrfPayer,
+	dayOf,
 	hibernalError,
 	mintSeeds,
 	paidSeeds,
 	petSeeds,
+	vrfPayerSeeds,
 } from "./layout";
 
 const PET_INDEX: int32 = 2;
@@ -44,8 +47,22 @@ const PAID_INDEX: int32 = 3;
 export struct CommitPetAccounts {
 	owner: Signer;
 	pet: Mutable<PetAccount>;
+	payer: Mutable<VrfPayer>;
 	magicContext: Writable;
+	magicFeeVault: Writable;
 	magicProgram: Account;
+}
+
+const SCHEDULE_COMMIT: uint32 = 1;
+
+function paidCommit(payer: Mutable<VrfPayer>, committed: Account, context: Account, feeVault: Account): Result<uint64, ProgramError> {
+	const instruction = Instruction.forProgram(Pubkey.magicProgram(), 4, 4);
+	instruction.addWritableSigner(payer as Account);
+	instruction.addWritable(context);
+	instruction.addWritable(feeVault);
+	instruction.addAccount(committed, committed.isWritable(), false);
+	instruction.appendU32(SCHEDULE_COMMIT);
+	return instruction.invokeSigned(vrfPayerSeeds().withBump(payer.data().bump));
 }
 
 export struct ClaimRewardAccounts {
@@ -66,7 +83,8 @@ export function commitPet(): Result<uint64, ProgramError> {
 	const _seeds = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
 	const _context = try expectAddress((x.magicContext as Account).key(), Pubkey.magicContext());
 	const _program = try expectAddress(x.magicProgram.key(), Pubkey.magicProgram());
-	return commit(x.owner as Account, x.pet as Account, x.magicContext as Account);
+	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	return paidCommit(x.payer, x.pet as Account, x.magicContext as Account, x.magicFeeVault as Account);
 }
 
 struct Claimant {
@@ -121,7 +139,7 @@ export function claimReward(): Result<uint64, ProgramError> {
 	const gifted = record.giftOwed;
 	if (gifted <= ledger.total) { return Result.err(hibernalError(HibernalError.NothingOwed)); }
 	const owed = gifted - ledger.total;
-	const today = (clock().unixTimestamp as uint64) / EPOCH_SECONDS;
+	const today = dayOf(config, clock().unixTimestamp);
 	const paidToday = ledger.day == today ? ledger.today : 0;
 	if (paidToday >= config.claimCapPerDay) { return Result.err(hibernalError(HibernalError.OverCap)); }
 	const room = config.claimCapPerDay - paidToday;
