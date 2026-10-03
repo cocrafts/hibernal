@@ -21,6 +21,7 @@ import {
 	ResortAssignArgs,
 	ResortBeginArgs,
 	SeededArgs,
+	StepArgs,
 	VrfPayer,
 	World,
 } from "./layout";
@@ -39,7 +40,7 @@ import {
 	PlaceAccounts,
 	UndelegationAccounts,
 } from "./admission";
-import { SeededAccounts, StepAccounts } from "./day";
+import { RoundStartAccounts, SeededAccounts, StartBlockAccounts, SweepAccounts, TurnAccounts } from "./day";
 import { OwnerAccounts } from "./owner";
 import { BuyAccounts, ConsumeAccounts } from "./shop";
 import { ClaimRewardAccounts, CommitPetAccounts } from "./payout";
@@ -64,7 +65,6 @@ export function hibernalIdl(): string {
 		DelegateWorld: [DelegateWorldAccounts],
 		ProcessUndelegation: [UndelegationAccounts],
 		Place: [PlaceAccounts],
-		Step: [StepAccounts],
 		Seeded: [SeededAccounts, SeededArgs],
 		Talk: [OwnerAccounts],
 		Bank: [OwnerAccounts],
@@ -78,6 +78,10 @@ export function hibernalIdl(): string {
 		DelegateVrfPayer: [DelegateVrfPayerAccounts],
 		CommitPet: [CommitPetAccounts],
 		ClaimReward: [ClaimRewardAccounts],
+		StartBlock: [StartBlockAccounts],
+		RoundStart: [RoundStartAccounts, StepArgs],
+		Turn: [TurnAccounts, StepArgs],
+		Sweep: [SweepAccounts],
 		accounts: [Config, Policy, World, Block, PetAccount, Paid, Resort, Receipt, VrfPayer],
 		events: [],
 		errors: HibernalError,
@@ -93,7 +97,7 @@ test "the Hibernal IDL is Anchor's JSON with every instruction and account" {
 	assert parsed.ok;
 	if (parsed.ok) {
 		const idl = parsed.value;
-		assert idl.instructions.length() == 23;
+		assert idl.instructions.length() == 26;
 		assert idl.instructions.at(7).name.asString() == "process_undelegation";
 		assert idl.instructions.at(7).discriminator.at(0).asInt32() == 196;
 		assert idl.accounts.length() == 9;

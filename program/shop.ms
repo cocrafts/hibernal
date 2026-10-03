@@ -23,7 +23,7 @@ import {
 import { accounts, args } from "std/solana/macro";
 import { DelegationAccounts } from "std/solana/magicblock";
 import { Mint, TokenAccount, transferTokens } from "std/solana/token";
-import { Food, OwnerError, Pet, epochOf, grownBy, insured, ownerFed } from "../rules/index";
+import { Food, OwnerError, Pet, grownBy, insured, ownerFed } from "../rules/index";
 import { delegated } from "./admission";
 import {
 	BuyArgs,
@@ -34,6 +34,7 @@ import {
 	ShopItem,
 	World,
 	configSeeds,
+	dayAt,
 	hibernalError,
 	petSeeds,
 	receiptSeeds,
@@ -183,7 +184,7 @@ export function consume(): Result<uint64, ProgramError> {
 	const _petAddress = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
 	const world = try worldIn(x.world);
 	const item = try itemOf(receipt.item);
-	const epoch = epochOf(clock().unixTimestamp as uint64, world.global.genesisTimestamp);
+	const epoch = dayAt(world.global.genesisTimestamp, world.secondsPerDay, clock().unixTimestamp);
 	const applied = shopEffect(record.pet, item, receipt.tier, epoch);
 	if (!applied.ok) { return Result.err(ownerFailure(applied.error)); }
 	record.pet = applied.value;

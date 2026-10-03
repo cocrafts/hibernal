@@ -3,27 +3,33 @@ import {
 	Account,
 	AccountMeta,
 	Bytes,
+	Clock,
 	borshBuffer,
 	Discriminator,
 	Mutable,
 	Owned,
 	ProgramError,
 	Pubkey,
+	Seeds,
+	Signer,
+	account,
+	accountCount,
 	clock,
 	instructionDiscriminator,
 	mutable,
 	pdaWithBump,
+	programId,
 	readArgs,
 	selectInstruction,
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
-import { RandomnessRequest, requestRandomness, verifyVrfCallback } from "std/solana/vrf";
+import { RandomnessRequest, requestRandomness, verifyVrfCallback, vrfProgram } from "std/solana/vrf";
+import { magicProgram } from "std/solana/magicblock";
 import {
 	ACTS_PER_EPOCH,
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
 	BLOCK_SLOTS,
-	EPOCH_SECONDS,
 	GRACE_EPOCHS,
 	STAKE_LEVELS,
 	BlockSlot,
@@ -74,11 +80,27 @@ import {
 	Policy,
 	SEATS,
 	SeededArgs,
+	StepArgs,
 	VrfPayer,
 	World,
+	dayOf,
 	hibernalError,
+	policySeeds,
 	vrfPayerSeeds,
 } from "./layout";
+import {
+	CrankAccounts,
+	ScheduledMeta,
+	cancelCrank,
+	checkedCrankAccounts,
+	crankAddress,
+	crankSeed,
+	createCrank,
+	dueSlotFor,
+	hydraProgram,
+	magicVault,
+	spentCrankOf,
+} from "./hydra";
 import {
 	ActContext,
 	attackChoice,
@@ -94,11 +116,31 @@ extern function msSolAlloc(size: uint64): uint64;
 
 export const GRUDGE_EPOCHS: uint64 = 3;
 export const ECONOMY_SALT: uint64 = 7919;
-export const STEP_PET_ACCOUNT: int32 = 10;
-export const SEEDED_PET_ACCOUNT: int32 = 3;
+export const TURN_PET_ACCOUNT: int32 = 14;
+export const SWEEP_CRANK_ACCOUNT: int32 = 4;
 export const SEED_RETRY_SECONDS: int64 = 30;
+export const ACTS_PER_TURN: int32 = 2;
+export const SEED_WAIT_SLOTS: uint64 = 150;
+export const RESORT_WAIT_SECONDS: int64 = 120;
+export const RESUME_GRACE_SLOTS: uint64 = 3000;
 
-export struct StepAccounts {
+export struct RoundStartAccounts {
+	payer: Mutable<VrfPayer>;
+	config: Owned<Config>;
+	world: Owned<World>;
+	block: Mutable<Block>;
+	programIdentity: Account;
+	oracleQueue: Account;
+	slotHashes: Account;
+	systemProgram: Account;
+	vrfProgram: Account;
+	nextCrank: Account;
+	magicVault: Account;
+	magicProgram: Account;
+	hydraProgram: Account;
+}
+
+export struct TurnAccounts {
 	payer: Mutable<VrfPayer>;
 	config: Owned<Config>;
 	world: Mutable<World>;
@@ -109,12 +151,39 @@ export struct StepAccounts {
 	slotHashes: Account;
 	systemProgram: Account;
 	vrfProgram: Account;
+	nextCrank: Account;
+	magicVault: Account;
+	magicProgram: Account;
+	hydraProgram: Account;
 }
 
 export struct SeededAccounts {
 	identity: Account;
-	world: Mutable<World>;
 	block: Mutable<Block>;
+}
+
+export struct StartBlockAccounts {
+	authority: Signer;
+	config: Owned<Config>;
+	world: Owned<World>;
+	block: Mutable<Block>;
+	payer: Mutable<VrfPayer>;
+	crank: Account;
+	magicVault: Account;
+	magicProgram: Account;
+	hydraProgram: Account;
+}
+
+export struct SweepAccounts {
+	payer: Mutable<VrfPayer>;
+	magicVault: Account;
+	magicProgram: Account;
+	hydraProgram: Account;
+}
+
+export enum StepKind {
+	RoundStart,
+	Turn,
 }
 
 export struct BlockPets {
@@ -125,11 +194,6 @@ export struct BlockPets {
 struct Acted {
 	global: GlobalConfig;
 	choice: int32;
-}
-
-export function epochAt(genesisTimestamp: uint64, unixTimestamp: int64): uint64 {
-	if (unixTimestamp < 0 || (unixTimestamp as uint64) < genesisTimestamp) { return 0; }
-	return ((unixTimestamp as uint64) - genesisTimestamp) / EPOCH_SECONDS + 1;
 }
 
 export function seedOf(randomness: Pubkey): uint64 {
@@ -146,6 +210,14 @@ export function seedOf(randomness: Pubkey): uint64 {
 
 function seededInstruction(): Discriminator {
 	return @comptime { return instructionDiscriminator("Seeded"); };
+}
+
+function roundStartInstruction(): Discriminator {
+	return @comptime { return instructionDiscriminator("RoundStart"); };
+}
+
+function turnInstruction(): Discriminator {
+	return @comptime { return instructionDiscriminator("Turn"); };
 }
 
 export function seededDiscriminator(): uint64 {
@@ -455,12 +527,11 @@ function loadedPets(block: Ptr<Block>, first: int32): Result<Ptr<BlockPets>, Pro
 		heap.records[seat] = 0;
 		heap.pets[seat].alive = false;
 		const member = block.members[seat];
-		if (emptySeat(member)) { continue; }
-		const holder = try mutable<PetAccount>(first + seat);
-		if (!(holder as Account).key().equals(member)) {
-			return Result.err(hibernalError(HibernalError.NotAMember));
-		}
-		const record = holder.data();
+		if (emptySeat(member) || first + seat >= accountCount()) { continue; }
+		const holder = try account(first + seat);
+		if (!holder.key().equals(member)) { continue; }
+		const proof = try mutable<PetAccount>(first + seat);
+		const record = proof.data();
 		heap.pets[seat] = record.pet;
 		heap.records[seat] = record as uint64;
 	}
@@ -492,28 +563,31 @@ function callerSeedOf(block: Ptr<Block>): Pubkey {
 	return seed;
 }
 
-function seedRequested(step: StepAccounts, block: Ptr<Block>): Result<uint64, ProgramError> {
-	const bump = step.payer.data().bump;
+struct SeedSource {
+	payer: Mutable<VrfPayer>;
+	config: Readonly<Ptr<Config>>;
+	block: Account;
+	programIdentity: Account;
+	oracleQueue: Account;
+	slotHashes: Account;
+	systemProgram: Account;
+}
+
+function seedRequested(source: SeedSource, block: Ptr<Block>, now: Clock): Result<uint64, ProgramError> {
+	if (source.oracleQueue.key() != source.config.vrfQueue) { return Result.err(ProgramError.invalidArgument()); }
+	const bump = source.payer.data().bump;
 	block.requests = block.requests + 1;
 	block.pendingRequest = block.requests;
-	block.requestedAt = clock().unixTimestamp;
+	block.requestedAt = now.unixTimestamp;
 	block.phase = Phase.Seeding as uint8;
-	let callbackAccounts: AccountMeta[12] = [];
-	callbackAccounts[0] = AccountMeta.writableKey((step.world as Account).key());
-	callbackAccounts[1] = AccountMeta.writableKey((step.block as Account).key());
-	for (let seat = 0; seat < SEATS; seat++) {
-		const member = block.members[seat];
-		callbackAccounts[2 + seat] = emptySeat(member)
-			? AccountMeta.readonlyKey(Pubkey.systemProgram())
-			: AccountMeta.writableKey(member);
-	}
+	const callbackAccounts: AccountMeta[1] = [AccountMeta.writableKey(source.block.key())];
 	const argumentBytes = try borshBuffer(8).u64(block.pendingRequest).written();
 	const request: RandomnessRequest = {
-		payer: step.payer as Account,
-		programIdentity: step.programIdentity,
-		oracleQueue: step.oracleQueue,
-		systemProgram: step.systemProgram,
-		slotHashes: step.slotHashes,
+		payer: source.payer as Account,
+		programIdentity: source.programIdentity,
+		oracleQueue: source.oracleQueue,
+		systemProgram: source.systemProgram,
+		slotHashes: source.slotHashes,
 	};
 	return requestRandomness(
 		request,
@@ -535,91 +609,306 @@ function policyBytes(config: Owned<Config>, policy: Owned<Policy>): Result<Reado
 	return Result.ok(held);
 }
 
-function dawnStep(step: StepAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<uint64, ProgramError> {
-	const world = step.world.data();
-	const epoch = epochAt(world.global.genesisTimestamp, clock().unixTimestamp);
-	if (epoch <= block.epoch) { return Result.err(hibernalError(HibernalError.TooEarly)); }
+export function staggerOf(config: Readonly<Ptr<Config>>, blockId: uint32): uint64 {
+	if (config.staggerSeconds == 0) { return 0; }
+	return ((blockId as uint64) * 2654435761) % config.staggerSeconds;
+}
+
+export function roundTarget(config: Readonly<Ptr<Config>>, blockId: uint32, epoch: uint64, round: int32): int64 {
+	const roundSeconds = config.secondsPerDay / (ACTS_PER_EPOCH as uint64);
+	const start = config.genesisTimestamp + epoch * config.secondsPerDay + (round as uint64) * roundSeconds;
+	return (start + staggerOf(config, blockId)) as int64;
+}
+
+struct Schedule {
+	payer: Mutable<VrfPayer>;
+	config: Readonly<Ptr<Config>>;
+	configKey: Pubkey;
+	worldKey: Pubkey;
+	blockKey: Pubkey;
+	policyKey: Pubkey;
+	cranks: CrankAccounts;
+}
+
+function policyKey(config: Readonly<Ptr<Config>>): Result<Pubkey, ProgramError> {
+	return policySeeds().withBump(config.policyBump).createProgramAddress(programId());
+}
+
+function identityKey(): Result<Pubkey, ProgramError> {
+	const found = try Seeds.empty(1).addText("identity").findProgramAddress(programId());
+	return Result.ok(found.key);
+}
+
+function scheduled(schedule: Schedule, block: Ptr<Block>, kind: StepKind, dueSlot: uint64): Result<uint64, ProgramError> {
+	const seq = block.crankSeq;
+	const expected = try crankAddress(block.id, seq);
+	const _checked = try checkedCrankAccounts(schedule.cranks, expected);
+	const after = try crankAddress(block.id, seq + 1);
+	const identity = try identityKey();
+	const signer = vrfPayerSeeds().withBump(schedule.payer.data().bump);
+	const seed = crankSeed(block.id, seq);
+	block.crankSeq = seq + 1;
+	block.dueSlot = dueSlot;
+	if (kind == StepKind.RoundStart) {
+		let metas: ScheduledMeta[13] = [];
+		metas[0] = { key: schedule.cranks.sponsor.key(), writable: true };
+		metas[1] = { key: schedule.configKey, writable: false };
+		metas[2] = { key: schedule.worldKey, writable: false };
+		metas[3] = { key: schedule.blockKey, writable: true };
+		metas[4] = { key: identity, writable: false };
+		metas[5] = { key: schedule.config.vrfQueue, writable: true };
+		metas[6] = { key: Pubkey.slotHashesSysvar(), writable: false };
+		metas[7] = { key: Pubkey.systemProgram(), writable: false };
+		metas[8] = { key: Pubkey.vrfProgram(), writable: false };
+		metas[9] = { key: after, writable: true };
+		metas[10] = { key: Pubkey.magicVault(), writable: true };
+		metas[11] = { key: Pubkey.magicProgram(), writable: false };
+		metas[12] = { key: Pubkey.hydraProgram(), writable: false };
+		return createCrank(schedule.cranks, signer, seed, dueSlot, metas, roundStartInstruction().word(), seq);
+	}
+	let metas: ScheduledMeta[24] = [];
+	metas[0] = { key: schedule.cranks.sponsor.key(), writable: true };
+	metas[1] = { key: schedule.configKey, writable: false };
+	metas[2] = { key: schedule.worldKey, writable: true };
+	metas[3] = { key: schedule.blockKey, writable: true };
+	metas[4] = { key: schedule.policyKey, writable: false };
+	metas[5] = { key: identity, writable: false };
+	metas[6] = { key: schedule.config.vrfQueue, writable: true };
+	metas[7] = { key: Pubkey.slotHashesSysvar(), writable: false };
+	metas[8] = { key: Pubkey.systemProgram(), writable: false };
+	metas[9] = { key: Pubkey.vrfProgram(), writable: false };
+	metas[10] = { key: after, writable: true };
+	metas[11] = { key: Pubkey.magicVault(), writable: true };
+	metas[12] = { key: Pubkey.magicProgram(), writable: false };
+	metas[13] = { key: Pubkey.hydraProgram(), writable: false };
+	for (let seat = 0; seat < SEATS; seat++) {
+		const member = block.members[seat];
+		metas[TURN_PET_ACCOUNT + seat] = emptySeat(member)
+			? { key: Pubkey.systemProgram(), writable: false }
+			: { key: member, writable: true };
+	}
+	return createCrank(schedule.cranks, signer, seed, dueSlot, metas, turnInstruction().word(), seq);
+}
+
+function roundStartScheduled(schedule: Schedule, block: Ptr<Block>, now: Clock): Result<uint64, ProgramError> {
+	const target = roundTarget(schedule.config, block.id, block.epoch, block.round as int32);
+	return scheduled(schedule, block, StepKind.RoundStart, dueSlotFor(now, target, schedule.config.slotMillis));
+}
+
+function freshStep(block: Ptr<Block>, seq: uint64, now: Clock): Result<uint64, ProgramError> {
+	if (seq + 1 != block.crankSeq) { return Result.err(hibernalError(HibernalError.StaleStep)); }
+	if (now.slot + 2 < block.dueSlot) { return Result.err(hibernalError(HibernalError.TooEarly)); }
+	return Result.ok(seq);
+}
+
+export function roundStart(): Result<uint64, ProgramError> {
+	const x = try accounts<RoundStartAccounts>();
+	const a = try args<StepArgs>();
+	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	const block = x.block.data();
+	const now = clock();
+	const _fresh = try freshStep(block, a.seq, now);
+	const config = x.config.data();
+	const schedule: Schedule = {
+		payer: x.payer,
+		config: config,
+		configKey: (x.config as Account).key(),
+		worldKey: (x.world as Account).key(),
+		blockKey: (x.block as Account).key(),
+		policyKey: try policyKey(config),
+		cranks: {
+			sponsor: x.payer as Account,
+			crank: x.nextCrank,
+			magicVault: x.magicVault,
+			magicProgram: x.magicProgram,
+			hydraProgram: x.hydraProgram,
+		},
+	};
+	if (x.world.data().resorting != 0) {
+		const later = now.unixTimestamp + RESORT_WAIT_SECONDS + (staggerOf(config, block.id) as int64);
+		return scheduled(schedule, block, StepKind.RoundStart, dueSlotFor(now, later, config.slotMillis));
+	}
+	const source: SeedSource = {
+		payer: x.payer,
+		config: config,
+		block: x.block as Account,
+		programIdentity: x.programIdentity,
+		oracleQueue: x.oracleQueue,
+		slotHashes: x.slotHashes,
+		systemProgram: x.systemProgram,
+	};
+	const _requested = try seedRequested(source, block, now);
+	return scheduled(schedule, block, StepKind.Turn, now.slot + SEED_WAIT_SLOTS);
+}
+
+function dawnedBlock(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): void {
+	const world = x.world.data();
+	const epoch = block.epoch;
 	let global = world.global;
 	if (world.epoch < epoch) {
 		global = global.settle(epoch);
 		world.epoch = epoch;
 	}
 	global = dawned(block, heap.pets, heap.records, global, epoch);
-	world.global = global;
-	block.epoch = epoch;
-	block.round = 0;
-	block.cursor = 0;
+	world.global = revealed(block, heap.pets, heap.records, global);
+	block.dawnedEpoch = epoch;
 	storedPets(heap);
-	return seedRequested(step, block);
 }
 
-function actingStep(step: StepAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<uint64, ProgramError> {
-	const policy = try policyBytes(step.config, step.policy);
-	const seat = block.turns[block.cursor as int32] as int32;
-	if (heap.records[seat] != 0 && heap.pets[seat].alive) {
-		const world = step.world.data();
-		const record = heap.records[seat] as Ptr<PetAccount>;
-		const wilds = deadWilds();
-		const acted = actedBy(block, policy.bytes, heap.pets, wilds.pets, seat, record.persona as PersonaKind, world.global);
-		world.global = acted.global;
-		storedPets(heap);
-	}
-	block.cursor = block.cursor + 1;
-	if ((block.cursor as int32) < SEATS) { return Result.ok(seat as uint64); }
-	block.round = block.round + 1;
-	if ((block.round as int32) < ACTS_PER_EPOCH) { return seedRequested(step, block); }
-	block.phase = Phase.Dusk as uint8;
-	return Result.ok(seat as uint64);
-}
-
-function duskStep(step: StepAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<uint64, ProgramError> {
-	const world = step.world.data();
+function dayEnded(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): void {
+	const world = x.world.data();
 	world.global = dusked(block, heap.pets, heap.records, world.global);
 	storedPets(heap);
-	block.phase = Phase.Dawn as uint8;
-	return Result.ok(block.epoch);
+	block.epoch = block.epoch + 1;
+	block.round = 0;
+	dawnedBlock(x, block, heap);
+	block.phase = Phase.Idle as uint8;
 }
 
-function seedingStep(step: StepAccounts, block: Ptr<Block>): Result<uint64, ProgramError> {
-	if (clock().unixTimestamp < block.requestedAt + SEED_RETRY_SECONDS) {
-		return Result.err(hibernalError(HibernalError.Pending));
+function actingTurn(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<boolean, ProgramError> {
+	const policy = try policyBytes(x.config, x.policy);
+	const world = x.world.data();
+	for (let act = 0; act < ACTS_PER_TURN && (block.cursor as int32) < SEATS; act++) {
+		const seat = block.turns[block.cursor as int32] as int32;
+		if (heap.records[seat] != 0 && heap.pets[seat].alive) {
+			const record = heap.records[seat] as Ptr<PetAccount>;
+			const wilds = deadWilds();
+			const acted = actedBy(block, policy.bytes, heap.pets, wilds.pets, seat, record.persona as PersonaKind, world.global);
+			world.global = acted.global;
+		}
+		block.cursor = block.cursor + 1;
 	}
-	return seedRequested(step, block);
+	storedPets(heap);
+	if ((block.cursor as int32) < SEATS || (block.round as int32) == ACTS_PER_EPOCH - 1) { return Result.ok(false); }
+	block.round = block.round + 1;
+	block.phase = Phase.Idle as uint8;
+	return Result.ok(true);
 }
 
-export function step(): Result<uint64, ProgramError> {
-	const accountsOfStep = try accounts<StepAccounts>();
-	const _payer = try pdaWithBump(accountsOfStep.payer, vrfPayerSeeds(), accountsOfStep.payer.data().bump);
-	if (accountsOfStep.world.data().resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
-	const block = accountsOfStep.block.data();
-	const heap = try loadedPets(block, STEP_PET_ACCOUNT);
-	return match (block.phase as Phase) {
-		Phase.Dawn => dawnStep(accountsOfStep, block, heap),
-		Phase.Seeding => seedingStep(accountsOfStep, block),
-		Phase.Acting => actingStep(accountsOfStep, block, heap),
-		Phase.Dusk => duskStep(accountsOfStep, block, heap),
+export function turn(): Result<uint64, ProgramError> {
+	const x = try accounts<TurnAccounts>();
+	const a = try args<StepArgs>();
+	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	const block = x.block.data();
+	const now = clock();
+	const _fresh = try freshStep(block, a.seq, now);
+	const config = x.config.data();
+	const schedule: Schedule = {
+		payer: x.payer,
+		config: config,
+		configKey: (x.config as Account).key(),
+		worldKey: (x.world as Account).key(),
+		blockKey: (x.block as Account).key(),
+		policyKey: (x.policy as Account).key(),
+		cranks: {
+			sponsor: x.payer as Account,
+			crank: x.nextCrank,
+			magicVault: x.magicVault,
+			magicProgram: x.magicProgram,
+			hydraProgram: x.hydraProgram,
+		},
 	};
+	if ((block.phase as Phase) != Phase.Acting) {
+		if ((block.phase as Phase) == Phase.Seeding && now.unixTimestamp >= block.requestedAt + SEED_RETRY_SECONDS) {
+			const source: SeedSource = {
+				payer: x.payer,
+				config: config,
+				block: x.block as Account,
+				programIdentity: x.programIdentity,
+				oracleQueue: x.oracleQueue,
+				slotHashes: x.slotHashes,
+				systemProgram: x.systemProgram,
+			};
+			const _requested = try seedRequested(source, block, now);
+		}
+		if ((block.phase as Phase) == Phase.Idle) { return roundStartScheduled(schedule, block, now); }
+		return scheduled(schedule, block, StepKind.Turn, now.slot + SEED_WAIT_SLOTS);
+	}
+	const heap = try loadedPets(block, TURN_PET_ACCOUNT);
+	if (block.dawnedEpoch != block.epoch) {
+		dawnedBlock(x, block, heap);
+		return scheduled(schedule, block, StepKind.Turn, now.slot + config.turnGapSlots);
+	}
+	if ((block.cursor as int32) >= SEATS) {
+		dayEnded(x, block, heap);
+		return roundStartScheduled(schedule, block, now);
+	}
+	const roundDone = try actingTurn(x, block, heap);
+	if (roundDone) { return roundStartScheduled(schedule, block, now); }
+	return scheduled(schedule, block, StepKind.Turn, now.slot + config.turnGapSlots);
 }
 
 export function seeded(): Result<uint64, ProgramError> {
 	const callback = try args<SeededArgs>();
 	const accountsOfCallback = try accounts<SeededAccounts>();
 	const _verified = try verifyVrfCallback(accountsOfCallback.identity);
-	if (accountsOfCallback.world.data().resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
 	const block = accountsOfCallback.block.data();
 	if ((block.phase as Phase) != Phase.Seeding || callback.request != block.pendingRequest) {
-		return Result.err(hibernalError(HibernalError.StaleCallback));
+		return Result.ok(0);
 	}
-	const heap = try loadedPets(block, SEEDED_PET_ACCOUNT);
 	block.roundSeed = seedOf(callback.randomness);
 	block.pendingRequest = 0;
 	turnOrder(block.roundSeed, block.epoch, block.id, block.round as int32, block.turns);
 	block.cursor = 0;
 	block.phase = Phase.Acting as uint8;
-	if (block.round == 0) {
-		const world = accountsOfCallback.world.data();
-		world.global = revealed(block, heap.pets, heap.records, world.global);
-		storedPets(heap);
-	}
 	return Result.ok(block.roundSeed);
+}
+
+function startingRound(config: Readonly<Ptr<Config>>, block: Ptr<Block>, now: Clock): void {
+	const day = dayOf(config, now.unixTimestamp);
+	const roundSeconds = config.secondsPerDay / (ACTS_PER_EPOCH as uint64);
+	const dayStart = config.genesisTimestamp + day * config.secondsPerDay;
+	const into = (now.unixTimestamp as uint64) > dayStart ? (now.unixTimestamp as uint64) - dayStart : 0;
+	block.epoch = day;
+	block.round = Math.min(into / roundSeconds, (ACTS_PER_EPOCH - 1) as uint64) as uint8;
+	block.phase = Phase.Idle as uint8;
+	block.started = 1;
+}
+
+export function startBlock(): Result<uint64, ProgramError> {
+	const x = try accounts<StartBlockAccounts>();
+	const config = x.config.data();
+	if (x.authority.key() != config.authority) { return Result.err(hibernalError(HibernalError.NotAuthority)); }
+	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	const block = x.block.data();
+	const now = clock();
+	if (block.started != 0 && now.slot <= block.dueSlot + RESUME_GRACE_SLOTS) {
+		return Result.err(hibernalError(HibernalError.ChainAlive));
+	}
+	if (block.started == 0) { startingRound(config, block, now); }
+	const schedule: Schedule = {
+		payer: x.payer,
+		config: config,
+		configKey: (x.config as Account).key(),
+		worldKey: (x.world as Account).key(),
+		blockKey: (x.block as Account).key(),
+		policyKey: try policyKey(config),
+		cranks: {
+			sponsor: x.payer as Account,
+			crank: x.crank,
+			magicVault: x.magicVault,
+			magicProgram: x.magicProgram,
+			hydraProgram: x.hydraProgram,
+		},
+	};
+	if ((block.phase as Phase) != Phase.Idle) { return scheduled(schedule, block, StepKind.Turn, now.slot + 1); }
+	const spread = now.unixTimestamp + (staggerOf(config, block.id) as int64);
+	const target = Math.max(roundTarget(config, block.id, block.epoch, block.round as int32), spread);
+	return scheduled(schedule, block, StepKind.RoundStart, dueSlotFor(now, target, config.slotMillis));
+}
+
+export function sweep(): Result<uint64, ProgramError> {
+	const x = try accounts<SweepAccounts>();
+	const bump = x.payer.data().bump;
+	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), bump);
+	const sponsor = x.payer as Account;
+	let cancelled: uint64 = 0;
+	for (let index = SWEEP_CRANK_ACCOUNT; index < accountCount(); index++) {
+		const crank = try account(index);
+		const spent = try spentCrankOf(crank, sponsor.key());
+		if (!spent) { continue; }
+		const _cancelled = try cancelCrank(sponsor, vrfPayerSeeds().withBump(bump), crank, x.magicVault, x.magicProgram);
+		cancelled = cancelled + 1;
+	}
+	return Result.ok(cancelled);
 }

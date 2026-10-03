@@ -1,15 +1,16 @@
 import { Discriminator, ProgramError, Pubkey, Seeds, accountDiscriminator } from "std/solana";
-import { FightRecord, GlobalConfig, Listing, Pet } from "../rules/index";
+import { EPOCH_SECONDS, FightRecord, GlobalConfig, Listing, Pet } from "../rules/index";
 
 export const SEATS: int32 = 10;
 export const FIGHTS: int32 = 32;
 export const LISTINGS: int32 = 10;
 export const RELATIONSHIPS: int32 = 45;
 export const POLICY_BYTES: int32 = 4763;
-export const MAX_PETS: int32 = 10_000;
-export const RESORT_BITMAP_BYTES: int32 = 1_250;
+export const MAX_PETS: int32 = 80_000;
+export const RESORT_BITMAP_BYTES: int32 = 10_000;
 export const NO_SEAT: uint8 = 255;
 export const NO_BLOCK: uint32 = 0xffffffff;
+export const NEVER_DAWNED: uint64 = 0xffffffffffffffff;
 
 export enum Op {
 	Initialize,
@@ -21,7 +22,6 @@ export enum Op {
 	DelegateWorld,
 	ProcessUndelegation,
 	Place,
-	Step,
 	Seeded,
 	Talk,
 	Bank,
@@ -35,13 +35,16 @@ export enum Op {
 	DelegateVrfPayer,
 	CommitPet,
 	ClaimReward,
+	StartBlock,
+	RoundStart,
+	Turn,
+	Sweep,
 }
 
 export enum Phase {
-	Dawn,
+	Idle,
 	Seeding,
 	Acting,
-	Dusk,
 }
 
 export struct Config {
@@ -61,6 +64,11 @@ export struct Config {
 	validator: Pubkey;
 	skrMint: Pubkey;
 	treasury: Pubkey;
+	vrfQueue: Pubkey;
+	secondsPerDay: uint64;
+	staggerSeconds: uint64;
+	slotMillis: uint64;
+	turnGapSlots: uint64;
 }
 
 export function discriminator(this typeof Config): Discriminator {
@@ -91,6 +99,8 @@ export struct World {
 	pad: uint16;
 	unplaced: uint32;
 	placed: uint32;
+	pad2: uint32;
+	secondsPerDay: uint64;
 }
 
 export function discriminator(this typeof World): Discriminator {
@@ -117,10 +127,14 @@ export struct Block {
 	rotation: uint64;
 	minStrength: uint64;
 	maxStrength: uint64;
+	crankSeq: uint64;
+	dueSlot: uint64;
+	dawnedEpoch: uint64;
 	fightHead: uint8;
 	bump: uint8;
 	turns: uint8[10];
-	pad: uint32;
+	started: uint8;
+	pad: uint8[3];
 	members: Pubkey[10];
 	grudges: Grudge[10];
 	fights: FightRecord[32];
@@ -171,8 +185,7 @@ export struct Resort {
 	bump: uint8;
 	pad: uint16;
 	cleared: uint32;
-	bitmap: uint8[1250];
-	pad2: uint8[6];
+	bitmap: uint8[10000];
 }
 
 export function discriminator(this typeof Resort): Discriminator {
@@ -228,6 +241,11 @@ export enum HibernalError {
 	AlreadyConsumed,
 	WrongReceipt,
 	AlreadyBought,
+	StaleStep,
+	ChainAlive,
+	NotIdle,
+	BadClock,
+	PetCap,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {
@@ -306,6 +324,11 @@ export struct InitializeArgs {
 	validator: Pubkey;
 	skrMint: Pubkey;
 	treasury: Pubkey;
+	vrfQueue: Pubkey;
+	secondsPerDay: uint64;
+	staggerSeconds: uint64;
+	slotMillis: uint64;
+	turnGapSlots: uint64;
 }
 
 export struct CreateBlockArgs {
@@ -330,4 +353,26 @@ export struct ResortAssignArgs {
 export struct SeededArgs {
 	randomness: Pubkey;
 	request: uint64;
+}
+
+export struct StepArgs {
+	seq: uint64;
+}
+
+export struct StartBlockArgs {
+	id: uint32;
+}
+
+export function dayAt(genesisTimestamp: uint64, secondsPerDay: uint64, unixTimestamp: int64): uint64 {
+	if (unixTimestamp < 0 || (unixTimestamp as uint64) < genesisTimestamp) { return 0; }
+	return ((unixTimestamp as uint64) - genesisTimestamp) / secondsPerDay;
+}
+
+export function gameSecondsAt(genesisTimestamp: uint64, secondsPerDay: uint64, unixTimestamp: int64): uint64 {
+	if (unixTimestamp < 0 || (unixTimestamp as uint64) < genesisTimestamp) { return 0; }
+	return ((unixTimestamp as uint64) - genesisTimestamp) * EPOCH_SECONDS / secondsPerDay;
+}
+
+export function dayOf(config: Readonly<Ptr<Config>>, unixTimestamp: int64): uint64 {
+	return dayAt(config.genesisTimestamp, config.secondsPerDay, unixTimestamp);
 }

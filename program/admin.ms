@@ -18,13 +18,14 @@ import {
 import { accounts, args } from "std/solana/macro";
 import { DelegationAccounts, DelegationConfig, anyValidator, delegate, delegationProgram, onValidator } from "std/solana/magicblock";
 import { createMintPda } from "std/solana/token";
-import { GlobalConfig, PolicyError, checkPolicy, genesis } from "../rules/index";
+import { ACTS_PER_EPOCH, GlobalConfig, PolicyError, checkPolicy, genesis } from "../rules/index";
 import {
 	Block,
 	Config,
 	CreateBlockArgs,
 	HibernalError,
 	InitializeArgs,
+	NEVER_DAWNED,
 	POLICY_BYTES,
 	Phase,
 	Policy,
@@ -86,6 +87,9 @@ export function authorized(config: Mutable<Config>, authority: Pubkey): Result<P
 export function initialize(): Result<uint64, ProgramError> {
 	const a = try args<InitializeArgs>();
 	const x = try accounts<InitializeAccounts>();
+	if (a.secondsPerDay < (ACTS_PER_EPOCH as uint64) || a.slotMillis == 0 || a.turnGapSlots == 0) {
+		return Result.err(hibernalError(HibernalError.BadClock));
+	}
 	const madeConfig = try createPda<Config>(x.authority, x.config, configSeeds());
 	const madePolicy = try createPda<Policy>(x.authority, x.policy, policySeeds());
 	const madeWorld = try createPda<World>(x.authority, x.world, worldSeeds());
@@ -101,6 +105,11 @@ export function initialize(): Result<uint64, ProgramError> {
 	config.validator = a.validator;
 	config.skrMint = a.skrMint;
 	config.treasury = a.treasury;
+	config.vrfQueue = a.vrfQueue;
+	config.secondsPerDay = a.secondsPerDay;
+	config.staggerSeconds = a.staggerSeconds;
+	config.slotMillis = a.slotMillis;
+	config.turnGapSlots = a.turnGapSlots;
 	config.bump = madeConfig.bump;
 	config.mintBump = mintBump;
 	config.policyBump = madePolicy.bump;
@@ -111,6 +120,7 @@ export function initialize(): Result<uint64, ProgramError> {
 	const world = madeWorld.account.data();
 	world.global = GlobalConfig.genesis(a.genesisTimestamp);
 	world.resortEvery = a.resortEvery;
+	world.secondsPerDay = a.secondsPerDay;
 	world.bump = madeWorld.bump;
 	return Result.ok(0);
 }
@@ -161,7 +171,8 @@ export function createBlock(): Result<uint64, ProgramError> {
 	const block = made.account.data();
 	block.id = a.id;
 	block.bump = made.bump;
-	block.phase = Phase.Dawn as uint8;
+	block.phase = Phase.Idle as uint8;
+	block.dawnedEpoch = NEVER_DAWNED;
 	config.blocks = config.blocks + 1;
 	return Result.ok(a.id as uint64);
 }

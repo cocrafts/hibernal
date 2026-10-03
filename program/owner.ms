@@ -1,5 +1,6 @@
 import {
 	Mutable,
+	Owned,
 	ProgramError,
 	Signer,
 	clock,
@@ -17,6 +18,8 @@ import {
 import {
 	HibernalError,
 	PetAccount,
+	World,
+	gameSecondsAt,
 	hibernalError,
 	petSeeds,
 } from "./layout";
@@ -24,6 +27,7 @@ import {
 export struct OwnerAccounts {
 	owner: Signer;
 	pet: Mutable<PetAccount>;
+	world: Owned<World>;
 }
 
 export function ownerFailure(error: OwnerError): ProgramError {
@@ -60,7 +64,8 @@ export function talk(): Result<uint64, ProgramError> {
 export function bank(): Result<uint64, ProgramError> {
 	const x = try accounts<OwnerAccounts>();
 	const record = try ownedPet(x.owner, x.pet);
-	const now = clock().unixTimestamp as uint64;
+	const world = x.world.data();
+	const now = gameSecondsAt(world.global.genesisTimestamp, world.secondsPerDay, clock().unixTimestamp);
 	const banked = record.pet.ownerBanked(now);
 	if (!banked.ok) { return Result.err(ownerFailure(banked.error)); }
 	record.pet = banked.value;

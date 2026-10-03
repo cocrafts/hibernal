@@ -36,19 +36,22 @@ import {
 	groupMemberPointer,
 	tokenGroupMember,
 } from "std/solana/token";
-import { BlockSlot, GlobalConfig, Pet, Region, born, epochOf, genesis } from "../rules/index";
+import { BlockSlot, GlobalConfig, Pet, Region, born, genesis } from "../rules/index";
 import {
 	Block,
 	Config,
 	HibernalError,
+	MAX_PETS,
 	NO_BLOCK,
 	NO_SEAT,
 	Paid,
+	Phase,
 	PetAccount,
 	SEATS,
 	World,
 	blockSeeds,
 	configSeeds,
+	dayOf,
 	hibernalError,
 	paidSeeds,
 	petSeeds,
@@ -149,9 +152,10 @@ export function claim(): Result<uint64, ProgramError> {
 	const _heldMint = try expectTokenMint(held, mintKey);
 	const _heldBy = try expectTokenOwner(held, x.owner.key());
 	if (held.amount != 1) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
+	if (config.pets >= (MAX_PETS as uint32)) { return Result.err(hibernalError(HibernalError.PetCap)); }
 	const madePet = try createPda<PetAccount>(x.owner, x.pet, petSeeds(mintKey));
 	const madePaid = try createPda<Paid>(x.owner, x.paid, paidSeeds(mintKey));
-	const epoch = epochOf(clock().unixTimestamp as uint64, config.genesisTimestamp);
+	const epoch = dayOf(config, clock().unixTimestamp);
 	const region = (mintKey.bytes[0] % REGIONS) as int32;
 	const hatched = Pet.born(NO_BLOCK, BlockSlot.First, region as Region, epoch, GlobalConfig.genesis(config.genesisTimestamp));
 	const record = madePet.account.data();
@@ -265,7 +269,8 @@ export function place(): Result<uint64, ProgramError> {
 		}
 	}
 	if (seat < 0) { return Result.err(hibernalError(HibernalError.BlockFull)); }
-	const epoch = epochOf(clock().unixTimestamp as uint64, config.genesisTimestamp);
+	if ((block.phase as Phase) != Phase.Idle) { return Result.err(hibernalError(HibernalError.NotIdle)); }
+	const epoch = block.started != 0 ? block.epoch : dayOf(config, clock().unixTimestamp);
 	const hatched = Pet.born(block.id, seat as BlockSlot, record.pet.startRegion(), epoch, world.global);
 	record.pet = hatched.pet;
 	world.global = hatched.global;
