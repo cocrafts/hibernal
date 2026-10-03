@@ -64,7 +64,7 @@ async function commits() {
 	const program = hibernal(programAddress, authority);
 	const mint = address(readFileSync("out/admission/mints.txt", "utf8").trim().split("\n")[1].split(" ")[1]);
 	const pet = await program.address(program.seeds.pet(mint));
-	const l1Touches = async () => (await baseRead.getSignaturesForAddress(pet, { limit: 100 }).send()).length;
+	const l1Touches = async () => (await baseRead.getSignaturesForAddress(pet, { limit: 100 }).send()).filter((entry) => entry.err === null).length;
 	for (let index = 1; index <= Number(process.env.COMMITS ?? 12); index++) {
 		const before = await l1Touches();
 		try {
