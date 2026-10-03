@@ -1,0 +1,436 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	address,
+	appendTransactionMessageInstructions,
+	createKeyPairSignerFromPrivateKeyBytes,
+	createTransactionMessage,
+	getBase64EncodedWireTransaction,
+	getProgramDerivedAddress,
+	getSignatureFromTransaction,
+	pipe,
+	setTransactionMessageFeePayerSigner,
+	setTransactionMessageLifetimeUsingBlockhash,
+	signTransactionMessageWithSigners,
+} from "@solana/kit";
+import {
+	ASSOCIATED_TOKEN_PROGRAM,
+	SYSTEM_PROGRAM,
+	TOKEN_PROGRAM,
+	accountOffsets,
+	cluster,
+	computeLimit,
+	encoder,
+	fieldsOf,
+	hibernal,
+	idlAt,
+	joined,
+	json,
+	keypairAt,
+	read,
+	readU64,
+	readonly,
+	sleep,
+	u64,
+	writable,
+	writableSigner,
+} from "./hibernal.mjs";
+
+const STAGE = process.env.STAGE ?? "run";
+const PETS = Number(process.env.PETS ?? 20);
+const SEED = BigInt(process.env.SEED ?? 3);
+const POLL_MS = Number(process.env.POLL_MS ?? 3000);
+const MINUTES = Number(process.env.MINUTES ?? 22);
+const PARALLEL = Number(process.env.PARALLEL ?? 8);
+const ONRAMP_SKR = BigInt(process.env.ONRAMP_SKR ?? 200);
+const STATUS_PATH = process.env.STATUS ?? "out/localnet/behaviourStatus.json";
+const MASK = (1n << 64n) - 1n;
+const BPS = 10_000n;
+const INSURANCE_NONCE_BASE = 0xffffffff00000000n;
+const SKR_DECIMALS = 1_000_000n;
+const FOOD_SKR = [1n, 2n, 3n];
+const GROWTH_SKR_PER_STEP = 2n;
+const INSURANCE_SKR = 20n;
+const ITEM = { Food: 0, Growth: 1, Insurance: 2 };
+
+const HABITS = {
+	Devoted: { visitPercent: 90n, opensPercent: 50n, feedBelowBps: 7000n, foodTier: 2, growthPercent: 30n, growthSteps: 3, insurePercent: 100n },
+	Casual: { visitPercent: 35n, opensPercent: 10n, feedBelowBps: 5000n, foodTier: 1, growthPercent: 10n, growthSteps: 1, insurePercent: 5n },
+	Absent: { visitPercent: 0n, opensPercent: 0n, feedBelowBps: 0n, foodTier: 0, growthPercent: 0n, growthSteps: 1, insurePercent: 0n },
+};
+
+const [programArgument] = process.argv.slice(2);
+if (!programArgument) {
+	console.log("usage: STAGE=onramp|run node tools/chain/behaviour.mjs <program id>");
+	process.exit(2);
+}
+const programAddress = address(programArgument);
+const { base, baseRead, ephemeral } = cluster();
+const wallet = await keypairAt(`${process.env.HOME}/.config/solana/id.json`);
+const program = hibernal(programAddress, wallet);
+const idl = idlAt();
+const petAt = accountOffsets(idl, "PetAccount");
+const petFields = fieldsOf(idl, "Pet");
+const petTypes = Object.fromEntries(idl.types.find((entry) => entry.name === "Pet").type.fields.map((field) => [field.name, field.type]));
+const blockAt = accountOffsets(idl, "Block");
+const configAt = accountOffsets(idl, "Config");
+const errorNames = Object.fromEntries(idl.errors.map((entry) => [entry.code, entry.name]));
+
+function splitmix(state) {
+	let mixed = (state + 11400714819323198485n) & MASK;
+	mixed = ((mixed ^ (mixed >> 30n)) * 13787848793156543929n) & MASK;
+	mixed = ((mixed ^ (mixed >> 27n)) * 10723151780598845931n) & MASK;
+	return mixed ^ (mixed >> 31n);
+}
+
+function mixSeeds(first, second) {
+	return splitmix(first ^ splitmix(second));
+}
+
+function ownerKindFor(seed, index) {
+	const draw = splitmix(mixSeeds(seed, BigInt(index) + 104729n)) % 100n;
+	if (draw < 25n) return "Devoted";
+	if (draw < 70n) return "Casual";
+	return "Absent";
+}
+
+const rolled = (draw, salt, percent) => splitmix(draw ^ salt) % 100n < percent;
+const visitDraw = (seed, index, epoch) => mixSeeds(mixSeeds(seed, BigInt(index) + 130363n), epoch);
+const openDraw = (seed, index, epoch, round) => mixSeeds(visitDraw(seed, index, epoch), BigInt(round));
+
+function fieldOf(data, name) {
+	const offset = petAt.pet + petFields.offsets[name];
+	const view = new DataView(data.buffer, data.byteOffset);
+	switch (petTypes[name]) {
+		case "u64": return view.getBigUint64(offset, true);
+		case "u32": return BigInt(view.getUint32(offset, true));
+		case "u16": return BigInt(view.getUint16(offset, true));
+		case "u8": return BigInt(view.getUint8(offset));
+		case "i8": return BigInt(view.getInt8(offset));
+		case "bool": return view.getUint8(offset) !== 0 ? 1n : 0n;
+		default: throw new Error(`pet field ${name} has type ${JSON.stringify(petTypes[name])}`);
+	}
+}
+
+async function derivedSigner(master, domain, index) {
+	const bytes = createHash("sha256").update(master).update(domain).update(u64(index)).digest();
+	return await createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(bytes));
+}
+
+async function ownersOf() {
+	const owners = [];
+	if (process.env.PLAYERS) {
+		const [first, count] = process.env.PLAYERS.split(":").map(Number);
+		const master = Buffer.from(readFileSync(process.env.MASTER ?? "out/localnet/playersMaster.hex", "utf8").trim(), "hex");
+		for (let index = first; index < first + count; index++) {
+			const owner = await derivedSigner(master, "player", index);
+			const mint = await derivedSigner(master, "mint", index);
+			owners.push({ index, owner, mint: mint.address, kind: ownerKindFor(SEED, index) });
+		}
+		return owners;
+	}
+	const lines = readFileSync("out/admission/mints.txt", "utf8").trim().split("\n").slice(0, PETS);
+	for (const [index, line] of lines.entries()) {
+		owners.push({ index, owner: wallet, mint: address(line.split(" ")[1]), kind: ownerKindFor(SEED, index) });
+	}
+	return owners;
+}
+
+async function associated(owner, mint, tokenProgram = TOKEN_PROGRAM) {
+	const [found] = await getProgramDerivedAddress({ programAddress: ASSOCIATED_TOKEN_PROGRAM, seeds: [encoder.encode(owner), encoder.encode(tokenProgram), encoder.encode(mint)] });
+	return found;
+}
+
+function createAssociated(payer, owner, mint, account) {
+	return {
+		programAddress: ASSOCIATED_TOKEN_PROGRAM,
+		accounts: [writableSigner(payer), writable(account), readonly(owner), readonly(mint), readonly(SYSTEM_PROGRAM), readonly(TOKEN_PROGRAM)],
+		data: Uint8Array.of(1),
+	};
+}
+
+function mintTo(mint, destination, authority, amount) {
+	return { programAddress: TOKEN_PROGRAM, accounts: [writable(mint), writable(destination), writableSigner(authority)], data: joined(Uint8Array.of(7), u64(amount)) };
+}
+
+function decodedError(error) {
+	if (!error) return null;
+	const inner = error.InstructionError?.[1];
+	if (inner && typeof inner === "object" && "Custom" in inner) {
+		const code = Number(inner.Custom);
+		return errorNames[code] ?? `Custom ${code}`;
+	}
+	if (inner) return typeof inner === "string" ? inner : json(inner);
+	return json(error);
+}
+
+async function submit(rpc, instructions, feePayer, units = 400_000) {
+	const { value: blockhash } = await rpc.getLatestBlockhash().send();
+	const message = pipe(
+		createTransactionMessage({ version: 0 }),
+		(m) => setTransactionMessageFeePayerSigner(feePayer, m),
+		(m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+		(m) => appendTransactionMessageInstructions([computeLimit(units), ...instructions], m),
+	);
+	const transaction = await signTransactionMessageWithSigners(message);
+	const signature = getSignatureFromTransaction(transaction);
+	try {
+		await rpc.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send();
+	} catch (error) {
+		return { ok: false, error: `send: ${error.message}`, signature };
+	}
+	for (let attempt = 0; attempt < 120; attempt++) {
+		const { value } = await rpc.getSignatureStatuses([signature]).send();
+		const status = value[0];
+		if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
+			return status.err ? { ok: false, error: decodedError(status.err), signature } : { ok: true, signature };
+		}
+		await sleep(250);
+	}
+	return { ok: false, error: "unconfirmed", signature };
+}
+
+async function inParallel(items, work) {
+	let next = 0;
+	await Promise.all(Array.from({ length: Math.min(PARALLEL, items.length) }, async () => {
+		while (next < items.length) await work(items[next++]);
+	}));
+}
+
+const status = existsSync(STATUS_PATH) ? JSON.parse(readFileSync(STATUS_PATH, "utf8")) : { days: {}, failures: [] };
+status.program = programArgument;
+const dayOf = (epoch) => (status.days[epoch] ??= { visits: 0, opens: 0, actions: {}, skrSpent: 0, hbrnClaimed: "0" });
+const save = () => writeFileSync(STATUS_PATH, json(status));
+
+function recorded(epoch, kind, outcome) {
+	const day = dayOf(epoch);
+	const entry = (day.actions[kind] ??= { ok: 0, refused: {} });
+	if (outcome.ok) entry.ok += 1;
+	else {
+		entry.refused[outcome.error] = (entry.refused[outcome.error] ?? 0) + 1;
+		if (!["Full", "FedToday", "TalkedOut", "CoolingDown", "EmptyHarvest", "Insured", "Refused", "NothingOwed", "OverCap", "Dead"].includes(outcome.error)) {
+			status.failures.push({ at: new Date().toISOString(), epoch: String(epoch), kind, error: outcome.error, signature: outcome.signature });
+		}
+	}
+	return outcome;
+}
+
+async function readConfig() {
+	const holder = await read(baseRead, await program.address(program.seeds.config()));
+	const view = (offset) => readU64(holder.data, offset);
+	const keyAt = (offset) => address(encoderBase58(holder.data.subarray(offset, offset + 32)));
+	return {
+		genesis: view(configAt.genesis_timestamp),
+		secondsPerDay: view(configAt.seconds_per_day),
+		skrMint: keyAt(configAt.skr_mint),
+		treasury: keyAt(configAt.treasury),
+		hbrnMint: keyAt(configAt.hbrn_mint),
+	};
+}
+
+function encoderBase58(bytes) {
+	const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+	let value = BigInt("0x" + Buffer.from(bytes).toString("hex"));
+	let out = "";
+	while (value > 0n) {
+		out = alphabet[Number(value % 58n)] + out;
+		value /= 58n;
+	}
+	for (const byte of bytes) {
+		if (byte !== 0) break;
+		out = "1" + out;
+	}
+	return out;
+}
+
+async function tokenBalance(account) {
+	const holder = await read(baseRead, account);
+	return holder ? readU64(holder.data, 64) : 0n;
+}
+
+async function onramp(owners, config) {
+	const distinct = [...new Map(owners.map((entry) => [entry.owner.address, entry.owner])).values()];
+	await inParallel(distinct, async (owner) => {
+		const source = await associated(owner.address, config.skrMint);
+		const balance = await tokenBalance(source);
+		const target = ONRAMP_SKR * SKR_DECIMALS;
+		if (balance >= target) return;
+		const instructions = [];
+		if (!(await read(baseRead, source))) instructions.push(createAssociated(wallet, owner.address, config.skrMint, source));
+		instructions.push(mintTo(config.skrMint, source, wallet, target - balance));
+		const sent = await submit(base, instructions, wallet);
+		if (!sent.ok) console.log(`onramp ${owner.address}: ${sent.error}`);
+	});
+	console.log(`onramp: ${distinct.length} owners hold at least ${ONRAMP_SKR} SKR`);
+}
+
+async function petState(entry) {
+	const holder = await read(ephemeral, await program.address(program.seeds.pet(entry.mint)));
+	if (!holder) return null;
+	const field = (name) => fieldOf(holder.data, name);
+	return {
+		alive: field("alive") === 1n,
+		hearts: field("hearts"),
+		maxHearts: field("max_hearts"),
+		insurance: field("insurance"),
+		harvest: field("harvest"),
+		giftOwed: field("gift_owed"),
+		lineage: field("lineage_generation"),
+		blockId: Number(field("block_id")),
+	};
+}
+
+async function readWhenCloned(key) {
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (await read(ephemeral, key)) return true;
+		await sleep(500);
+	}
+	return false;
+}
+
+async function bought(entry, config, epoch, item, tier, nonce, wholeSkr, label) {
+	const source = await associated(entry.owner.address, config.skrMint);
+	const buy = recorded(epoch, `buy:${label}`, await submit(base, [await program.buy(entry.owner, entry.mint, { item, tier, nonce, skrMint: config.skrMint, source, treasury: config.treasury })], entry.owner));
+	if (!buy.ok) return;
+	dayOf(epoch).skrSpent += Number(wholeSkr);
+	const receipt = await program.receipt(entry.mint, nonce);
+	if (!(await readWhenCloned(receipt))) {
+		recorded(epoch, `consume:${label}`, { ok: false, error: "receipt never cloned" });
+		return;
+	}
+	recorded(epoch, `consume:${label}`, await submit(ephemeral, [await program.consume(entry.mint, nonce)], entry.owner));
+}
+
+async function claimed(entry, config, epoch) {
+	recorded(epoch, "commit", await submit(ephemeral, [await program.commitPet(entry.owner, entry.mint)], entry.owner));
+	await sleep(3000);
+	const destination = await associated(entry.owner.address, config.hbrnMint);
+	const before = await tokenBalance(destination);
+	const instructions = [];
+	if (!(await read(baseRead, destination))) instructions.push(createAssociated(entry.owner, entry.owner.address, config.hbrnMint, destination));
+	instructions.push(await program.claimReward(entry.owner, entry.mint, destination));
+	const outcome = recorded(epoch, "claim", await submit(base, instructions, entry.owner));
+	if (outcome.ok) {
+		const gained = (await tokenBalance(destination)) - before;
+		dayOf(epoch).hbrnClaimed = String(BigInt(dayOf(epoch).hbrnClaimed) + gained);
+	}
+}
+
+async function visit(entry, config, epoch) {
+	const habit = HABITS[entry.kind];
+	const draw = visitDraw(SEED, entry.index, epoch);
+	if (!rolled(draw, 0n, habit.visitPercent)) return;
+	const pet = await petState(entry);
+	if (!pet || !pet.alive) return;
+	dayOf(epoch).visits += 1;
+	recorded(epoch, "bank", await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner));
+	recorded(epoch, "talk", await submit(ephemeral, [await program.talk(entry.owner, entry.mint)], entry.owner));
+	const nonceBase = BigInt(Date.now()) * 1000n + BigInt(entry.index);
+	if (pet.hearts * BPS < pet.maxHearts * habit.feedBelowBps) {
+		await bought(entry, config, epoch, ITEM.Food, habit.foodTier, nonceBase, FOOD_SKR[habit.foodTier], "food");
+	}
+	if (rolled(draw, 1n, habit.growthPercent)) {
+		await bought(entry, config, epoch, ITEM.Growth, habit.growthSteps - 1, nonceBase + 1n, GROWTH_SKR_PER_STEP * BigInt(habit.growthSteps), "growth");
+	}
+	if (pet.insurance === 0n && rolled(draw, 2n, habit.insurePercent)) {
+		await bought(entry, config, epoch, ITEM.Insurance, 0, INSURANCE_NONCE_BASE + pet.lineage, INSURANCE_SKR, "insurance");
+	}
+	if (pet.giftOwed > 0n) await claimed(entry, config, epoch);
+}
+
+async function opened(entry, epoch, round) {
+	const habit = HABITS[entry.kind];
+	if (!rolled(openDraw(SEED, entry.index, epoch, round), 3n, habit.opensPercent)) return;
+	dayOf(epoch).opens += 1;
+	recorded(epoch, "open:bank", await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner));
+}
+
+async function blockState(id) {
+	const holder = await read(ephemeral, await program.address(program.seeds.block(id)));
+	if (!holder) return null;
+	return { phase: holder.data[blockAt.phase], round: holder.data[blockAt.round], epoch: readU64(holder.data, blockAt.epoch) };
+}
+
+async function run(owners, config) {
+	const kinds = owners.reduce((count, entry) => ({ ...count, [entry.kind]: (count[entry.kind] ?? 0) + 1 }), {});
+	status.owners = kinds;
+	console.log(`owners ${owners.length}: ${json(kinds)}; day ${config.secondsPerDay} s`);
+	const byBlock = new Map();
+	for (const entry of owners) {
+		const pet = await petState(entry);
+		if (!pet || pet.blockId === 0xffffffff) continue;
+		if (!byBlock.has(pet.blockId)) byBlock.set(pet.blockId, []);
+		byBlock.get(pet.blockId).push(entry);
+	}
+	status.handled ??= {};
+	const until = Date.now() + MINUTES * 60_000;
+	while (Date.now() < until) {
+		for (const [id, entries] of byBlock) {
+			const block = await blockState(id);
+			if (!block || block.phase !== 0) continue;
+			const key = `${block.epoch}:${block.round}`;
+			if (status.handled[id] === key) continue;
+			status.handled[id] = key;
+			const started = Date.now();
+			if (block.round === 0) await inParallel(entries, (entry) => visit(entry, config, block.epoch));
+			else await inParallel(entries, (entry) => opened(entry, block.epoch, block.round));
+			console.log(`${new Date().toISOString()} block ${id} before epoch ${block.epoch} round ${block.round}: ${block.round === 0 ? "visits" : "opens"} done in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+			save();
+		}
+		await sleep(POLL_MS);
+	}
+	save();
+}
+
+async function commits(owners) {
+	const entry = owners[Number(process.env.COMMIT_PET ?? 2)];
+	const pet = await program.address(program.seeds.pet(entry.mint));
+	const payer = await program.address(program.seeds.vrfPayer());
+	const landed = async () => (await baseRead.getSignaturesForAddress(pet, { limit: 200 }).send()).filter((found) => found.err === null).length;
+	const payerLamports = async () => (await read(ephemeral, payer))?.lamports ?? 0n;
+	const startLamports = await payerLamports();
+	const results = [];
+	for (let index = 1; index <= Number(process.env.COMMITS ?? 27); index++) {
+		const before = await landed();
+		const lamportsBefore = await payerLamports();
+		const sent = await submit(ephemeral, [await program.commitPet(entry.owner, entry.mint)], entry.owner);
+		let after = before;
+		for (let wait = 0; sent.ok && wait < 24 && after === before; wait++) {
+			await sleep(1000);
+			after = await landed();
+		}
+		const charged = lamportsBefore - (await payerLamports());
+		results.push({ commit: index, er: sent.ok ? "ok" : sent.error, landedOnL1: after > before, payerCharged: String(charged) });
+		console.log(`commit ${index}: ER ${sent.ok ? "ok" : sent.error}; L1 successful transactions on the pet ${before} -> ${after}; vrf-payer charged ${charged}`);
+	}
+	status.commitCap = { pet: entry.mint, results, payerSpent: String(startLamports - (await payerLamports())) };
+	save();
+}
+
+async function bankcheck(owners) {
+	const entry = owners[Number(process.env.BANK_PET ?? 0)];
+	const harvest = async () => (await petState(entry)).harvest;
+	const banked = async (label) => {
+		const before = await harvest();
+		const outcome = await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner);
+		const result = { label, at: new Date().toISOString(), outcome: outcome.ok ? "ok" : outcome.error, harvestBefore: String(before), harvestAfter: String(await harvest()) };
+		console.log(json(result));
+		return result;
+	};
+	const results = [await banked("first"), await banked("immediately again")];
+	const waitSeconds = Number(process.env.BANK_WAIT_SECONDS ?? 405);
+	await sleep(waitSeconds * 1000);
+	results.push(await banked(`after ${waitSeconds} s`));
+	status.bankCooldown = { pet: entry.mint, results };
+	save();
+}
+
+const owners = await ownersOf();
+const config = await readConfig();
+if (STAGE === "commits") await commits(owners);
+else if (STAGE === "bankcheck") await bankcheck(owners);
+else if (STAGE === "onramp") await onramp(owners, config);
+else if (STAGE === "run") {
+	await onramp(owners, config);
+	await run(owners, config);
+} else throw new Error(`unknown stage ${STAGE}`);
