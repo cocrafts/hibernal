@@ -55,7 +55,7 @@ async function hydra() {
 	const failingSeed = newCrankSeed();
 	cranks.failing = { crank: await crankAddress(failingSeed), startSlot: slot + 50n, interval: 100n, remaining: 3n };
 	await send(ephemeral, ephemeral, "crank failing", [createCrank({ sponsor, crank: cranks.failing.crank, seed: failingSeed, startSlot: cranks.failing.startSlot, interval: 100n, remaining: 3n, computeUnits: 200_000, scheduled: { programAddress: MEMO_PROGRAM, accounts: [], data: Uint8Array.of(0xff, 0xfe) } })], sponsor);
-	writeFileSync("out/flowProbeCranks.json", JSON.stringify({ createdAtSlot: slot.toString(), cranks: Object.fromEntries(Object.entries(cranks).map(([name, entry]) => [name, { ...entry, startSlot: entry.startSlot.toString(), interval: entry.interval.toString(), remaining: entry.remaining.toString() }])) }, null, 1));
+	writeFileSync(process.env.CRANKS_PATH ?? "out/flowProbeCranks.json", JSON.stringify({ createdAtSlot: slot.toString(), cranks: Object.fromEntries(Object.entries(cranks).map(([name, entry]) => [name, { ...entry, startSlot: entry.startSlot.toString(), interval: entry.interval.toString(), remaining: entry.remaining.toString() }])) }, null, 1));
 	console.log(`created at ER slot ${slot}: overdue ${cranks.overdue.crank} (start ${cranks.overdue.startSlot}, every 100, 8 runs), failing ${cranks.failing.crank} (start ${cranks.failing.startSlot}, every 100, 3 runs)`);
 }
 
