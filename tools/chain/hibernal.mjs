@@ -192,11 +192,52 @@ export function hibernal(programAddress, authority) {
 		readonly(DELEGATION_PROGRAM),
 		readonly(SYSTEM_PROGRAM),
 	];
+	const crankOf = async (blockId, seq) => {
+		const seed = joined(u64(blockId), u64(seq), encoder.encode(programAddress).subarray(0, 16));
+		return await address(pda(HYDRA_PROGRAM, "crank", seed));
+	};
 	return {
 		programAddress,
 		seeds,
 		address,
-		async initialize({ admissionGroup, engine, genesisTimestamp, claimCapPerDay, resortEvery, validator, skrMint, treasury }) {
+		crankOf,
+		async startBlock(blockId, crankSeq) {
+			return call("StartBlock", [
+				signer(authority),
+				readonly(await address(seeds.config())),
+				readonly(await address(seeds.world())),
+				writable(await address(seeds.block(blockId))),
+				writable(await address(seeds.vrfPayer())),
+				writable(await crankOf(blockId, crankSeq)),
+				writable(MAGIC_VAULT),
+				readonly(MAGIC_PROGRAM),
+				readonly(HYDRA_PROGRAM),
+			]);
+		},
+		async sweep(cranks) {
+			return call("Sweep", [
+				writable(await address(seeds.vrfPayer())),
+				writable(MAGIC_VAULT),
+				readonly(MAGIC_PROGRAM),
+				readonly(HYDRA_PROGRAM),
+				...cranks.map((crank) => writable(crank)),
+			]);
+		},
+		async initialize({
+			admissionGroup,
+			engine,
+			genesisTimestamp,
+			claimCapPerDay,
+			resortEvery,
+			validator,
+			skrMint,
+			treasury,
+			vrfQueue = VRF_EPHEMERAL_QUEUE,
+			secondsPerDay = 86_400n,
+			staggerSeconds = 600n,
+			slotMillis = 10n,
+			turnGapSlots = 100n,
+		}) {
 			return call("Initialize", [
 				writableSigner(authority),
 				writable(await address(seeds.config())),
@@ -205,7 +246,21 @@ export function hibernal(programAddress, authority) {
 				writable(await address(seeds.mint())),
 				readonly(TOKEN_PROGRAM),
 				readonly(SYSTEM_PROGRAM),
-			], key(admissionGroup), u64(engine), u64(genesisTimestamp), u64(claimCapPerDay), u64(resortEvery), key(validator), key(skrMint), key(treasury));
+			],
+				key(admissionGroup),
+				u64(engine),
+				u64(genesisTimestamp),
+				u64(claimCapPerDay),
+				u64(resortEvery),
+				key(validator),
+				key(skrMint),
+				key(treasury),
+				key(vrfQueue),
+				u64(secondsPerDay),
+				u64(staggerSeconds),
+				u64(slotMillis),
+				u64(turnGapSlots),
+			);
 		},
 		async writePolicy(offset, bytes, seal) {
 			return call("WritePolicy", [
@@ -263,13 +318,22 @@ export function hibernal(programAddress, authority) {
 			]);
 		},
 		async talk(owner, mint) {
-			return call("Talk", [signer(owner), writable(await address(seeds.pet(mint)))]);
+			return call("Talk", [signer(owner), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world()))]);
 		},
 		async bank(owner, mint) {
-			return call("Bank", [signer(owner), writable(await address(seeds.pet(mint)))]);
+			return call("Bank", [signer(owner), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world()))]);
 		},
 		async commitPet(owner, mint) {
-			return call("CommitPet", [signer(owner), writable(await address(seeds.pet(mint))), writable(MAGIC_CONTEXT), readonly(MAGIC_PROGRAM)]);
+			const validator = process.env.VALIDATOR ?? "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
+			const [feeVault] = await pda(DELEGATION_PROGRAM, "magic-fee-vault", encoder.encode(validator));
+			return call("CommitPet", [
+				signer(owner),
+				writable(await address(seeds.pet(mint))),
+				writable(await address(seeds.vrfPayer())),
+				writable(MAGIC_CONTEXT),
+				writable(feeVault),
+				readonly(MAGIC_PROGRAM),
+			]);
 		},
 		async claimReward(owner, mint, destination) {
 			return call("ClaimReward", [

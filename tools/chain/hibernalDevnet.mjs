@@ -1,26 +1,20 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { address, getProgramDerivedAddress } from "@solana/kit";
-import { cancelCrank, crankAddress, createCrank, newCrankSeed, sponsorDelegated, triggerCrank } from "./hydra.mjs";
 import {
 	accountOffsets,
 	idlAt,
 	ASSOCIATED_TOKEN_PROGRAM,
-	SLOT_HASHES,
 	SYSTEM_PROGRAM,
 	TOKEN_2022_PROGRAM,
 	TOKEN_PROGRAM,
-	VRF_EPHEMERAL_QUEUE,
-	VRF_PROGRAM,
 	cluster,
 	encoder,
 	hibernal,
 	instructionDiscriminator,
 	json,
 	keypairAt,
-	pda,
 	read,
 	readonly,
-	readU64,
 	send,
 	sleep,
 	writable,
@@ -38,15 +32,12 @@ const idl = idlAt();
 const blockAt = accountOffsets(idl, "Block");
 const policyAt = accountOffsets(idl, "Policy");
 const BLOCK_PHASE = blockAt.phase;
-const BLOCK_ROUND = blockAt.round;
-const BLOCK_CURSOR = blockAt.cursor;
-const BLOCK_EPOCH = blockAt.epoch;
 const BLOCK_MEMBERS = blockAt.members;
-const PHASES = ["Dawn", "Seeding", "Acting", "Dusk"];
+const PHASES = ["Idle", "Seeding", "Acting"];
 
 const [programArgument, policyPath] = process.argv.slice(2);
 if (!programArgument || !policyPath) {
-	console.log("usage: STAGE=setup|day|shop|claim node tools/chain/hibernalDevnet.mjs <program id> <checkpoint>.policy");
+	console.log("usage: STAGE=setup|shop|claim node tools/chain/hibernalDevnet.mjs <program id> <checkpoint>.policy (the day runs through Hydra: tools/chain/ops.mjs)");
 	process.exit(2);
 }
 const programAddress = address(programArgument);
@@ -162,65 +153,6 @@ function decodeAddress(bytes) {
 	return out;
 }
 
-async function stepInstruction(id, members) {
-	const [identity] = await pda(programAddress, "identity");
-	return {
-		programAddress,
-		accounts: [
-			writable(await program.address(program.seeds.vrfPayer())),
-			readonly(await program.address(program.seeds.config())),
-			writable(await program.address(program.seeds.world())),
-			writable(await program.address(program.seeds.block(id))),
-			readonly(await program.address(program.seeds.policy())),
-			readonly(identity),
-			writable(VRF_EPHEMERAL_QUEUE),
-			readonly(SLOT_HASHES),
-			readonly(SYSTEM_PROGRAM),
-			readonly(VRF_PROGRAM),
-			...members.map((member) => writable(member ?? SYSTEM_PROGRAM)),
-		],
-		data: instructionDiscriminator("Step"),
-	};
-}
-
-async function blockState(id) {
-	const block = await read(ephemeral, await program.address(program.seeds.block(id)));
-	return { phase: block.data[BLOCK_PHASE], round: block.data[BLOCK_ROUND], cursor: block.data[BLOCK_CURSOR], epoch: readU64(block.data, BLOCK_EPOCH), members: membersOf(block.data) };
-}
-
-async function day() {
-	const units = { Dawn: [], Seeding: [], Acting: [], Dusk: [] };
-	for (let id = 0; id < BLOCKS; id++) {
-		let current = await blockState(id);
-		const startEpoch = current.epoch;
-		console.log(`block ${id}: epoch ${startEpoch}, phase ${PHASES[current.phase]}`);
-		for (let guard = 0; guard < 80; guard++) {
-			if (current.phase === 1) {
-				await sleep(1500);
-				current = await blockState(id);
-				continue;
-			}
-			if (current.phase === 0 && current.epoch !== startEpoch) break;
-			const phase = PHASES[current.phase];
-			try {
-				const sent = await onEr(`step ${id} ${phase} r${current.round} c${current.cursor}`, [await stepInstruction(id, current.members)]);
-				units[phase].push(sent.units);
-				console.log(`  step ${phase} round ${current.round} cursor ${current.cursor}: ${sent.units} CU, ${sent.elapsed} ms`);
-			} catch (error) {
-				if (current.phase === 0) break;
-				throw error;
-			}
-			current = await blockState(id);
-		}
-		console.log(`block ${id}: now epoch ${current.epoch}, phase ${PHASES[current.phase]}`);
-	}
-	for (const [phase, list] of Object.entries(units)) {
-		if (list.length === 0) continue;
-		console.log(`${phase}: ${list.length} steps, CU min ${Math.min(...list)} max ${Math.max(...list)}`);
-	}
-}
-
-
 async function shop() {
 	const mint = mints[0];
 	const nonce = BigInt(Date.now());
@@ -262,67 +194,6 @@ async function claim() {
 	}
 }
 
-const INTERVAL_SLOTS = BigInt(process.env.INTERVAL_SLOTS ?? 300);
-const CRANK_RUNS = BigInt(process.env.CRANK_RUNS ?? 5000);
-const WATCH_MINUTES = Number(process.env.WATCH_MINUTES ?? 10);
-
-async function hydra() {
-	const sponsor = await keypairAt("out/hydraSponsor.json");
-	const delegatedNow = await sponsorDelegated({ sponsor, funder: authority, base, baseRead, ephemeralUrl: process.env.ER_RPC ?? "https://devnet-as.magicblock.app", validator, lamports: 30_000_000n, send });
-	console.log(`  sponsor ${sponsor.address} ${delegatedNow ? "delegated now" : "already delegated"}`);
-	state.cranks ??= {};
-	const slot = await ephemeral.getSlot().send();
-	for (let id = 0; id < BLOCKS; id++) {
-		if (state.cranks[id]) continue;
-		const seed = newCrankSeed();
-		const crank = await crankAddress(seed);
-		const scheduled = await stepInstruction(id, (await blockState(id)).members);
-		const sent = await send(ephemeral, ephemeral, `crank block ${id}`, [createCrank({ sponsor, crank, seed, startSlot: slot + 100n, interval: INTERVAL_SLOTS, remaining: CRANK_RUNS, computeUnits: 1_400_000, scheduled })], sponsor);
-		report(`crank block ${id} ${crank}`, sent);
-		state.cranks[id] = { crank, seed: Buffer.from(seed).toString("hex") };
-		save();
-	}
-}
-
-async function crank() {
-	const until = Date.now() + WATCH_MINUTES * 60_000;
-	const last = {};
-	let triggers = 0;
-	let failures = 0;
-	while (Date.now() < until) {
-		for (let id = 0; id < BLOCKS; id++) {
-			const entry = state.cranks?.[id];
-			if (!entry) continue;
-			try {
-				const sent = await send(ephemeral, ephemeral, `trigger ${id}`, [triggerCrank({ crank: entry.crank, caller: authority })], authority);
-				triggers++;
-				const ran = sent.logs.find((line) => line.includes(`Program ${programAddress} consumed`));
-				const refused = sent.logs.find((line) => line.includes("custom program error") || line.includes("failed:"));
-				if (ran || refused) console.log(`  block ${id} trigger: ${ran ?? refused}`);
-			} catch (error) {
-				failures++;
-			}
-			const now = await blockState(id);
-			const label = `epoch ${now.epoch} ${PHASES[now.phase]} round ${now.round} cursor ${now.cursor}`;
-			if (last[id] !== label) {
-				console.log(`${new Date().toISOString()} block ${id}: ${label}`);
-				last[id] = label;
-			}
-		}
-		await sleep(Number(INTERVAL_SLOTS) * 10);
-	}
-	console.log(`triggers sent ${triggers}, trigger transactions failed ${failures}`);
-}
-
-async function cancel() {
-	const sponsor = await keypairAt("out/hydraSponsor.json");
-	for (const [id, entry] of Object.entries(state.cranks ?? {})) {
-		report(`cancel crank ${id}`, await send(ephemeral, ephemeral, `cancel ${id}`, [cancelCrank({ sponsor, crank: entry.crank })], sponsor));
-		delete state.cranks[id];
-		save();
-	}
-}
-
-const stages = { setup, day, shop, claim, hydra, crank, cancel };
+const stages = { setup, shop, claim };
 if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}`);
 await stages[STAGE]();
