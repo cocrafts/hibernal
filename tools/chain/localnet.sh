@@ -135,8 +135,8 @@ vrfOracle() {
 hydraCranker() {
 	local cranker="$here/out/hydraCranker.json"
 	solana transfer --allow-unfunded-recipient "$(solana address -k "$cranker")" 1 -u "http://127.0.0.1:$l1Port" >/dev/null
-	RUST_LOG="${RUST_LOG:-info}" exec "$here/out/hydra/hydra-cranker" --ephemeral --keypair "$cranker" \
-		--rpc-url "http://127.0.0.1:$erPort" --ws-url "ws://127.0.0.1:$((erPort + 1))" --base-rpc-url "http://127.0.0.1:$l1Port"
+	exec "$here/tools/chain/cranker.sh" "http://127.0.0.1:$erPort" "ws://127.0.0.1:$((erPort + 1))" \
+		"http://127.0.0.1:$l1Port" "$cranker"
 }
 
 launch() {
@@ -157,13 +157,16 @@ waitForRpc() {
 	exit 1
 }
 
+stopService() {
+	local name="$1"
+	[[ -f "$state/$name.pid" ]] || return 0
+	kill "$(cat "$state/$name.pid")" 2>/dev/null || true
+	while kill -0 "$(cat "$state/$name.pid")" 2>/dev/null; do sleep 0.2; done
+	rm "$state/$name.pid"
+}
+
 down() {
-	for name in hydra-cranker vrf-oracle er l1; do
-		[[ -f "$state/$name.pid" ]] || continue
-		kill "$(cat "$state/$name.pid")" 2>/dev/null || true
-		while kill -0 "$(cat "$state/$name.pid")" 2>/dev/null; do sleep 0.2; done
-		rm "$state/$name.pid"
-	done
+	for name in hydra-cranker vrf-oracle er l1; do stopService "$name"; done
 }
 
 up() {
@@ -188,11 +191,13 @@ up() {
 case "${1:-}" in
 	up) up ;;
 	down) down ;;
+	stop) stopService "${2:?usage: localnet.sh stop <service>}" ;;
+	restart) stopService "${2:?usage: localnet.sh restart <service>}"; launch "$2"; echo "restarted $2" ;;
 	l1) l1 ;;
 	er) er ;;
 	seed) seed ;;
 	vrf-setup) vrfSetup ;;
 	vrf-oracle) vrfOracle ;;
 	hydra-cranker) hydraCranker ;;
-	*) echo "usage: localnet.sh up|down|l1|er|seed|vrf-setup|vrf-oracle|hydra-cranker" >&2; exit 2 ;;
+	*) echo "usage: localnet.sh up|down|stop <service>|restart <service>|l1|er|seed|vrf-setup|vrf-oracle|hydra-cranker" >&2; exit 2 ;;
 esac
