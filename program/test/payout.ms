@@ -7,11 +7,13 @@ import {
 	HibernalError,
 	Paid,
 	PetAccount,
+	VrfPayer,
 	configSeeds,
 	hibernalError,
 	mintSeeds,
 	paidSeeds,
 	petSeeds,
+	vrfPayerSeeds,
 } from "../layout";
 import { entry } from "../main";
 
@@ -141,6 +143,11 @@ function configHolder(mint: Pubkey): HostAccount {
 		validator: Pubkey.zero(),
 		skrMint: Pubkey.zero(),
 		treasury: Pubkey.zero(),
+		vrfQueue: Pubkey.zero(),
+		secondsPerDay: 86_400,
+		staggerSeconds: 0,
+		slotMillis: 10,
+		turnGapSlots: 100,
 	};
 	stagedConfigs.push(config);
 	const staged = scratch(blankData(Config.discriminator(), sizeof(Config) as uint64));
@@ -291,22 +298,39 @@ test "a claim is refused for a stranger, a foreign mint, another owner's wallet 
 	assert run(programKey(), movedDelegated, claim, entry).result == ProgramError.constraintSeeds().code;
 }
 
-test "the owner commits a pet through the magic program" {
+function payerHolder(): HostAccount {
+	const found = vrfPayerSeeds().findProgramAddress(programKey());
+	const data = blankData(VrfPayer.discriminator(), sizeof(VrfPayer) as uint64);
+	data[8] = found.ok ? found.value.bump : 0;
+	return holderOf(found.ok ? found.value.key : Pubkey.zero(), programKey(), data);
+}
+
+test "the owner commits a pet through the magic program and the game's payer PDA pays for it" {
+	const payer = payerHolder();
+	const feeVault = keyOf(42);
 	const accounts: HostAccount[] = [
 		wallet(owner),
 		petHolder(0, programKey()),
+		payer,
 		holderOf(Pubkey.magicContext(), programKey(), []),
+		holderOf(feeVault, programKey(), []),
 		executable(Pubkey.magicProgram()),
 	];
 	const commit = instructionData("CommitPet");
 	assert run(programKey(), accounts, commit, entry).result == 0;
 	const sent = invocations();
 	const last = sent[sent.length - 1];
-	assert last.program == Pubkey.magicProgram();
-	assert last.accounts[0].key == owner && last.accounts[0].signer;
-	assert last.accounts[2].key == petAddress().key && last.accounts[2].writable;
-	const strangers = [wallet(stranger), accounts[1], accounts[2], accounts[3]];
+	assert last.program == Pubkey.magicProgram() && last.signers == 1;
+	assert last.data.length == 4 && last.data[0] == 1 && last.data[1] == 0;
+	assert last.accounts[0].key == payer.key && last.accounts[0].signer && last.accounts[0].writable;
+	assert last.accounts[1].key == Pubkey.magicContext() && last.accounts[1].writable;
+	assert last.accounts[2].key == feeVault && last.accounts[2].writable;
+	assert last.accounts[3].key == petAddress().key && last.accounts[3].writable;
+	const strangers = [wallet(stranger), accounts[1], accounts[2], accounts[3], accounts[4], accounts[5]];
 	assert run(programKey(), strangers, commit, entry).result == ProgramError.constraintHasOne().code;
-	const wrongContext = [accounts[0], accounts[1], holderOf(keyOf(41), programKey(), []), accounts[3]];
+	const wrongContext = [accounts[0], accounts[1], accounts[2], holderOf(keyOf(41), programKey(), []), accounts[4], accounts[5]];
 	assert run(programKey(), wrongContext, commit, entry).result == ProgramError.constraintAddress().code;
+	const forgedPayer: HostAccount = { ...payer, key: keyOf(43) };
+	const impostor: HostAccount[] = [accounts[0], accounts[1], forgedPayer, accounts[3], accounts[4], accounts[5]];
+	assert run(programKey(), impostor, commit, entry).result != 0;
 }

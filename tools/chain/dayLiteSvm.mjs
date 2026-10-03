@@ -7,6 +7,8 @@ import {
 	createKeyPairSignerFromPrivateKeyBytes,
 	createTransactionMessage,
 	getAddressDecoder,
+	getAddressEncoder,
+	getProgramDerivedAddress,
 	lamports,
 	pipe,
 	setTransactionMessageFeePayerSigner,
@@ -17,19 +19,25 @@ import { createHash } from "node:crypto";
 
 const COMPUTE_BUDGET_PROGRAM = address("ComputeBudget111111111111111111111111111111");
 const VRF_PROGRAM = address("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz");
-const SYSTEM_PROGRAM = address("11111111111111111111111111111111");
+const HYDRA_PROGRAM = address("eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf");
 const COMPUTE_UNIT_LIMIT = 1_400_000;
 const CALLBACK = 0xaa;
+const BLOCK_ID = 0n;
+const NEXT_CRANK = 10;
+const ROUND_START_ACCOUNTS = [0, 1, 2, 3, 5, 6, 7, 8, 9, NEXT_CRANK, 11, 12, 13];
+const READONLY_IN_ROUND_START = new Set([2]);
 
-const [programPath, stubPath, fixturePath] = process.argv.slice(2);
-if (!programPath || !stubPath || !fixturePath) {
-	console.log("usage: node tools/chain/dayLiteSvm.mjs out/std/day.so out/std/vrfStub.so out/std/dayFixture.txt");
+const [programPath, vrfStubPath, hydraStubPath, fixturePath] = process.argv.slice(2);
+if (!programPath || !vrfStubPath || !hydraStubPath || !fixturePath) {
+	console.log("usage: node tools/chain/dayLiteSvm.mjs out/std/day.so out/std/vrfStub.so out/std/hydraStub.so out/std/dayFixture.txt");
 	process.exit(2);
 }
 
 const decoder = getAddressDecoder();
+const encoder = getAddressEncoder();
 const keyOf = (hex) => decoder.decode(Buffer.from(hex, "hex"));
-const discriminator = (name) => createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
+const snakeCase = (name) => name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+const discriminator = (name) => createHash("sha256").update(`global:${snakeCase(name)}`).digest().subarray(0, 8);
 
 const lines = readFileSync(fixturePath, "utf8").split("\n").filter(Boolean);
 const fields = (line) => line.split(" ");
@@ -45,18 +53,31 @@ const svm = new LiteSVM();
 const payer = await createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(32).fill(1));
 svm.airdrop(payer.address, lamports(100_000_000_000n));
 svm.addProgramFromFile(program, programPath);
-svm.addProgramFromFile(VRF_PROGRAM, stubPath);
+svm.addProgramFromFile(VRF_PROGRAM, vrfStubPath);
+svm.addProgramFromFile(HYDRA_PROGRAM, hydraStubPath);
 
 for (const holder of accounts) {
-	if (holder.owner === "executable") continue;
+	if (holder.owner !== "program") continue;
 	svm.setAccount({
 		address: holder.key,
 		data: holder.data,
 		executable: false,
 		lamports: lamports(1_000_000_000n),
-		programAddress: holder.owner === "program" ? program : SYSTEM_PROGRAM,
+		programAddress: program,
 		space: BigInt(holder.data.length),
 	});
+}
+
+function u64(value) {
+	const bytes = Buffer.alloc(8);
+	bytes.writeBigUInt64LE(BigInt(value));
+	return bytes;
+}
+
+async function crankAddress(seq) {
+	const seedBytes = Buffer.concat([u64(BLOCK_ID), u64(seq), Buffer.from(encoder.encode(program)).subarray(0, 16)]);
+	const [found] = await getProgramDerivedAddress({ programAddress: HYDRA_PROGRAM, seeds: ["crank", seedBytes] });
+	return found;
 }
 
 function limitData(units) {
@@ -83,29 +104,41 @@ async function send(instruction) {
 	return { failed, error: failed ? result.err().toString() : null, units: Number(meta.computeUnitsConsumed()), logs: meta.logs() };
 }
 
-const role = (holder) => holder.writable ? AccountRole.WRITABLE : AccountRole.READONLY;
+const role = (writable) => writable ? AccountRole.WRITABLE : AccountRole.READONLY;
 
-function stepInstruction() {
+async function turnInstruction(seq) {
+	const next = await crankAddress(seq + 1n);
 	return {
 		programAddress: program,
-		accounts: accounts.map((holder) => ({ address: holder.key, role: role(holder) })),
-		data: discriminator("step"),
+		accounts: accounts.map((holder) => ({ address: holder.index === NEXT_CRANK ? next : holder.key, role: role(holder.writable) })),
+		data: Buffer.concat([discriminator("Turn"), u64(seq)]),
+	};
+}
+
+async function roundStartInstruction(seq) {
+	const next = await crankAddress(seq + 1n);
+	return {
+		programAddress: program,
+		accounts: ROUND_START_ACCOUNTS.map((index) => ({
+			address: index === NEXT_CRANK ? next : accounts[index].key,
+			role: role(accounts[index].writable && !READONLY_IN_ROUND_START.has(index)),
+		})),
+		data: Buffer.concat([discriminator("RoundStart"), u64(seq)]),
 	};
 }
 
 function seededInstruction(request) {
 	const data = Buffer.alloc(1 + 8 + 32 + 8);
 	data[0] = CALLBACK;
-	discriminator("seeded").copy(data, 1);
+	discriminator("Seeded").copy(data, 1);
 	data.writeBigUInt64LE(seed, 9);
 	data.writeBigUInt64LE(BigInt(request), 41);
-	const callbackAccounts = [accounts[2], accounts[3], ...accounts.slice(10, 20)];
 	return {
 		programAddress: VRF_PROGRAM,
 		accounts: [
 			{ address: identity, role: AccountRole.READONLY },
 			{ address: program, role: AccountRole.READONLY },
-			...callbackAccounts.map((holder) => ({ address: holder.key, role: AccountRole.WRITABLE })),
+			{ address: accounts[3].key, role: AccountRole.WRITABLE },
 		],
 		data,
 	};
@@ -125,48 +158,48 @@ function differing(expectLine) {
 	return count;
 }
 
-const units = { dawn: [], seeded: [], act: [], "act, fight lost": [], "act, fight won": [], dusk: [] };
-const FIGHT_HEAD = 8 + 72;
-const FIGHTS = 8 + 568;
-const FIGHT_RECORD = 120;
-const OUTCOME = 112;
+const success = (logs, id) => logs.filter((line) => line === `Program ${id} success`).length;
+const units = { roundStart: [], seeded: [], dawn: [], act: [], "act with a fight": [], dayEnd: [] };
+const FIGHT_HEAD = 8 + 96;
 const blockData = () => svm.getAccount(accounts[3].key).data;
 let differingBytes = 0;
-let pendingKind = null;
-let steps = 0;
+let instructions = 0;
 let requests = 0;
+let creates = 0;
+let pending = null;
 for (const line of lines) {
-	const [kind, value] = fields(line);
+	const [kind, value, slot] = fields(line);
 	if (kind === "clock") {
 		const clock = svm.getClock();
 		clock.unixTimestamp = BigInt(value);
+		clock.slot = BigInt(slot);
 		svm.setClock(clock);
 		continue;
 	}
-	if (kind === "seeded") {
-		const sent = await send(seededInstruction(value));
-		if (sent.failed) { console.log(`seeded ${value}: ${sent.error}\n${sent.logs.slice(-8).join("\n")}`); process.exit(1); }
-		units.seeded.push(sent.units);
-		pendingKind = "seeded";
+	if (kind === "roundStart" || kind === "turn" || kind === "seeded") {
+		pending = { kind, value: BigInt(value) };
 		continue;
 	}
 	if (kind !== "expect") continue;
 	const label = value;
-	if (label !== "seeded") {
-		const headBefore = blockData()[FIGHT_HEAD];
-		const sent = await send(stepInstruction());
-		if (sent.failed) { console.log(`${label} step ${steps}: ${sent.error}\n${sent.logs.slice(-60).join("\n")}`); process.exit(1); }
-		requests += sent.logs.filter((line) => line === `Program ${VRF_PROGRAM} success`).length;
-		const after = blockData();
-		const fought = label === "act" && after[FIGHT_HEAD] !== headBefore;
-		const won = fought && after[FIGHTS + ((after[FIGHT_HEAD] + 31) % 32) * FIGHT_RECORD + OUTCOME] === 1;
-		units[fought ? (won ? "act, fight won" : "act, fight lost") : label].push(sent.units);
+	const headBefore = blockData()[FIGHT_HEAD];
+	const instruction = pending.kind === "turn"
+		? await turnInstruction(pending.value)
+		: pending.kind === "roundStart" ? await roundStartInstruction(pending.value) : seededInstruction(pending.value);
+	const sent = await send(instruction);
+	if (sent.failed) {
+		console.log(`${label} ${pending.kind} ${pending.value}: ${sent.error}\n${sent.logs.slice(-40).join("\n")}`);
+		process.exit(1);
 	}
-	steps++;
+	requests += success(sent.logs, VRF_PROGRAM) - (pending.kind === "seeded" ? 1 : 0);
+	creates += success(sent.logs, HYDRA_PROGRAM);
+	const fought = label === "act" && blockData()[FIGHT_HEAD] !== headBefore;
+	units[fought ? "act with a fight" : label].push(sent.units);
+	instructions++;
 	differingBytes += differing(line);
-	pendingKind = null;
+	pending = null;
 }
 
 const range = (values) => values.length === 0 ? "none" : `${Math.min(...values)}–${Math.max(...values)} CU (mean ${Math.round(values.reduce((a, b) => a + b, 0) / values.length)})`;
-console.log(`day loop on LiteSVM: ${steps} instructions, ${differingBytes} bytes differing from the host simulator, ${requests} VRF requests accepted by the stub with the payer PDA signing (no wallet signs a step)`);
+console.log(`relay day on LiteSVM: ${instructions} instructions, ${differingBytes} bytes differing from the host simulator, ${requests} VRF requests and ${creates} Hydra creates accepted by the stubs with the payer PDA signing (no wallet signs a step)`);
 for (const [kind, values] of Object.entries(units)) console.log(`  ${kind.padEnd(16)} ${values.length} × ${range(values)}`);

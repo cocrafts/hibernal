@@ -5,6 +5,7 @@ import { delegationProgram } from "std/solana/magicblock";
 import { EPOCH_SECONDS, POLICY_FORMAT, POLICY_MAGIC } from "../../rules/index";
 import {
 	HibernalError,
+	MAX_PETS,
 	NO_BLOCK,
 	NO_SEAT,
 	Op,
@@ -44,7 +45,7 @@ function entry(): void {
 
 const ENGINE: uint64 = 0x8000000000000007;
 const GENESIS: uint64 = 1_700_000_000;
-const CONFIG_BYTES: int32 = 8 + 232;
+const CONFIG_BYTES: int32 = 8 + 296;
 
 function keyOf(seed: uint8, salt: uint8): Pubkey {
 	let key = Pubkey.zero();
@@ -87,6 +88,10 @@ function u32At(data: uint8[], offset: int32): uint32 {
 	let value: uint32 = 0;
 	for (let i = 3; i >= 0; i--) { value = (value << 8) | (data[offset + i] as uint32); }
 	return value;
+}
+
+function setU32At(data: uint8[], offset: int32, value: uint32): void {
+	for (let i = 0; i < 4; i++) { data[offset + i] = ((value >> ((i * 8) as uint32)) & 255) as uint8; }
 }
 
 function u64At(data: uint8[], offset: int32): uint64 {
@@ -199,6 +204,11 @@ function initializeData(engine: uint64): uint8[] {
 	pushKey(bytes, validator);
 	pushKey(bytes, keyOf(7, 0));
 	pushKey(bytes, keyOf(8, 0));
+	pushKey(bytes, keyOf(10, 0));
+	pushU64(bytes, EPOCH_SECONDS);
+	pushU64(bytes, 0);
+	pushU64(bytes, 10);
+	pushU64(bytes, 100);
 	return bytes;
 }
 
@@ -345,6 +355,8 @@ const POLICY_WRITTEN: int32 = 8 + 8;
 const POLICY_SEALED: int32 = 8 + 12;
 const POLICY_BLOB: int32 = 8 + 16;
 const BLOCK_FILLED: int32 = 8 + 4;
+const BLOCK_PHASE: int32 = 8 + 5;
+const BLOCK_DAWNED: int32 = 8 + 88;
 
 test "initialize creates config, policy, world and the HBRN mint it signs for" {
 	now(0);
@@ -447,6 +459,21 @@ test "claim admits a group member once and refuses mints outside the group" {
 	const wrongProgram = claimAccounts(made, owner, legacy, heldAccount(keyOf(154, 7), legacy.key, owner, 1));
 	assert claimRan(made, wrongProgram) != 0;
 	assert u32At(made[1].data, CONFIG_PETS) == 2;
+}
+
+test "claims stop at the pet cap, which the re-sort bitmap is sized for" {
+	now(3);
+	const made = initialized();
+	setU32At(made[1].data, CONFIG_PETS, (MAX_PETS - 1) as uint32);
+	const last = admissionMint(admissionMintKey(0), group);
+	const lastAccounts = claimAccounts(made, owner, last, heldAccount(keyOf(150, 7), last.key, owner, 1));
+	assert claimRan(made, lastAccounts) == 0;
+	assert u32At(lastAccounts[4].data, PET_ORDINAL) == (MAX_PETS - 1) as uint32;
+	assert u32At(made[1].data, CONFIG_PETS) == MAX_PETS as uint32;
+	const over = admissionMint(admissionMintKey(1), group);
+	const overAccounts = claimAccounts(made, owner, over, heldAccount(keyOf(151, 7), over.key, owner, 1));
+	assert claimRan(made, overAccounts) == hibernalError(HibernalError.PetCap).code;
+	assert overAccounts[4].lamports == 0 && u32At(made[1].data, CONFIG_PETS) == MAX_PETS as uint32;
 }
 
 function delegation(payer: Pubkey, made: HostAccount[], delegated: HostAccount): HostAccount[] {
@@ -558,6 +585,12 @@ test "place seats pets in order, births them into the world and stops at ten" {
 	made[3].data[WORLD_RESORTING] = 1;
 	assert placeRan(made, authority, spare, late) == hibernalError(HibernalError.Resorting).code;
 	made[3].data[WORLD_RESORTING] = 0;
+	assert spare[0].data[BLOCK_PHASE] == 0 && u64At(spare[0].data, BLOCK_DAWNED) == 0xffffffffffffffff;
+	spare[0].data[BLOCK_PHASE] = 1;
+	assert placeRan(made, authority, spare, late) == hibernalError(HibernalError.NotIdle).code;
+	spare[0].data[BLOCK_PHASE] = 2;
+	assert placeRan(made, authority, spare, late) == hibernalError(HibernalError.NotIdle).code;
+	spare[0].data[BLOCK_PHASE] = 0;
 	assert placeRan(made, authority, spare, late) == 0;
 	assert u32At(late[4].data, PET_BLOCK) == 1 && u32At(made[3].data, WORLD_PLACED) == (SEATS + 1) as uint32;
 }

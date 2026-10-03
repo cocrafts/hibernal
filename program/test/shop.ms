@@ -181,6 +181,11 @@ function configHolder(): HostAccount {
 		validator: validator,
 		skrMint: skrMint,
 		treasury: treasury,
+		vrfQueue: Pubkey.zero(),
+		secondsPerDay: 86_400,
+		staggerSeconds: 0,
+		slotMillis: 10,
+		turnGapSlots: 100,
 	});
 	const data = staged(Config.discriminator(), sizeof(Config) as uint64, stageConfigEntry);
 	return { ...account(address(configSeeds()), programKey(), data, 1_000_000), writable: false };
@@ -198,6 +203,8 @@ function worldHolder(): HostAccount {
 		pad: 0,
 		unplaced: 0,
 		placed: 0,
+		pad2: 0,
+		secondsPerDay: 86_400,
 	});
 	const data = staged(World.discriminator(), sizeof(World) as uint64, stageWorldEntry);
 	return { ...account(address(worldSeeds()), programKey(), data, 1_000_000), writable: false };

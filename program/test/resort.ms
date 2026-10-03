@@ -14,7 +14,7 @@ import {
 	minted,
 	sellPrice,
 } from "../../rules/index";
-import { Block, Config, HibernalError, PetAccount, Resort, World, hibernalError } from "../layout";
+import { Block, Config, HibernalError, MAX_PETS, PetAccount, RESORT_BITMAP_BYTES, Resort, World, hibernalError } from "../layout";
 import { resortAssign, resortBegin, resortClear, resortFinish } from "../resort";
 
 const COMBAT: uint8 = 2;
@@ -398,4 +398,22 @@ test "finishing early is refused and a listing goes back to its seller" {
 	const price = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1).sellPrice();
 	assert price > 0 && peek(state[PETS + 2], peekPetEntry)[2] == before + price;
 	assert finished() == codeOf(HibernalError.Unfinished);
+}
+
+const RESORT_BITMAP: int32 = 8 + 32;
+
+test "the last pet under the cap is assigned through the last bitmap cell" {
+	fixture();
+	const last = (MAX_PETS - 1) as uint32;
+	state[PETS + 10] = petHolder(last, 1, 0, 310, true);
+	state[CONFIG] = configHolder(MAX_PETS as uint32, 2);
+	state[BLOCKS + 1] = blockHolder(1, 10);
+	assert RESORT_BITMAP_BYTES * 8 == MAX_PETS;
+	assert begun() == 0;
+	assert cleared(0) == 0 && cleared(1) == 0;
+	assert assigned(0, 0, 0, range(10, 15)) == 0;
+	const cell = RESORT_BITMAP_BYTES - 1;
+	assert state[RESORT].data[RESORT_BITMAP + cell] == 0x80;
+	assert RESORT_BITMAP + RESORT_BITMAP_BYTES <= 8 + (sizeof(Resort) as int32) && state[RESORT].data.length == 8 + (sizeof(Resort) as int32);
+	assert assigned(0, 0, 5, [10, 15, 16, 17, 18]) == codeOf(HibernalError.AlreadyAssigned);
 }

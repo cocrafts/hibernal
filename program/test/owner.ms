@@ -1,7 +1,7 @@
 import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked } from "std/solana";
 import { HostAccount, run, setClock } from "std/solana/host";
 import { BlockSlot, GlobalConfig, Pet, Region, born } from "../../rules/index";
-import { HibernalError, PetAccount, hibernalError, petSeeds } from "../layout";
+import { HibernalError, PetAccount, World, hibernalError, petSeeds } from "../layout";
 import { entry } from "../main";
 
 
@@ -20,6 +20,7 @@ const mint = keyOf(3);
 
 const stagedPets: PetAccount[] = [];
 const seenPets: PetAccount[] = [];
+const stagedWorlds: World[] = [];
 
 function overlay(): uint64 {
 	const holder = unchecked(0);
@@ -29,6 +30,11 @@ function overlay(): uint64 {
 function stagePetEntry(): void {
 	const at = overlay() as Ptr<PetAccount>;
 	at[] = stagedPets[stagedPets.length - 1];
+}
+
+function stageWorldEntry(): void {
+	const at = overlay() as Ptr<World>;
+	at[] = stagedWorlds[stagedWorlds.length - 1];
 }
 
 function seePetEntry(): void {
@@ -107,6 +113,30 @@ function petHolder(pet: Pet): HostAccount {
 	};
 }
 
+function worldHolder(genesis: uint64, secondsPerDay: uint64): HostAccount {
+	stagedWorlds.push({
+		global: GlobalConfig.genesis(genesis),
+		epoch: 0,
+		resortEvery: 0,
+		rotation: 0,
+		resortedEpoch: 0,
+		bump: 0,
+		resorting: 0,
+		pad: 0,
+		unplaced: 0,
+		placed: 0,
+		pad2: 0,
+		secondsPerDay: secondsPerDay,
+	});
+	const holder = scratch(blankData(World.discriminator(), sizeof(World) as uint64));
+	run(programKey(), holder, [], stageWorldEntry);
+	return { ...holder[0], key: keyOf(60), writable: false };
+}
+
+function realDay(): HostAccount {
+	return worldHolder(0, 86_400);
+}
+
 function signerOf(key: Pubkey): HostAccount {
 	return {
 		key: key,
@@ -139,15 +169,15 @@ function noon(seconds: int64): void {
 }
 
 test "only the pet's owner can act on it" {
-	const accounts = [signerOf(stranger), petHolder({ ...newborn(), hearts: 1 })];
+	const accounts = [signerOf(stranger), petHolder({ ...newborn(), hearts: 1 }), realDay()];
 	assert run(programKey(), accounts, instructionData("Talk"), entry).result == ProgramError.constraintHasOne().code;
-	const unsigned: HostAccount[] = [{ ...signerOf(owner), signer: false }, petHolder(newborn())];
+	const unsigned: HostAccount[] = [{ ...signerOf(owner), signer: false }, petHolder(newborn()), realDay()];
 	assert run(programKey(), unsigned, instructionData("Talk"), entry).result ==
 		ProgramError.accountNotSigner().code;
 }
 
 test "talking bonds twice a day" {
-	const accounts = [signerOf(owner), petHolder(newborn())];
+	const accounts = [signerOf(owner), petHolder(newborn()), realDay()];
 	assert run(programKey(), accounts, instructionData("Talk"), entry).result == 0;
 	assert run(programKey(), accounts, instructionData("Talk"), entry).result == 0;
 	assert petOf(accounts[1]).talksToday == 2;
@@ -157,16 +187,31 @@ test "talking bonds twice a day" {
 test "banking moves half the harvest to the burrow, then cools down" {
 	noon(1_000_000);
 	const rich: Pet = { ...newborn(), harvest: 1000, burrow: 0 };
-	const accounts = [signerOf(owner), petHolder(rich)];
+	const accounts = [signerOf(owner), petHolder(rich), realDay()];
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
 	const banked = petOf(accounts[1]);
 	assert banked.harvest == 500 && banked.burrow == 500 && banked.ownerBankedAt == 1_000_000;
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == code(HibernalError.CoolingDown);
-	const empty = [signerOf(owner), petHolder({ ...newborn(), harvest: 0 })];
+	const empty = [signerOf(owner), petHolder({ ...newborn(), harvest: 0 }), realDay()];
 	assert run(programKey(), empty, instructionData("Bank"), entry).result == code(HibernalError.EmptyHarvest);
 }
 
 test "a dead pet cannot be talked to" {
-	const accounts = [signerOf(owner), petHolder({ ...newborn(), alive: false, hearts: 0 })];
+	const accounts = [signerOf(owner), petHolder({ ...newborn(), alive: false, hearts: 0 }), realDay()];
 	assert run(programKey(), accounts, instructionData("Talk"), entry).result == code(HibernalError.Dead);
+}
+
+test "on a compressed day the bank cooldown runs in game time: 8 game hours are 400 wall seconds at 1,200 s a day" {
+	const genesis: uint64 = 1_700_000_000;
+	const rich: Pet = { ...newborn(), harvest: 1000, burrow: 0 };
+	const accounts = [signerOf(owner), petHolder(rich), worldHolder(genesis, 1_200)];
+	noon((genesis + 1_000) as int64);
+	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
+	assert petOf(accounts[1]).ownerBankedAt == 72_000;
+	noon((genesis + 1_399) as int64);
+	assert run(programKey(), accounts, instructionData("Bank"), entry).result == code(HibernalError.CoolingDown);
+	noon((genesis + 1_400) as int64);
+	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
+	const twice = petOf(accounts[1]);
+	assert twice.ownerBankedAt == 100_800 && twice.harvest == 250 && twice.burrow == 750;
 }
