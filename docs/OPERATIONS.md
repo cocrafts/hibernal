@@ -33,6 +33,8 @@ Devnet: the same commands with `source out/devnet/env.sh`:
 - the DevAdmission group, and `GROUP_KEYPAIR=out/devGroupMint.json` for `players.mjs`;
 - a cranker started against `https://devnet-as.magicblock.app` with `--base-rpc-url https://rpc.magicblock.app/devnet`.
 
+The localnet keeps every slot. With 50,000 pets the L1 ledger reached 31 GB and the ER storage 20 GB in about 20 hours. On 2026-10-03 at 20:04Z the disk filled: L1 died, and the ER, the devnet ops loop and the owner lane failed their writes. `localnet.sh` does not cap either store yet.
+
 `Config.secondsPerDay` sets the length of a game day: 86,400 on mainnet, compressed on localnet and devnet. It is fixed at `Initialize`, which refuses a day shorter than four seconds, a zero slot time and a zero turn gap.
 
 ## 3. Services and what they repair
@@ -40,7 +42,7 @@ Devnet: the same commands with `source out/devnet/env.sh`:
 | Service | Does | If it stops |
 |---|---|---|
 | `gameCranker.mjs` (§11); `hydra-cranker` under `tools/chain/cranker.sh` as a backup (restart every 5 min and on exit, `WORKAROUND.md`) | fires each due crank (one trigger per step) | pets stop; restarted, it fires every overdue crank at once and the block catches up (measured: 6 min down, a round 2.4 min late, caught up in 6 s) |
-| `ops.mjs STAGE=run`, every `TICK_SECONDS` | places claimed pets into Idle blocks (creating and delegating blocks as needed); `StartBlock` for new blocks; `Sweep` of spent cranks (returns their rent to the vrf-payer); watchdog; re-sort when every block is Idle; tops up the vrf-payer from its delegated funder; writes `opsStatus.json` | new pets wait unplaced, spent cranks keep their rent and fill the cranker's cache, a broken chain stays broken |
+| `ops.mjs STAGE=run`, every `TICK_SECONDS` | places claimed pets into Idle blocks (creating blocks as needed, and delegating every created block that is not delegated yet, including one an interrupted run left behind); `StartBlock` for new blocks; `Sweep` of spent cranks (returns their rent to the vrf-payer); watchdog; re-sort when every block is Idle; tops up the vrf-payer from its delegated funder; writes `opsStatus.json` | new pets wait unplaced, spent cranks keep their rent and fill the cranker's cache, a broken chain stays broken. Measured on devnet (500 pets): down 5 h 50 min after a full disk, the vrf-payer ran dry with 463 spent cranks unswept and every chain stalled; restarted, it swept and topped up in about 25 s and the overdue blocks went from 33 to 1 within a minute |
 | VRF oracle | answers each round's request | the block's first turn re-schedules itself every 1.5 s and requests again after 30 s; the round starts when an answer arrives (measured: oracle down 2.5 min across a round start, the round ran 2 s after it came back, the day-end turn 7 s after) |
 
 The watchdog resumes a block whose live crank is gone and whose due slot is more than `WATCHDOG_SLOTS` past. `StartBlock` refuses a chain that is still alive (`RESUME_GRACE_SLOTS` = 3,000).
@@ -59,10 +61,14 @@ From `SOLANA.md` §7 items 20–21:
 | Item | Who pays | Amount |
 |---|---|---|
 | A pet (PetAccount + Paid + delegation records + fees) | the player | 5,333,840 lamports on devnet |
-| A block (4,896 bytes + delegation records) | the game | ~0.0255 SOL rent + records |
+| A block (4,896 bytes + delegation records) | the game | 0.025522 SOL rent + 0.002164 records = 0.0277 SOL, i.e. 0.0028 SOL per pet |
+| The program (453,520-byte file; `deploy.mjs` `HEADROOM` 1.2 gives 544,221 bytes of program data) | the game, once, as rent | 2.7653 SOL; with `HEADROOM=1` 2.3047 SOL. The deploy buffer needs the same again, refunded when the deploy ends |
+| Bootstrap accounts: Config 304 B, Policy 4,792 B, World + records, HBRN mint, vrf-payer + records | the game, once | 0.0022 + 0.0250 + 0.0034 + 0.0011 + 0.0029 SOL; the Resort account (~10 KB) is about 0.05 SOL by size, not measured |
 | A crank in flight (RoundStart 13 accounts / Turn 24 accounts) | the vrf-payer, returned by `Sweep` | ~20.5k / ~32.1k lamports |
 | A commit of a pet (CommitPet, paid by the vrf-payer with the validator's fee vault) | the game | free for the first 25 commits a delegation, then 100,000 lamports |
-| ER transactions, VRF on the ephemeral queue | — | 0 |
+| ER transactions, VRF on the ephemeral queue | — | 0 (MagicBlock's pricing page; the devnet cranker's 0.01 SOL did not move over thousands of triggers) |
+
+Rent is the same on mainnet and devnet (`solana rent` on both, 2026-10-03): about 5,080 lamports per byte.
 
 ## 6. Economy measured on the localnet
 
@@ -119,3 +125,4 @@ The vrf-payer held 1.287 SOL in the ER for this world's cranks in flight.
 Measured on the localnet with 5,000 blocks (50,000 pets) on one shared machine:
 - After `hydra-cranker` was stopped across a round start, it cleared the backlog at 670–723 triggers/s with 0 failed sends.
 - In a normal round, ~100 triggers/s, worst lag 1,050 slots (10.5 s), typically 0.2–4.5 s, 83 retries, 0 failed sends, at 30% of a core. `hydra-cranker` 0.2.0 gave 30–66 s lag and fell to ~100 triggers/s within five minutes of churn.
+- Over 72 minutes across days 4–6 (2026-10-03 08:21–09:34Z, machine load ~34): 347,000 triggers, median lag 3 s, p95 2 min. Three stalls reached 84 s to 4.3 min (08:48–08:51Z, 09:11–09:15Z, 09:49Z): in flight sat near 500, and retries grew by 28,000 in four minutes. Not explained yet; the ER may be slow, or the cranker may be the cause.
