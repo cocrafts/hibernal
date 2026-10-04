@@ -416,12 +416,22 @@ async function createBlocks(count) {
 		const batch = ids.slice(start, start + BLOCKS_PER_TRANSACTION);
 		await onL1(`create blocks ${batch.join(",")}`, await Promise.all(batch.map((id) => program.createBlock(id))));
 	}
+	note("blocks", `created blocks ${first}..${first + count - 1}`);
+}
+
+async function delegateBlocks() {
+	const config = await read(baseRead, await configAddress());
+	const count = readU32(config.data, configAt.blocks);
+	const keys = await Promise.all(Array.from({ length: count }, (_, id) => blockAddress(id)));
+	const holders = await readMany(baseRead, keys);
+	const ids = holders.flatMap((holder, id) => (holder && !delegated(holder) ? [id] : []));
+	if (ids.length === 0) return;
 	const batches = [];
 	for (let start = 0; start < ids.length; start += BLOCKS_PER_TRANSACTION) batches.push(ids.slice(start, start + BLOCKS_PER_TRANSACTION));
 	await inParallel(batches, async (batch) => {
 		await onL1(`delegate blocks ${batch.join(",")}`, await Promise.all(batch.map((id) => program.delegateBlock(id))));
 	});
-	note("blocks", `created and delegated blocks ${first}..${first + count - 1}`);
+	note("blocks", `delegated ${ids.length} blocks, ${ids[0]}..${ids[ids.length - 1]}`);
 	await fundVrfPayer();
 }
 
@@ -434,12 +444,14 @@ async function blocks() {
 	const holders = await readCloned(delegatedKeys);
 	const pets = holders.map((holder, index) => (holder ? petOf(delegatedKeys[index], holder) : null)).filter(Boolean);
 	const unplaced = pets.filter((pet) => pet.blockId === NO_BLOCK);
+	await delegateBlocks();
 	let current = await allBlocks();
 	const idle = (block) => !block.missing && block.phase === 0;
 	const freeSeats = current.filter(idle).reduce((total, block) => total + block.members.filter((member) => member === null).length, 0);
 	const needed = Math.ceil(Math.max(0, unplaced.length - freeSeats) / SEATS);
 	if (needed > 0) {
 		await createBlocks(needed);
+		await delegateBlocks();
 		current = await allBlocks();
 	}
 	const plan = [];
