@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { address, getBase58Decoder, getProgramDerivedAddress } from "@solana/kit";
 import {
 	DELEGATION_PROGRAM,
@@ -73,7 +73,12 @@ state.pets ??= {};
 state.swept ??= {};
 state.resumes ??= [];
 state.events ??= [];
-const save = () => writeFileSync(STATE_PATH, json(state));
+const saveSnapshot = (path, snapshot) => {
+	const temporary = `${path}.${process.pid}.tmp`;
+	writeFileSync(temporary, json(snapshot));
+	renameSync(temporary, path);
+};
+const save = () => saveSnapshot(STATE_PATH, state);
 const onL1 = (step, instructions, units) => send(base, baseRead, step, instructions, authority, units, false);
 const onEr = (step, instructions, units) => send(ephemeral, ephemeral, step, instructions, authority, units, false);
 const base58 = getBase58Decoder();
@@ -674,12 +679,13 @@ async function status() {
 		relayInstructions: { startBlock: supportsRelay(), sweep: supportsSweep() },
 		events: state.events.slice(-20),
 	};
-	writeFileSync(STATUS_PATH, json(snapshot));
+	saveSnapshot(STATUS_PATH, snapshot);
 	save();
 	return snapshot;
 }
 
 async function run() {
+	if (delegated(await read(baseRead, await vrfPayerAddress()))) await sweep();
 	await bootstrap();
 	for (;;) {
 		const started = Date.now();
