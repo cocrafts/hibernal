@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import {
 	address,
 	appendTransactionMessageInstructions,
@@ -42,6 +42,7 @@ const SEED = BigInt(process.env.SEED ?? 3);
 const POLL_MS = Number(process.env.POLL_MS ?? 3000);
 const MINUTES = Number(process.env.MINUTES ?? 22);
 const PARALLEL = Number(process.env.PARALLEL ?? 8);
+const BLOCK_PARALLEL = Number(process.env.BLOCK_PARALLEL ?? 1);
 const ONRAMP_SKR = BigInt(process.env.ONRAMP_SKR ?? 200);
 const STATUS_PATH = process.env.STATUS ?? "out/localnet/behaviourStatus.json";
 const MASK = (1n << 64n) - 1n;
@@ -190,9 +191,9 @@ async function submit(rpc, instructions, feePayer, units = 400_000) {
 	return { ok: false, error: "unconfirmed", signature };
 }
 
-async function inParallel(items, work) {
+async function inParallel(items, work, parallel = PARALLEL) {
 	let next = 0;
-	await Promise.all(Array.from({ length: Math.min(PARALLEL, items.length) }, async () => {
+	await Promise.all(Array.from({ length: Math.min(parallel, items.length) }, async () => {
 		while (next < items.length) await work(items[next++]);
 	}));
 }
@@ -200,7 +201,11 @@ async function inParallel(items, work) {
 const status = existsSync(STATUS_PATH) ? JSON.parse(readFileSync(STATUS_PATH, "utf8")) : { days: {}, failures: [] };
 status.program = programArgument;
 const dayOf = (epoch) => (status.days[epoch] ??= { visits: 0, opens: 0, actions: {}, skrSpent: 0, hbrnClaimed: "0" });
-const save = () => writeFileSync(STATUS_PATH, json(status));
+const save = () => {
+	const temporary = `${STATUS_PATH}.${process.pid}.tmp`;
+	writeFileSync(temporary, json(status));
+	renameSync(temporary, STATUS_PATH);
+};
 
 function recorded(epoch, kind, outcome) {
 	const day = dayOf(epoch);
@@ -259,7 +264,7 @@ async function onramp(owners, config) {
 		if (!(await read(baseRead, source))) instructions.push(createAssociated(wallet, owner.address, config.skrMint, source));
 		instructions.push(mintTo(config.skrMint, source, wallet, target - balance));
 		const sent = await submit(base, instructions, wallet);
-		if (!sent.ok) console.log(`onramp ${owner.address}: ${sent.error}`);
+		if (!sent.ok) throw new Error(`onramp ${owner.address}: ${sent.error}; signature ${sent.signature}`);
 	});
 	console.log(`onramp: ${distinct.length} owners hold at least ${ONRAMP_SKR} SKR`);
 }
@@ -354,29 +359,29 @@ async function blockState(id) {
 async function run(owners, config) {
 	const kinds = owners.reduce((count, entry) => ({ ...count, [entry.kind]: (count[entry.kind] ?? 0) + 1 }), {});
 	status.owners = kinds;
-	console.log(`owners ${owners.length}: ${json(kinds)}; day ${config.secondsPerDay} s`);
 	const byBlock = new Map();
-	for (const entry of owners) {
+	await inParallel(owners, async (entry) => {
 		const pet = await petState(entry);
-		if (!pet || pet.blockId === 0xffffffff) continue;
+		if (!pet || pet.blockId === 0xffffffff) return;
 		if (!byBlock.has(pet.blockId)) byBlock.set(pet.blockId, []);
 		byBlock.get(pet.blockId).push(entry);
-	}
+	}, BLOCK_PARALLEL);
+	console.log(`owners ${owners.length}: ${json(kinds)}; day ${config.secondsPerDay} s`);
 	status.handled ??= {};
 	const until = Date.now() + MINUTES * 60_000;
 	while (Date.now() < until) {
-		for (const [id, entries] of byBlock) {
+		await inParallel([...byBlock], async ([id, entries]) => {
 			const block = await blockState(id);
-			if (!block || block.phase !== 0) continue;
+			if (!block || block.phase !== 0) return;
 			const key = `${block.epoch}:${block.round}`;
-			if (status.handled[id] === key) continue;
+			if (status.handled[id] === key) return;
 			status.handled[id] = key;
 			const started = Date.now();
 			if (block.round === 0) await inParallel(entries, (entry) => visit(entry, config, block.epoch));
 			else await inParallel(entries, (entry) => opened(entry, block.epoch, block.round));
 			console.log(`${new Date().toISOString()} block ${id} before epoch ${block.epoch} round ${block.round}: ${block.round === 0 ? "visits" : "opens"} done in ${((Date.now() - started) / 1000).toFixed(1)} s`);
 			save();
-		}
+		}, BLOCK_PARALLEL);
 		await sleep(POLL_MS);
 	}
 	save();
