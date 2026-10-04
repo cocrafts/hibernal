@@ -9,6 +9,8 @@ devnet="${DEVNET_RPC:-https://rpc.magicblock.app/devnet}"
 wallet="${WALLET:-$HOME/.config/solana/id.json}"
 l1Port="${L1_PORT:-18899}"
 erPort="${ER_PORT:-17799}"
+ledgerShreds="${L1_LEDGER_SHREDS:-1000000}"
+erLedgerBytes="${ER_LEDGER_BYTES:-2147483648}"
 
 programs=(
 	delegation:DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh
@@ -35,7 +37,7 @@ dumpPrograms() {
 
 l1() {
 	dumpPrograms
-	local args=(--reset --ledger "$state/l1Ledger" --rpc-port "$l1Port" --mint "$(solana address -k "$wallet")" --faucet-port "$((l1Port + 1001))" --limit-ledger-size 10000000)
+	local args=(--reset --ledger "$state/l1Ledger" --rpc-port "$l1Port" --mint "$(solana address -k "$wallet")" --faucet-port "$((l1Port + 1001))" --limit-ledger-size "$ledgerShreds")
 	local authority
 	authority="$(solana address -k "$wallet")"
 	for entry in "${programs[@]}"; do
@@ -69,10 +71,12 @@ er() {
 	[accountsdb]
 	database-size = 3_221_225_472
 	index-size = 134_217_728
+	max-snapshots = 2
 	reset = true
 
 	[ledger]
 	block-time = "10ms"
+	size = $erLedgerBytes
 	reset = true
 
 	[task-scheduler]
