@@ -79,8 +79,11 @@ export struct Pet {
 	gear: Gear;
 	grudgeSlot: uint8;
 	rage: uint8;
+	ownerFirst: uint8;
+	ownerSecond: uint8;
+	skin: uint8;
+	wild: boolean;
 	pad: uint8;
-	pad2: uint32;
 }
 
 export struct GlobalConfig {
@@ -89,8 +92,9 @@ export struct GlobalConfig {
 	rewardEpoch: uint64;
 	totalWorkPower: uint64;
 	recycledPending: uint64;
-	protocolPending: uint64;
-	burned: uint64;
+	treasury: uint64;
+	itemReserve: uint64;
+	emitted: uint64;
 	livingPets: uint32;
 	floorSlots: uint32;
 }
@@ -141,11 +145,19 @@ export function withTree(this pet: Pet, tree: Tree): Pet {
 	return planted.withTreeBonuses(Stats.built(tree, pet.level as int32, pet.talent()));
 }
 
+export function growthBoosted(this pet: Pet): boolean {
+	return pet.lastTickEpoch + 1 == pet.growthMultiplierExpiry;
+}
+
+export function growthBonusBps(this pet: Pet): int32 {
+	return pet.growthBoosted() ? (pet.growthMultiplierBps as int32) - BPS : 0;
+}
+
 export function stats(this pet: Pet): Stats {
 	const gear = pet.gear;
 	return {
 		...pet.ownStats(),
-		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage)),
+		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage) + pet.growthBonusBps()),
 		might: geared(pet.might, gear.statBonusBps(TalentKind.Might)),
 		grit: geared(pet.grit, gear.statBonusBps(TalentKind.Grit)),
 	};

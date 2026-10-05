@@ -16,11 +16,11 @@ import {
 	Split,
 	settleGlobal,
 	pendingReward,
-	growthBonus,
 	Food,
 	deathSplit,
+	NEWBORN_EPOCHS,
 } from "./emission";
-import { Pantry } from "./pantry";
+import { Pantry, mealHearts } from "./pantry";
 import {
 	Gear,
 	GearSlot,
@@ -35,14 +35,24 @@ import {
 	bare,
 } from "./items";
 import { TALENT_LEVEL, Talent, TalentGrade, TalentKind, lineageNudgeBps } from "./talent";
-import { NEWBORN_XP, workXp, gainXp, levelForXp } from "./level";
+import { NEWBORN_XP, workXp, gainXp, levelForXp, xpToReach } from "./level";
 import {
 	BONDING_MAX,
 	BONDING_DECAY,
-	INSURANCE_BURN_PERCENT,
+	INSURANCE_TREASURY_PERCENT,
 	reviveHearts,
 	foodReserve,
 	giftFor,
+	FEED_BONDING,
+	PURCHASE_BONDING,
+	growthBpsFor,
+	ownerCover,
+	ownerDose,
+	ownerMeal,
+	ownerSlots,
+	OwnerItem,
+	OwnerSlots,
+	withSlots,
 } from "./owner";
 
 export const DEFAULT_MIN_HEARTS: int32 = 2;
@@ -82,6 +92,7 @@ export enum BurialError {
 
 export enum HeirError {
 	Alive,
+	TreasuryShort,
 }
 
 export struct PetAndGlobal {
@@ -102,8 +113,9 @@ export function genesis(this typeof GlobalConfig, genesisTimestamp: uint64): Glo
 		rewardEpoch: 0,
 		totalWorkPower: 0,
 		recycledPending: 0,
-		protocolPending: 0,
-		burned: 0,
+		treasury: 0,
+		itemReserve: 0,
+		emitted: 0,
 		livingPets: 0,
 		floorSlots: REWARD_FLOOR_SLOTS,
 	};
@@ -124,17 +136,23 @@ export function withDeath(this global: GlobalConfig, weight: uint64): GlobalConf
 
 export function settle(this global: GlobalConfig, epoch: uint64): GlobalConfig {
 	if (epoch <= global.rewardEpoch) { return global; }
+	const settled = settleGlobal(
+		global.rewardPerWorkPower,
+		global.rewardEpoch,
+		epoch,
+		global.totalWorkPower,
+		global.rewardDenominator(),
+		global.recycledPending,
+		global.emitted,
+		global.treasury,
+	);
 	return {
 		...global,
-		rewardPerWorkPower: settleGlobal(
-			global.rewardPerWorkPower,
-			global.rewardEpoch,
-			epoch,
-			global.rewardDenominator(),
-			global.recycledPending,
-		),
+		rewardPerWorkPower: settled.rewardPerWorkPower,
 		rewardEpoch: epoch,
 		recycledPending: 0,
+		treasury: settled.treasury,
+		emitted: settled.emitted,
 	};
 }
 
@@ -142,13 +160,16 @@ export function withSpend(this global: GlobalConfig, spend: Split): GlobalConfig
 	return {
 		...global,
 		recycledPending: global.recycledPending + spend.recycled,
-		protocolPending: global.protocolPending + spend.protocol,
-		burned: global.burned + spend.burned,
+		treasury: global.treasury + spend.treasury,
 	};
 }
 
-export function withProtocolFee(this global: GlobalConfig, fee: uint64): GlobalConfig {
-	return { ...global, protocolPending: global.protocolPending + fee };
+export function withTreasuryIncome(this global: GlobalConfig, amount: uint64): GlobalConfig {
+	return { ...global, treasury: global.treasury + amount };
+}
+
+export function withItemReserve(this global: GlobalConfig, amount: uint64): GlobalConfig {
+	return { ...global, itemReserve: global.itemReserve + amount };
 }
 
 export function withWorkPower(
@@ -221,6 +242,41 @@ export function born(
 		rageEpoch: 0,
 	};
 	return { pet: pet, global: settled.withBirth(stats.rewardWeight()) };
+}
+
+export function wildOf(
+	blockId: uint32,
+	slot: BlockSlot,
+	region: Region,
+	level: int32,
+	epoch: uint64,
+	global: GlobalConfig,
+): PetAndGlobal {
+	const hatched = Pet.born(blockId, slot, region, epoch, global);
+	const grown = Stats.built(hatched.pet.tree, level, Talent.unrevealed());
+	const wild: Pet = {
+		...hatched.pet.withTreeBonuses(grown),
+		wild: true,
+		level: level as uint16,
+		xp: xpToReach(level),
+		pointsUnspent: level as uint8,
+		forage: grown.forage as uint16,
+		might: grown.might as uint16,
+		grit: grown.grit as uint16,
+		maxHearts: grown.maxHearts as uint8,
+		hearts: grown.maxHearts as uint8,
+		bornEpoch: epoch - Math.min(epoch, NEWBORN_EPOCHS),
+	};
+	const before = hatched.pet.stats().rewardWeight();
+	return { pet: wild, global: hatched.global.withWorkPower(before, wild.stats().rewardWeight()) };
+}
+
+export function retiredWild(this wild: Pet, global: GlobalConfig): GlobalConfig {
+	const weight = wild.stats().rewardWeight();
+	const unpaid = pendingReward(weight, global.rewardPerWorkPower, wild.rewardSnapshot);
+	const owed = wild.alive ? unpaid : 0;
+	const left = wild.alive ? global.withDeath(weight) : global;
+	return left.withTreasuryIncome(wild.harvest + wild.burrow + wild.giftOwed + owed);
 }
 
 export function vigorBps(age: uint64): int32 {
@@ -302,8 +358,6 @@ export function tickTo(
 	const workPower = pet.stats().workPower();
 	const weight = pet.stats().rewardWeight();
 	const pending = pendingReward(weight, settled.rewardPerWorkPower, pet.rewardSnapshot);
-	const growing = pet.lastTickEpoch < pet.growthMultiplierExpiry;
-	const multiplierBps = growing ? pet.growthMultiplierBps as int32 : 0;
 	const stats = pet.stats();
 	const hunger = pet.ownStats().hungerPerDay();
 	let hearts = pet.hearts as int32;
@@ -314,6 +368,8 @@ export function tickTo(
 	let armed = pet.insurance == (Insurance.Armed as uint8);
 	let revivals = 0;
 	let charm = pet.gear.hasSkill(ItemSkill.Revive);
+	let slots = pet.ownerSlots();
+	let ownerMeals = 0;
 
 	let charmed = false;
 	for (let day = pet.lastTickEpoch + 1; day <= epoch && hearts > 0 && !old; day++) {
@@ -321,8 +377,17 @@ export function tickTo(
 		old = day >= pet.bornEpoch + LIFESPAN_EPOCHS;
 		if (old) { continue; }
 		bonding = Math.max(bonding - BONDING_DECAY, -BONDING_MAX);
+		let night = hearts - hunger;
+		const meal = slots.ownerMeal();
+		if (meal.ok && night < (pet.maxHearts as int32)) {
+			const restored = mealHearts(meal.value.food, stats.foodBps);
+			night = Math.min(night + restored, pet.maxHearts as int32);
+			slots = meal.value.left;
+			bonding = Math.min(bonding + FEED_BONDING, BONDING_MAX);
+			ownerMeals += 1;
+		}
 		const [fed, _uneaten] = pantry.nightMeals(
-			hearts - hunger,
+			night,
 			pet.minHearts as int32,
 			pet.maxHearts as int32,
 			stats.foodBps,
@@ -346,11 +411,27 @@ export function tickTo(
 	const risen = pet.gainXp(earned * ((BPS + stats.experienceBps) as uint32) / (BPS as uint32));
 	const faded = Stats.built(pet.tree, risen.level as int32, pet.talent())
 		.aged(vigorBps(epoch - pet.bornEpoch));
-	const newIncome = pending + growthBonus(pending, multiplierBps);
-	const income = pet.harvest + newIncome;
+	const income = pet.harvest + pending;
 	const saved = revivals > 0;
-	const harvestBurned = saved ? income * INSURANCE_BURN_PERCENT / 100 : 0;
-	const burrowBurned = saved ? pet.burrow * INSURANCE_BURN_PERCENT / 100 : 0;
+	const harvestTaken = saved ? income * INSURANCE_TREASURY_PERCENT / 100 : 0;
+	const burrowTaken = saved ? pet.burrow * INSURANCE_TREASURY_PERCENT / 100 : 0;
+	let growthBps = pet.growthMultiplierBps as int32;
+	let growthExpiry = pet.growthMultiplierExpiry;
+	let insurance = saved ? Insurance.Used as uint8 : pet.insurance;
+	if (alive) {
+		const dose = slots.ownerDose();
+		if (dose.ok) {
+			growthBps = growthBpsFor(dose.value.steps);
+			growthExpiry = epoch + 1;
+			slots = dose.value.left;
+			bonding = Math.min(bonding + PURCHASE_BONDING, BONDING_MAX);
+		}
+		const cover = slots.ownerCover();
+		if (cover.ok && insurance == (Insurance.None as uint8)) {
+			insurance = Insurance.Armed as uint8;
+			slots = cover.value;
+		}
+	}
 	const fed: Pet = {
 		...risen,
 		alive: alive,
@@ -362,26 +443,30 @@ export function tickTo(
 		pantry: pantry,
 		foodBoughtToday: newDay ? 0 : pet.foodBoughtToday,
 		talksToday: newDay ? 0 : pet.talksToday,
-		ownerFedToday: newDay ? 0 : pet.ownerFedToday,
+		ownerFedToday: ((newDay ? 0 : pet.ownerFedToday as int32) + ownerMeals) as uint8,
+		ownerFirst: (slots.first as int32) as uint8,
+		ownerSecond: (slots.second as int32) as uint8,
+		growthMultiplierBps: growthBps as uint16,
+		growthMultiplierExpiry: growthExpiry,
 		bonding: bonding as int8,
 		rage: pet.rageAt(epoch),
-		insurance: saved ? Insurance.Used as uint8 : pet.insurance,
+		insurance: insurance,
 		scars: ((pet.scars as int32) + revivals) as uint8,
-		harvest: income - harvestBurned,
-		burrow: pet.burrow - burrowBurned,
+		harvest: income - harvestTaken,
+		burrow: pet.burrow - burrowTaken,
 		gear: (charmed ? pet.gear.spentSkill(ItemSkill.Revive) : pet.gear).allWornBy(workedEpochs),
 		rewardSnapshot: settled.rewardPerWorkPower,
 		lastTickEpoch: epoch,
 	};
 	const reserve = foodReserve(fed.level as int32, hunger);
-	const gift = newDay && alive ? fed.giftFor(reserve, newIncome) : 0;
+	const gift = newDay && alive ? fed.giftFor(reserve, pending) : 0;
 	const gifted: Pet = { ...fed, burrow: fed.burrow - gift, giftOwed: fed.giftOwed + gift };
 	const weighed = alive
 		? settled.withWorkPower(weight, gifted.stats().rewardWeight())
 		: settled.withDeath(weight);
 	return Result.ok({
 		pet: gifted.onFightDay(epoch),
-		global: { ...weighed, burned: weighed.burned + harvestBurned + burrowBurned },
+		global: { ...weighed, treasury: weighed.treasury + harvestTaken + burrowTaken },
 	});
 }
 
@@ -400,10 +485,10 @@ export function bury(
 			perMate: 0,
 		});
 	}
-	const [perMate, burned] = deathSplit(wallet, livingMates);
+	const [perMate, unshared] = deathSplit(wallet, livingMates);
 	return Result.ok({
 		pet: { ...pet, harvest: 0, burrow: 0, gear: Gear.bare() },
-		global: { ...global, burned: global.burned + burned },
+		global: { ...global, treasury: global.treasury + unshared },
 		perMate: perMate,
 	});
 }
@@ -414,16 +499,21 @@ export function heirOf(
 	global: GlobalConfig,
 ): Result<PetAndGlobal, HeirError> {
 	if (dead.alive) { return Result.err(HeirError.Alive); }
-	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, global);
+	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS);
+	if (global.itemReserve < proceeds) { return Result.err(HeirError.TreasuryShort); }
+	const paid: GlobalConfig = { ...global, itemReserve: global.itemReserve - proceeds };
+	const hatched = Pet.born(dead.blockId, dead.blockSlot(), dead.startRegion(), epoch, paid);
 	const generation = (dead.lineageGeneration as int32) + 1;
 	const points = (hatched.pet.pointsUnspent as int32) + Math.min(generation, HEIR_POINTS_CAP);
-	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS);
 	const heir: Pet = {
 		...hatched.pet,
 		burrow: dead.burrow + proceeds,
 		pointsUnspent: points as uint8,
 		lineageGeneration: generation as uint16,
 		giftOwed: dead.giftOwed,
+		ownerFirst: dead.ownerFirst,
+		ownerSecond: dead.ownerSecond,
+		skin: dead.skin,
 		gear: heirlooms,
 	};
 	return Result.ok({
@@ -539,9 +629,53 @@ test "the floor eats from the pantry at night, never from the burrow" {
 	assert fed.pet.pantry.stored() == 0;
 	assert fed.pet.foodBoughtToday == 0;
 	assert fed.pet.burrow == stocked.burrow;
-	assert fed.global.burned == newborn.global.burned;
+	assert fed.global.recycledPending == newborn.global.recycledPending;
 	const unfed = fed.pet.tickedTo(fed.global, 12);
 	assert unfed.pet.hearts == 8;
+}
+
+test "the pet eats the owner's food at night, takes a dose the day it wakes and arms insurance it lacks" {
+	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
+	const slots: OwnerSlots = { first: OwnerItem.LargeFood, second: OwnerItem.MediumGrowth };
+	const slotted = newborn.pet.withSlots(slots);
+	const hungry: Pet = { ...slotted, hearts: 3, pantry: Pantry.unstocked() };
+	const woke = hungry.tickedTo(newborn.global, 1).pet;
+	assert woke.hearts > 3;
+	assert woke.ownerFedToday == 1;
+	assert woke.ownerSlots().first == OwnerItem.None && woke.ownerSlots().second == OwnerItem.None;
+	assert woke.growthBoosted() && woke.growthMultiplierBps == 11000;
+	assert woke.stats().forage > hungry.stats().forage;
+	assert (woke.bonding as int32) > (hungry.bonding as int32);
+	const later = woke.tickedTo(newborn.global, 2).pet;
+	assert !later.growthBoosted();
+	const spent: Pet = {
+		...newborn.pet.withSlots({ first: OwnerItem.Insurance, second: OwnerItem.None }),
+		insurance: Insurance.Used as uint8,
+	};
+	const waiting = spent.tickedTo(newborn.global, 1).pet;
+	assert waiting.ownerSlots().first == OwnerItem.Insurance;
+	const gone: Pet = { ...waiting, alive: false };
+	const heir = gone.heirOf(9, newborn.global);
+	assert heir.ok;
+	if (!heir.ok) { return; }
+	assert heir.value.pet.ownerSlots().first == OwnerItem.Insurance;
+	const covered = heir.value.pet.tickedTo(heir.value.global, 10).pet;
+	assert covered.insurance == (Insurance.Armed as uint8);
+	assert covered.ownerSlots().first == OwnerItem.None;
+}
+
+test "a retired wild leaves its wallet and its unpaid share to the treasury" {
+	const settled = GlobalConfig.genesis(0);
+	const spawned = wildOf(0, BlockSlot.First, Region.Fighter, 5, 1, settled);
+	assert spawned.pet.wild && spawned.pet.level == 5;
+	assert spawned.global.livingPets == 1;
+	const rich: Pet = { ...spawned.pet, harvest: 40, burrow: 60 };
+	const later = spawned.global.settle(2);
+	const owed = pendingReward(rich.stats().rewardWeight(), later.rewardPerWorkPower, rich.rewardSnapshot);
+	assert owed > 0;
+	const retired = rich.retiredWild(later);
+	assert retired.livingPets == 0 && retired.totalWorkPower == 0;
+	assert retired.treasury == later.treasury + 100 + owed;
 }
 
 test "food left after the night is thrown away" {
@@ -582,7 +716,7 @@ test "ticks refuse the dead and the past, and a burial splits the wallet" {
 	if (burial.ok) {
 		assert burial.value.perMate == 166;
 		assert burial.value.pet.harvest == 0 && burial.value.pet.burrow == 0;
-		assert burial.value.global.burned == 1001 - 166 * 3;
+		assert burial.value.global.treasury == 1001 - 166 * 3;
 	}
 	assert !newborn.pet.bury(3, newborn.global).ok;
 }
@@ -706,7 +840,7 @@ test "an insured pet that starves comes back once from its tick" {
 	assert next.pet.insurance == (Insurance.Used as uint8);
 	assert next.pet.scars == 1;
 	assert next.pet.burrow == 200;
-	assert next.global.burned >= newborn.global.burned + 200;
+	assert next.global.treasury >= newborn.global.treasury + 200;
 }
 
 test "below the floor, empty slots count as bots and their share is not paid" {

@@ -61,7 +61,8 @@ import {
 	PetAndGlobal,
 	genesis,
 	withSpend,
-	withProtocolFee,
+	withItemReserve,
+	withTreasuryIncome,
 	withWorkPower,
 	withDeath,
 	born,
@@ -104,6 +105,7 @@ export enum EconomyError {
 	NoFood,
 	NoGear,
 	NeedsMarket,
+	TreasuryShort,
 }
 
 export struct NodeMask {
@@ -171,6 +173,11 @@ export function allowingAttack(
 	level: StakeLevel,
 ): AttackMask {
 	return { bits: mask.bits | bitOf(attackChoice(slot, level)) };
+}
+
+export function overtimeBanked(this pet: Pet): Pet {
+	if (!pet.alive || pet.harvest == 0 || !pet.mods.has(Mod.Overtime)) { return pet; }
+	return { ...pet, harvest: 0, burrow: pet.burrow + pet.harvest };
 }
 
 export function bank(this pet: Pet, global: GlobalConfig): Result<PetAndGlobal, EconomyError> {
@@ -257,7 +264,7 @@ export function mintItem(
 	return Result.ok({
 		pet: geared,
 		global: global
-			.withSpend(Split.ofSpend(spent))
+			.withItemReserve(spent)
 			.withWorkPower(pet.stats().rewardWeight(), geared.stats().rewardWeight()),
 	});
 }
@@ -268,14 +275,16 @@ export function soldItem(this pet: Pet, global: GlobalConfig): Result<PetAndGlob
 	if (!found.ok) { return Result.err(EconomyError.NoGear); }
 	const slot = found.value;
 	const price = pet.gear.at(slot).sellPrice();
+	if (global.itemReserve < price) { return Result.err(EconomyError.TreasuryShort); }
 	const bare: Pet = {
 		...pet,
 		burrow: pet.burrow + price,
 		gear: pet.gear.with(slot, Item.none()),
 	};
+	const paid: GlobalConfig = { ...global, itemReserve: global.itemReserve - price };
 	return Result.ok({
 		pet: bare,
-		global: global.withWorkPower(pet.stats().rewardWeight(), bare.stats().rewardWeight()),
+		global: paid.withWorkPower(pet.stats().rewardWeight(), bare.stats().rewardWeight()),
 	});
 }
 
@@ -513,7 +522,7 @@ export function attackerWon(this opening: FightOpening, global: GlobalConfig, ep
 		...opening.committed,
 		burrow: opening.committed.burrow + stake + winnings + devoured,
 	};
-	const paid = defender.global.withProtocolFee(fee);
+	const paid = defender.global.withTreasuryIncome(fee);
 	return {
 		attacker: paidOut.calmedAgainst(defenderToday).gainXp(raidXp(loot)),
 		defender: remains.gainXp(DEFENSE_LOSS_XP),
@@ -547,7 +556,7 @@ export function defenderHeld(this opening: FightOpening, global: GlobalConfig): 
 	const [beaten, insuredGlobal] = fallen.revived(global);
 	const kept: Pet = { ...opening.struck, burrow: opening.struck.burrow + keptStake };
 	const holder = kept.calmedAgainst(opening.attackerToday);
-	const paid = insuredGlobal.withProtocolFee(fee);
+	const paid = insuredGlobal.withTreasuryIncome(fee);
 	return {
 		attacker: beaten,
 		defender: holder.gainXp(DEFENSE_WIN_XP),
@@ -615,14 +624,14 @@ function totalMoney(this duel: Duel): uint64 {
 	return duel.attacker.burrow +
 		duel.defender.harvest +
 		duel.defender.burrow +
-		duel.global.protocolPending;
+		duel.global.treasury;
 }
 
 function totalMoney(this settlement: FightSettlement): uint64 {
 	return settlement.attacker.burrow +
 		settlement.defender.harvest +
 		settlement.defender.burrow +
-		settlement.global.protocolPending;
+		settlement.global.treasury;
 }
 
 function refusalOf(result: Result<uint64, AttackError>): AttackError {
@@ -654,6 +663,17 @@ test "action ids and masks" {
 	assert nodeHoldMask().allowsNode(ALLOCATE_HOLD);
 }
 
+test "overtime banks the whole harvest at dusk, other pets keep it exposed" {
+	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0)).pet;
+	const plain: Pet = { ...newborn, harvest: 700, burrow: 100 };
+	assert plain.overtimeBanked() == plain;
+	const worker: Pet = { ...plain, mods: plain.mods.incl(Mod.Overtime) };
+	const banked = worker.overtimeBanked();
+	assert banked.harvest == 0 && banked.burrow == 800;
+	const dead: Pet = { ...worker, alive: false };
+	assert dead.overtimeBanked() == dead;
+}
+
 test "bank moves harvest, buying needs money and quota, eating needs room and food" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
 	const earner: Pet = { ...newborn.pet, harvest: 500 };
@@ -679,7 +699,7 @@ test "bank moves harvest, buying needs money and quota, eating needs room and fo
 	const spend = bought.value.global;
 	assert bought.value.pet.burrow == cost * 9;
 	assert bought.value.pet.pantry.portions(Food.Medium) == 1;
-	assert spend.recycledPending + spend.burned + spend.protocolPending == cost;
+	assert spend.recycledPending + spend.treasury == cost;
 	const fed = bought.value.pet.eat(Food.Medium, newborn.global);
 	assert fed.ok;
 	if (fed.ok) {
@@ -966,7 +986,7 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 		assert after.defender.scars == 1;
 		assert after.defender.burrow == frail.burrow / 2;
 		assert after.attacker.burrow == cannibal.burrow;
-		assert after.global.burned == duel.global.burned + frail.burrow / 2;
+		assert after.global.treasury == duel.global.treasury + frail.burrow / 2;
 		saves += 1;
 	}
 	assert saves > 0;
@@ -1056,12 +1076,18 @@ test "a pet sells its weakest item for cash and cannot sell bare" {
 		...duel.defender,
 		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
 	};
-	const sold = geared.soldItem(duel.global);
+	const reserve = common.sellPrice() + epic.sellPrice();
+	const funded: GlobalConfig = { ...duel.global, itemReserve: reserve };
+	const unfunded = geared.soldItem(duel.global);
+	assert !unfunded.ok;
+	if (!unfunded.ok) { assert unfunded.error == EconomyError.TreasuryShort; }
+	const sold = geared.soldItem(funded);
 	assert sold.ok;
 	if (!sold.ok) { return; }
 	assert sold.value.pet.gear.feet.isEmpty();
 	assert !sold.value.pet.gear.head.isEmpty();
 	assert sold.value.pet.burrow == geared.burrow + common.sellPrice();
+	assert sold.value.global.itemReserve == reserve - common.sellPrice();
 	const bare = duel.defender.soldItem(duel.global);
 	assert !bare.ok;
 	if (!bare.ok) { assert bare.error == EconomyError.NoGear; }
@@ -1080,7 +1106,8 @@ test "a pet that cannot pay for the smallest portion sells its weakest item to e
 		foodBoughtToday: 0,
 		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
 	};
-	const bought = short.buy(Food.Small, duel.global);
+	const funded: GlobalConfig = { ...duel.global, itemReserve: common.sellPrice() };
+	const bought = short.buy(Food.Small, funded);
 	assert bought.ok;
 	if (!bought.ok) { return; }
 	assert bought.value.pet.gear.feet.isEmpty() && !bought.value.pet.gear.head.isEmpty();
