@@ -49,7 +49,6 @@ const policy = new Uint8Array(readFileSync(policyPath));
 const engine = new DataView(policy.buffer, policy.byteOffset).getBigUint64(8, true);
 const mints = readFileSync("out/admission/mints.txt", "utf8").trim().split("\n").map((line) => address(line.split(" ")[1])).slice(0, PETS);
 const skrMint = await keypairAt("out/devSkrMint.json");
-const treasuryOwner = await keypairAt("out/devTreasury.json");
 const state = existsSync(STATE_PATH) ? JSON.parse(readFileSync(STATE_PATH, "utf8")) : {};
 const save = () => writeFileSync(STATE_PATH, json(state));
 const onL1 = (step, instructions, units) => send(base, baseRead, step, instructions, authority, units);
@@ -65,8 +64,8 @@ async function setup() {
 	const config = await program.address(program.seeds.config());
 	if (!(await read(baseRead, config))) {
 		const genesisTimestamp = BigInt(Math.floor(Date.now() / 1000) - 86_400 + Number(process.env.FIRST_DAWN_IN_SECONDS ?? -600));
-		const treasury = await associated(treasuryOwner.address, skrMint.address, TOKEN_PROGRAM);
-		report("initialize", await onL1("initialize", [await program.initialize({
+		const treasury = await program.revenueVault(skrMint.address);
+		report("initialize", await onL1("initialize", [await program.openRevenueVault(authority, skrMint.address), await program.initialize({
 			admissionGroup: GROUP,
 			engine,
 			genesisTimestamp,
@@ -155,20 +154,13 @@ function decodeAddress(bytes) {
 
 async function shop() {
 	const mint = mints[0];
-	const nonce = BigInt(Date.now());
 	const source = await associated(authority.address, skrMint.address, TOKEN_PROGRAM);
-	const treasury = await associated(treasuryOwner.address, skrMint.address, TOKEN_PROGRAM);
+	const treasury = await program.revenueVault(skrMint.address);
 	const before = await read(ephemeral, await program.address(program.seeds.pet(mint)));
-	report("buy growth tier 1 with SKR (L1)", await onL1("buy", [await program.buy(authority, mint, { item: 1, tier: 0, nonce, skrMint: skrMint.address, source, treasury })]));
-	const receipt = await program.receipt(mint, nonce);
-	await readWhenCloned(receipt);
-	report("consume the receipt (ER)", await onEr("consume", [await program.consume(mint, nonce)]));
-	try {
-		await onEr("consume again", [await program.consume(mint, nonce)]);
-		console.log("  consume again: ACCEPTED (wrong)");
-	} catch {
-		console.log("  consume again: refused");
-	}
+	report("buy growth tier 1 with SKR (L1)", await onL1("buy", [await program.buy(authority, mint, { item: 1, tier: 0, skrMint: skrMint.address, source, treasury })]));
+	await readWhenCloned(await program.address(program.seeds.ledger(mint)));
+	report("load the ledger into the owner's slots (ER)", await onEr("load", [await program.load(mint)]));
+	report("load again moves nothing (ER)", await onEr("load again", [await program.load(mint)]));
 	const after = await read(ephemeral, await program.address(program.seeds.pet(mint)));
 	const changed = after.data.findIndex((byte, index) => byte !== before.data[index]);
 	console.log(`  pet bytes changed from offset ${changed}`);

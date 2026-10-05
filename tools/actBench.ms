@@ -443,8 +443,9 @@ export function digestOf(pets: Span<Pet>, global: GlobalConfig): uint64 {
 		.absorb(global.rewardEpoch)
 		.absorb(global.totalWorkPower)
 		.absorb(global.recycledPending)
-		.absorb(global.protocolPending)
-		.absorb(global.burned)
+		.absorb(global.treasury)
+		.absorb(global.itemReserve)
+		.absorb(global.emitted)
 		.absorb((global.livingPets as uint64) | ((global.floorSlots as uint64) << 32))
 		.value;
 }

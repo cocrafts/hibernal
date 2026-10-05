@@ -87,12 +87,11 @@ er() {
 
 seed() {
 	local url="http://127.0.0.1:$l1Port" token2022=TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
-	local skr="$here/out/devSkrMint.json" treasury="$here/out/devTreasury.json" group="$state/admissionGroup.json"
+	local skr="$here/out/devSkrMint.json" group="$state/admissionGroup.json"
 	if ! spl-token display "$(solana address -k "$skr")" -u "$url" >/dev/null 2>&1; then
 		spl-token create-token --decimals 6 "$skr" -u "$url" >/dev/null
 		spl-token create-account "$(solana address -k "$skr")" -u "$url" >/dev/null
 		spl-token mint "$(solana address -k "$skr")" 1000 -u "$url" >/dev/null
-		spl-token create-account "$(solana address -k "$skr")" --owner "$(solana address -k "$treasury")" --fee-payer "$wallet" -u "$url" >/dev/null
 	fi
 	[[ -f "$group" ]] || solana-keygen new --no-bip39-passphrase -s -o "$group" >/dev/null
 	if ! spl-token display "$(solana address -k "$group")" -u "$url" >/dev/null 2>&1; then

@@ -272,13 +272,9 @@ async function bootstrap() {
 		const policy = new Uint8Array(readFileSync(policyPath));
 		const engine = new DataView(policy.buffer, policy.byteOffset).getBigUint64(8, true);
 		const skrMint = await keypairAt(process.env.SKR_MINT ?? "out/devSkrMint.json");
-		const treasuryOwner = await keypairAt(process.env.TREASURY ?? "out/devTreasury.json");
-		const [treasury] = await getProgramDerivedAddress({
-			programAddress: address("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
-			seeds: [encoder.encode(treasuryOwner.address), encoder.encode(address("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")), encoder.encode(skrMint.address)],
-		});
+		const treasury = await program.revenueVault(skrMint.address);
 		const genesisTimestamp = BigInt(process.env.GENESIS ?? Math.floor(Date.now() / 1000));
-		await onL1("initialize", [await program.initialize({
+		await onL1("initialize", [await program.openRevenueVault(authority, skrMint.address), await program.initialize({
 			admissionGroup: address(process.env.GROUP),
 			engine,
 			genesisTimestamp,

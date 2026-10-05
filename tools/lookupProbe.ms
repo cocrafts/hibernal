@@ -227,8 +227,9 @@ function loaded(raw: Ptr<GlobalConfig>): GlobalConfig {
 		rewardEpoch: raw.rewardEpoch,
 		totalWorkPower: raw.totalWorkPower,
 		recycledPending: raw.recycledPending,
-		protocolPending: raw.protocolPending,
-		burned: raw.burned,
+		treasury: raw.treasury,
+		itemReserve: raw.itemReserve,
+		emitted: raw.emitted,
 		livingPets: raw.livingPets,
 		floorSlots: raw.floorSlots,
 	};
@@ -240,8 +241,9 @@ function stored(raw: Ptr<GlobalConfig>, global: GlobalConfig): void {
 	raw.rewardEpoch = global.rewardEpoch;
 	raw.totalWorkPower = global.totalWorkPower;
 	raw.recycledPending = global.recycledPending;
-	raw.protocolPending = global.protocolPending;
-	raw.burned = global.burned;
+	raw.treasury = global.treasury;
+	raw.itemReserve = global.itemReserve;
+	raw.emitted = global.emitted;
 	raw.livingPets = global.livingPets;
 	raw.floorSlots = global.floorSlots;
 }

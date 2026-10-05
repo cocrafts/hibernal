@@ -177,11 +177,13 @@ export function hibernal(programAddress, authority) {
 		policy: () => pda(programAddress, "policy"),
 		world: () => pda(programAddress, "world"),
 		mint: () => pda(programAddress, "mint"),
+		revenue: () => pda(programAddress, "revenue"),
 		resort: () => pda(programAddress, "resort"),
 		vrfPayer: () => pda(programAddress, "vrf-payer"),
 		block: (id) => pda(programAddress, "block", u64(id)),
 		pet: (mint) => pda(programAddress, "pet", key(mint)),
 		paid: (mint) => pda(programAddress, "paid", key(mint)),
+		ledger: (mint) => pda(programAddress, "ledger", key(mint)),
 	};
 	const address = async (derived) => (await derived)[0];
 	const delegation = async (delegated) => [
@@ -347,30 +349,52 @@ export function hibernal(programAddress, authority) {
 				readonly(SYSTEM_PROGRAM),
 			]);
 		},
-		async receipt(mint, nonce) {
-			return await address(pda(programAddress, "receipt", key(await address(seeds.pet(mint))), u64(nonce)));
+		async revenueVault(skrMint, tokenProgram = TOKEN_PROGRAM) {
+			const revenue = await address(seeds.revenue());
+			return await address(pda(ASSOCIATED_TOKEN_PROGRAM, key(revenue), key(tokenProgram), key(skrMint)));
 		},
-		async buy(owner, mint, { item, tier, nonce, skrMint, source, treasury, tokenProgram = TOKEN_PROGRAM }) {
-			const receipt = await this.receipt(mint, nonce);
-			const delegated = await delegation(receipt);
+		async openRevenueVault(payer, skrMint, tokenProgram = TOKEN_PROGRAM) {
+			return {
+				programAddress: ASSOCIATED_TOKEN_PROGRAM,
+				accounts: [
+					writableSigner(payer),
+					writable(await this.revenueVault(skrMint, tokenProgram)),
+					readonly(await address(seeds.revenue())),
+					readonly(skrMint),
+					readonly(SYSTEM_PROGRAM),
+					readonly(tokenProgram),
+				],
+				data: Uint8Array.of(1),
+			};
+		},
+		async withdrawRevenue(amount, skrMint, destination, tokenProgram = TOKEN_PROGRAM) {
+			return call("WithdrawRevenue", [
+				signer(authority),
+				writable(await address(seeds.config())),
+				readonly(await address(seeds.revenue())),
+				writable(await this.revenueVault(skrMint, tokenProgram)),
+				readonly(skrMint),
+				writable(destination),
+				readonly(tokenProgram),
+			], u64(amount));
+		},
+		async buy(owner, mint, { item, tier, skrMint, source, treasury, tokenProgram = TOKEN_PROGRAM }) {
 			return call("Buy", [
 				writableSigner(owner),
 				readonly(await address(seeds.config())),
 				readonly(await address(seeds.pet(mint))),
+				writable(await address(seeds.ledger(mint))),
 				readonly(skrMint),
 				writable(source),
 				writable(treasury),
-				writable(receipt),
-				...delegated.slice(0, 5),
 				readonly(tokenProgram),
 				readonly(SYSTEM_PROGRAM),
-			], u8(item), u8(tier), u64(nonce));
+			], u8(item), u8(tier));
 		},
-		async consume(mint, nonce) {
-			return call("Consume", [
-				writable(await this.receipt(mint, nonce)),
+		async load(mint) {
+			return call("Load", [
 				writable(await address(seeds.pet(mint))),
-				readonly(await address(seeds.world())),
+				readonly(await address(seeds.ledger(mint))),
 			]);
 		},
 		async resortBegin(measure, count) {
@@ -380,7 +404,7 @@ export function hibernal(programAddress, authority) {
 			return call("ResortClear", [
 				signer(authority),
 				readonly(await address(seeds.config())),
-				readonly(await address(seeds.world())),
+				writable(await address(seeds.world())),
 				writable(await address(seeds.resort())),
 				writable(await address(seeds.block(id))),
 				...members.map((member) => writable(member)),

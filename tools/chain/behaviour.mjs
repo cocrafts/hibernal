@@ -47,11 +47,11 @@ const ONRAMP_SKR = BigInt(process.env.ONRAMP_SKR ?? 200);
 const STATUS_PATH = process.env.STATUS ?? "out/localnet/behaviourStatus.json";
 const MASK = (1n << 64n) - 1n;
 const BPS = 10_000n;
-const INSURANCE_NONCE_BASE = 0xffffffff00000000n;
 const SKR_DECIMALS = 1_000_000n;
 const FOOD_SKR = [1n, 2n, 3n];
 const GROWTH_SKR_PER_STEP = 2n;
 const INSURANCE_SKR = 20n;
+const LEDGER_SETTLE_MS = 1000;
 const ITEM = { Food: 0, Growth: 1, Insurance: 2 };
 
 const HABITS = {
@@ -281,6 +281,7 @@ async function petState(entry) {
 		harvest: field("harvest"),
 		giftOwed: field("gift_owed"),
 		lineage: field("lineage_generation"),
+		slotsFree: (field("owner_first") === 0n ? 1 : 0) + (field("owner_second") === 0n ? 1 : 0),
 		blockId: Number(field("block_id")),
 	};
 }
@@ -293,17 +294,18 @@ async function readWhenCloned(key) {
 	return false;
 }
 
-async function bought(entry, config, epoch, item, tier, nonce, wholeSkr, label) {
+async function bought(entry, config, epoch, item, tier, wholeSkr, label) {
 	const source = await associated(entry.owner.address, config.skrMint);
-	const buy = recorded(epoch, `buy:${label}`, await submit(base, [await program.buy(entry.owner, entry.mint, { item, tier, nonce, skrMint: config.skrMint, source, treasury: config.treasury })], entry.owner));
+	const order = { item, tier, skrMint: config.skrMint, source, treasury: config.treasury };
+	const buy = recorded(epoch, `buy:${label}`, await submit(base, [await program.buy(entry.owner, entry.mint, order)], entry.owner));
 	if (!buy.ok) return;
 	dayOf(epoch).skrSpent += Number(wholeSkr);
-	const receipt = await program.receipt(entry.mint, nonce);
-	if (!(await readWhenCloned(receipt))) {
-		recorded(epoch, `consume:${label}`, { ok: false, error: "receipt never cloned" });
+	if (!(await readWhenCloned(await program.address(program.seeds.ledger(entry.mint))))) {
+		recorded(epoch, `load:${label}`, { ok: false, error: "ledger never cloned" });
 		return;
 	}
-	recorded(epoch, `consume:${label}`, await submit(ephemeral, [await program.consume(entry.mint, nonce)], entry.owner));
+	await sleep(LEDGER_SETTLE_MS);
+	recorded(epoch, `load:${label}`, await submit(ephemeral, [await program.load(entry.mint)], entry.owner));
 }
 
 async function claimed(entry, config, epoch) {
@@ -330,15 +332,17 @@ async function visit(entry, config, epoch) {
 	dayOf(epoch).visits += 1;
 	recorded(epoch, "bank", await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner));
 	recorded(epoch, "talk", await submit(ephemeral, [await program.talk(entry.owner, entry.mint)], entry.owner));
-	const nonceBase = BigInt(Date.now()) * 1000n + BigInt(entry.index);
-	if (pet.hearts * BPS < pet.maxHearts * habit.feedBelowBps) {
-		await bought(entry, config, epoch, ITEM.Food, habit.foodTier, nonceBase, FOOD_SKR[habit.foodTier], "food");
+	let slotsFree = pet.slotsFree;
+	if (slotsFree > 0 && pet.hearts * BPS < pet.maxHearts * habit.feedBelowBps) {
+		await bought(entry, config, epoch, ITEM.Food, habit.foodTier, FOOD_SKR[habit.foodTier], "food");
+		slotsFree -= 1;
 	}
-	if (rolled(draw, 1n, habit.growthPercent)) {
-		await bought(entry, config, epoch, ITEM.Growth, habit.growthSteps - 1, nonceBase + 1n, GROWTH_SKR_PER_STEP * BigInt(habit.growthSteps), "growth");
+	if (slotsFree > 0 && rolled(draw, 1n, habit.growthPercent)) {
+		const growthSkr = GROWTH_SKR_PER_STEP * BigInt(habit.growthSteps);
+		await bought(entry, config, epoch, ITEM.Growth, habit.growthSteps - 1, growthSkr, "growth");
 	}
 	if (pet.insurance === 0n && rolled(draw, 2n, habit.insurePercent)) {
-		await bought(entry, config, epoch, ITEM.Insurance, 0, INSURANCE_NONCE_BASE + pet.lineage, INSURANCE_SKR, "insurance");
+		await bought(entry, config, epoch, ITEM.Insurance, 0, INSURANCE_SKR, "insurance");
 	}
 	if (pet.giftOwed > 0n) await claimed(entry, config, epoch);
 }
