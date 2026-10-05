@@ -15,7 +15,9 @@ object VoidRenderer : Choreographer.FrameCallback {
     private const val WALLPAPER_MIN_FRAME_NANOS = 30_000_000L
     private const val TAG = "VoidRender"
 
-    private class Target(val surface: Surface, val width: Int, val height: Int, val minFrameNanos: Long)
+    private class Target(val surface: Surface, val width: Int, val height: Int, val inApp: Boolean) {
+        val minFrameNanos = if (inApp) APP_MIN_FRAME_NANOS else WALLPAPER_MIN_FRAME_NANOS
+    }
 
     private val thread = HandlerThread(TAG).apply { start() }
     private val handler = Handler(thread.looper)
@@ -30,8 +32,7 @@ object VoidRenderer : Choreographer.FrameCallback {
     fun show(owner: Any, surface: Surface, width: Int, height: Int) {
         handler.post {
             targets.remove(owner)
-            val minFrameNanos = if (owner is WallpaperService.Engine) WALLPAPER_MIN_FRAME_NANOS else APP_MIN_FRAME_NANOS
-            targets[owner] = Target(surface, width, height, minFrameNanos)
+            targets[owner] = Target(surface, width, height, owner !is WallpaperService.Engine)
             bindLatest()
         }
     }
@@ -64,7 +65,7 @@ object VoidRenderer : Choreographer.FrameCallback {
                 VoidNative.resize(target.width, target.height)
             }
         } else {
-            VoidNative.attach(target.surface, target.width, target.height)
+            VoidNative.attach(target.surface, target.width, target.height, target.inApp)
             Log.i(TAG, "attach ${owner.javaClass.simpleName} ${target.width}x${target.height}")
         }
         activeOwner = owner
@@ -73,6 +74,12 @@ object VoidRenderer : Choreographer.FrameCallback {
             ticking = true
             Choreographer.getInstance().postFrameCallback(this)
         }
+    }
+
+    private fun openWallpaperPicker() {
+        val activity = activeOwner as? MainActivity
+            ?: error("the wallpaper picker was asked for while drawing ${activeOwner?.javaClass?.simpleName}")
+        activity.runOnUiThread { activity.openWallpaperPicker() }
     }
 
     override fun doFrame(frameTimeNanos: Long) {
@@ -85,6 +92,7 @@ object VoidRenderer : Choreographer.FrameCallback {
             lastFrameNanos = frameTimeNanos
             VoidNative.frame()
             framesSinceLog++
+            if (VoidNative.takeWallpaperPickerRequest()) openWallpaperPicker()
         }
         if (frameTimeNanos - lastLogNanos >= 1_000_000_000L) {
             Log.i(TAG, "fps=$framesSinceLog")

@@ -10,6 +10,9 @@ extern void voidViewDestroy(int view);
 extern void voidEmbedDetach(void);
 extern void hudPointerPush(int phase, int id, float x, float y);
 extern void voidEmbedSetAssetRoot(const char *path);
+extern void hostSetInApp(int inApp);
+extern void hostSetWallpaperPlaces(int home, int lock);
+extern int hostTakeWallpaperPickerRequest(void);
 
 static int g_started = 0;
 static ANativeWindow *g_window = NULL;
@@ -26,9 +29,11 @@ Java_app_hibernal_VoidNative_setAssetRoot(JNIEnv *env, jobject thiz, jstring pat
 }
 
 JNIEXPORT void JNICALL
-Java_app_hibernal_VoidNative_attach(JNIEnv *env, jobject thiz, jobject surface, jint width, jint height) {
+Java_app_hibernal_VoidNative_attach(JNIEnv *env, jobject thiz, jobject surface, jint width, jint height,
+	jboolean inApp) {
 	(void)thiz;
 	if (!g_started) { MsMain(); g_started = 1; }
+	hostSetInApp(inApp ? 1 : 0);
 	ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
 	if (g_view) voidViewDestroy(g_view);
 	g_view = voidViewCreate((long long)(intptr_t)window, (int)width, (int)height, 1.0f);
@@ -54,6 +59,18 @@ JNIEXPORT void JNICALL
 Java_app_hibernal_VoidNative_touch(JNIEnv *env, jobject thiz, jint phase, jint id, jfloat x, jfloat y) {
 	(void)env; (void)thiz;
 	hudPointerPush((int)phase, (int)id, (float)x, (float)y);
+}
+
+JNIEXPORT void JNICALL
+Java_app_hibernal_VoidNative_setWallpaperPlaces(JNIEnv *env, jobject thiz, jboolean home, jboolean lock) {
+	(void)env; (void)thiz;
+	hostSetWallpaperPlaces(home ? 1 : 0, lock ? 1 : 0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_app_hibernal_VoidNative_takeWallpaperPickerRequest(JNIEnv *env, jobject thiz) {
+	(void)env; (void)thiz;
+	return hostTakeWallpaperPickerRequest() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL

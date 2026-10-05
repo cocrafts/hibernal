@@ -7,6 +7,7 @@ import { pushToast } from "./notices";
 import { ModalAnswer, modal } from "./overlays";
 import { CHAR_MID } from "./shapes";
 import { Nav, ScreenContext, closeOverlay } from "./screenChrome";
+import { WallpaperPlace, wallpaperPlace, requestWallpaperPicker } from "../host/host";
 
 const SESSION_KEY_FRAMES: int32 = 75;
 
@@ -15,7 +16,6 @@ interface SettingsState {
 	sessionKeySince: int32;
 	ongoingNotification: boolean;
 	digestNotification: boolean;
-	wallpaperSet: boolean;
 	askingToDisconnect: boolean;
 	connected: boolean;
 }
@@ -25,7 +25,6 @@ const settings: SettingsState = {
 	sessionKeySince: 0,
 	ongoingNotification: true,
 	digestNotification: true,
-	wallpaperSet: false,
 	askingToDisconnect: false,
 	connected: true,
 };
@@ -74,14 +73,23 @@ function sessionKey(context: ScreenContext): void {
 	say(ui, kit, 5023, "YOUR PET PLAYS ON ITS OWN WITHOUT IT.", 16.0, 258.0, 270.0, 8.0, INK_MUTED, 0.0);
 }
 
+function placeName(place: WallpaperPlace): string {
+	return match (place) {
+		WallpaperPlace.Off => "OFF",
+		WallpaperPlace.Home => "HOME SCREEN",
+		WallpaperPlace.Lock => "LOCK SCREEN",
+		WallpaperPlace.HomeAndLock => "HOME + LOCK",
+	};
+}
+
 function preferences(context: ScreenContext): void {
 	const ui: Ui = context.ui;
 	const kit: Kit = context.kit;
-	sectionHeader(ui, kit, 5030, 16.0, 290.0, 328.0, "LIVE WALLPAPER", settings.wallpaperSet ? "ON" : "OFF");
-	if (listRow(ui, kit, 5031, 16.0, 308.0, 328.0, "home", settings.wallpaperSet ? "CHANGE WALLPAPER" : "SET AS WALLPAPER", "", INK,
-		RowKind.Plain, true, false)) {
-		settings.wallpaperSet = true;
-		pushToast(context.toasts, "OPENS THE SYSTEM PICKER", false);
+	const place: WallpaperPlace = wallpaperPlace();
+	sectionHeader(ui, kit, 5030, 16.0, 290.0, 328.0, "LIVE WALLPAPER", placeName(place));
+	if (listRow(ui, kit, 5031, 16.0, 308.0, 328.0, "home", place == WallpaperPlace.Off ? "SET AS WALLPAPER" : "CHANGE WALLPAPER", "",
+		INK, RowKind.Plain, true, false)) {
+		requestWallpaperPicker();
 	}
 	sectionHeader(ui, kit, 5040, 16.0, 372.0, 328.0, "NOTIFICATIONS", "");
 	say(ui, kit, 5041, "ONGOING - PET IN THE SHADE", 16.0, 402.0, 250.0, 8.0, INK, 0.0);

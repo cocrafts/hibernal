@@ -17,11 +17,13 @@ object VoidNative {
     private const val UP = 2
     private const val CANCEL = 3
 
-    external fun attach(surface: Surface, width: Int, height: Int)
+    external fun attach(surface: Surface, width: Int, height: Int, inApp: Boolean)
     external fun resize(width: Int, height: Int)
     external fun frame()
     external fun detach()
     external fun touch(phase: Int, id: Int, x: Float, y: Float)
+    external fun setWallpaperPlaces(home: Boolean, lock: Boolean)
+    external fun takeWallpaperPickerRequest(): Boolean
     private external fun setAssetRoot(path: String)
 
     private var prepared = false

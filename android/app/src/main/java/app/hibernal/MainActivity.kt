@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -28,6 +29,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         setContentView(view)
     }
 
+    override fun onResume() {
+        super.onResume()
+        reportWallpaperPlaces()
+    }
+
     override fun surfaceCreated(holder: SurfaceHolder) {}
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -38,7 +44,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         VoidRenderer.hide(this)
     }
 
-    private fun openWallpaperPicker() {
+    // The lock screen has no wallpaper of its own (id < 0) when it shows the home screen's.
+    private fun reportWallpaperPlaces() {
+        val manager = WallpaperManager.getInstance(this)
+        val ours = ComponentName(this, VoidWallpaperService::class.java)
+        val home = manager.wallpaperInfo?.component == ours
+        val lock = if (manager.getWallpaperId(WallpaperManager.FLAG_LOCK) < 0) {
+            home
+        } else {
+            Build.VERSION.SDK_INT >= 34 && manager.getWallpaperInfo(WallpaperManager.FLAG_LOCK)?.component == ours
+        }
+        VoidNative.setWallpaperPlaces(home, lock)
+    }
+
+    fun openWallpaperPicker() {
         val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
             .putExtra(
                 WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,

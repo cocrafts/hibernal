@@ -31,6 +31,10 @@ function phaseOf(raw: int32): PointerPhase {
 	};
 }
 
+export function dropPointerEvents(): void {
+	hudPointerTake();
+}
+
 export function takePointerEvents(): PointerEvent[] {
 	const n: int32 = hudPointerTake();
 	const events: PointerEvent[] = [];
