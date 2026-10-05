@@ -23,7 +23,7 @@ import {
 } from "../layout";
 import { associatedTokenAddress } from "std/solana/token";
 import { createBlock, initialize, writePolicy } from "../admin";
-import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "../admission";
+import { appearanceOf, claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "../admission";
 
 function dispatched(): Result<uint64, ProgramError> {
 	return match (try instruction<Op>()) {
@@ -461,6 +461,13 @@ test "createBlock numbers blocks in order and only for the authority" {
 	assert second[1].lamports == 0 && u32At(second[0].data, 8) == 1 && u32At(made[1].data, CONFIG_BLOCKS) == 2;
 }
 
+test "a pet's appearance is the 32-bit FNV-1a hash of its mint" {
+	assert appearanceOf(Pubkey.zero()) == 187360325;
+	let counting = Pubkey.zero();
+	for (let index = 0; index < 32; index++) { counting.bytes[index] = index as uint8; }
+	assert appearanceOf(counting) == 152284517;
+}
+
 test "claim admits a group member once and refuses mints outside the group" {
 	now(3);
 	const made = initialized();
@@ -471,11 +478,13 @@ test "claim admits a group member once and refuses mints outside the group" {
 	assert keyAt(pet.data, PET_RECORD + 32) == admissionMintKey(0);
 	assert u32At(pet.data, PET_ORDINAL) == 0;
 	assert u64At(pet.data, PET_RECORD + 72) == 3;
+	assert u32At(pet.data, PET_RECORD + 116) == appearanceOf(admissionMintKey(0));
 	assert u32At(pet.data, PET_BLOCK) == NO_BLOCK && pet.data[PET_SLOT] == NO_SEAT && pet.data[PET_ALIVE] == 0;
 	assert accounts[5].owner == programKey() && keyAt(accounts[5].data, 8) == admissionMintKey(0);
 	assert u32At(made[1].data, CONFIG_PETS) == 1;
 	const second = claimed(made, 3);
 	assert u32At(second[4].data, PET_ORDINAL) == 1 && u32At(made[1].data, CONFIG_PETS) == 2;
+	assert u32At(second[4].data, PET_RECORD + 116) != u32At(pet.data, PET_RECORD + 116);
 	const outsider = admissionMint(admissionMintKey(1), otherGroup);
 	const refused = claimAccounts(made, owner, outsider, heldAccount(keyOf(151, 7), outsider.key, owner, 1));
 	assert claimRan(made, refused) == hibernalError(HibernalError.NotAdmitted).code;

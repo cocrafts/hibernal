@@ -159,7 +159,7 @@ export struct PetAccount {
 	claimedEpoch: uint64;
 	diedEpoch: uint64;
 	loaded: uint32[7];
-	pad2: uint32;
+	appearance: uint32;
 	pet: Pet;
 }
 

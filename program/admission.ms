@@ -60,6 +60,8 @@ import {
 
 const REGIONS: uint8 = 3;
 const PERSONAS: uint8 = 3;
+const APPEARANCE_OFFSET_BASIS: uint64 = 2166136261;
+const APPEARANCE_PRIME: uint64 = 16777619;
 
 export struct ClaimAccounts {
 	owner: WritableSigner;
@@ -122,6 +124,14 @@ export struct PlaceAccounts {
 	pet: Mutable<PetAccount>;
 }
 
+export function appearanceOf(mint: Pubkey): uint32 {
+	let hash = APPEARANCE_OFFSET_BASIS;
+	for (let index = 0; index < 32; index++) {
+		hash = ((hash ^ (mint.bytes[index] as uint64)) * APPEARANCE_PRIME) & 0xffffffff;
+	}
+	return hash as uint32;
+}
+
 function configIn(config: Owned<Config>): Result<Readonly<Ptr<Config>>, ProgramError> {
 	const stored = config.data();
 	const derived = configSeeds().withBump(stored.bump).createProgramAddress(programId());
@@ -163,6 +173,7 @@ export function claim(): Result<uint64, ProgramError> {
 	record.mint = mintKey;
 	record.ordinal = config.pets;
 	record.persona = mintKey.bytes[1] % PERSONAS;
+	record.appearance = appearanceOf(mintKey);
 	record.bump = madePet.bump;
 	record.claimedEpoch = epoch;
 	record.pet = { ...hatched.pet, blockId: NO_BLOCK, slot: NO_SEAT, alive: false };
