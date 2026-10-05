@@ -8,11 +8,11 @@ import { RowKind, listRow, labelDivider } from "./rows";
 import { Scroll, scrollState, scrollArea } from "./scroll";
 import { lightFrame } from "./shapes";
 import { selectNeighbourInSlot } from "./blockScreen";
+import { PetActivity, NO_NEIGHBOUR, STAND_IN_ACTIVITIES } from "./activity";
 import { Nav, ScreenContext, SCROLL_BOTTOM, scrollChrome, closeOverlay, screenTitle } from "./screenChrome";
 
 const TOP: float32 = 104.0;
 const ROW_HEIGHT: float32 = 48.0;
-const NO_SLOT: int32 = 0;
 const BAD_NIGHT: int32 = 2;
 const DAYS: string[] = ["THIS MORNING", "YESTERDAY", "SEP 30"];
 const UNREAD_TODAY: int32 = 3;
@@ -25,43 +25,10 @@ interface DaySummary {
 	hearts: string;
 }
 
-interface DigestEvent {
-	day: int32;
-	glyph: string;
-	line: string;
-	amount: int32;
-	// the neighbour it involved, or NO_SLOT
-	slot: int32;
-}
-
 const SUMMARIES: DaySummary[] = [
 	{ earned: 1840, food: -630, robbed: -310, won: 280, hearts: "9 > 7" },
 	{ earned: 1520, food: -420, robbed: 0, won: 0, hearts: "7 > 8" },
 	{ earned: 1700, food: -500, robbed: -620, won: 0, hearts: "8 > 6" },
-];
-
-const EVENTS: DigestEvent[] = [
-	{ day: 0, glyph: "worked", line: "WORKED", amount: 420, slot: NO_SLOT },
-	{ day: 0, glyph: "fightLost", line: "ROBBED BY SLOT 4", amount: -310, slot: 4 },
-	{ day: 0, glyph: "ate", line: "ATE A MEDIUM PORTION", amount: -315, slot: NO_SLOT },
-	{ day: 0, glyph: "levelUp", line: "LEVELLED UP - LV 11 > 12", amount: 0, slot: NO_SLOT },
-	{ day: 0, glyph: "fightWon", line: "ATTACKED SLOT 7 - WON", amount: 280, slot: 7 },
-	{ day: 0, glyph: "gearBought", line: "MINTED RARE BOOTS", amount: -300, slot: NO_SLOT },
-	{ day: 0, glyph: "gift", line: "GAVE YOU A GIFT", amount: 60, slot: NO_SLOT },
-	{ day: 0, glyph: "worked", line: "WORKED THE NIGHT SHIFT", amount: 210, slot: NO_SLOT },
-	{ day: 0, glyph: "skull", line: "SLOT 2 DIED - INHERITANCE", amount: 150, slot: 2 },
-	{ day: 0, glyph: "fightWon", line: "ATTACKED SLOT 10 - WON", amount: 190, slot: 10 },
-	{ day: 0, glyph: "ate", line: "ATE A SMALL PORTION", amount: -120, slot: NO_SLOT },
-	{ day: 0, glyph: "gearSold", line: "SOLD COMMON GLOVES", amount: 90, slot: NO_SLOT },
-	{ day: 1, glyph: "worked", line: "WORKED", amount: 380, slot: NO_SLOT },
-	{ day: 1, glyph: "ate", line: "ATE A SMALL PORTION", amount: -120, slot: NO_SLOT },
-	{ day: 1, glyph: "fightWon", line: "ATTACKED SLOT 10 - WON", amount: 150, slot: 10 },
-	{ day: 1, glyph: "skull", line: "SLOT 2 DIED - INHERITANCE", amount: 150, slot: 2 },
-	{ day: 1, glyph: "gearSold", line: "SOLD COMMON GLOVES", amount: 90, slot: NO_SLOT },
-	{ day: 2, glyph: "worked", line: "WORKED", amount: 400, slot: NO_SLOT },
-	{ day: 2, glyph: "fightLost", line: "ROBBED BY SLOT 4", amount: -320, slot: 4 },
-	{ day: 2, glyph: "fightLost", line: "BITTEN BY SLOT 4 - -2 HEARTS", amount: 0, slot: 4 },
-	{ day: 2, glyph: "ate", line: "ATE A LARGE PORTION", amount: -500, slot: NO_SLOT },
 ];
 
 interface DigestState {
@@ -101,8 +68,8 @@ function eventList(context: ScreenContext, top: float32): float32 {
 	const today: boolean = digest.day == 0;
 	let y: float32 = top;
 	let shown: int32 = 0;
-	for (let position: int32 = 0; position < EVENTS.length; position += 1) {
-		const event: DigestEvent = EVENTS[position];
+	for (let position: int32 = 0; position < STAND_IN_ACTIVITIES.length; position += 1) {
+		const event: PetActivity = STAND_IN_ACTIVITIES[position];
 		if (event.day != digest.day) {
 			continue;
 		}
@@ -115,7 +82,7 @@ function eventList(context: ScreenContext, top: float32): float32 {
 			y += 14.0;
 		}
 		const value: string = event.amount == 0 ? "" : signedAmount(event.amount);
-		const linked: boolean = event.slot != NO_SLOT;
+		const linked: boolean = event.slot != NO_NEIGHBOUR;
 		const tapped: boolean = listRow(ui, kit, 1040 + position, 16.0, y, 328.0, event.glyph, event.line, value, amountColor(event.amount),
 			RowKind.Plain, linked, false);
 		if (today && shown < UNREAD_TODAY) {
