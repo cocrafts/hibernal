@@ -14,7 +14,10 @@
 //
 // Only the first finger down is tracked. Ids are the caller's: one id per widget, never 0.
 
-import { add, setScaleMode, prepare, drawScreen } from "@metascript/void/src/void2d/scene";
+import { add, setScaleMode, prepare } from "@metascript/void/src/void2d/scene";
+import { drawTarget } from "@metascript/void/src/void2d/draw";
+import { RenderTarget } from "@metascript/void/src/gpu/target";
+import { hudTarget, sizeHudTarget, drawHudPost } from "../hud/hudPost";
 import {
 	Scene2D,
 	NodeRef,
@@ -63,6 +66,8 @@ export interface BoxLayer {
 
 export interface Ui {
 	sc: Scene2D;
+	// The HUD's own pixels, which hudPost.ms lays over the scene.
+	target: RenderTarget;
 	boxes: BoxLayer;
 	texts: NodeRef;
 	labelIds: int32[];
@@ -118,7 +123,7 @@ export function createUi(clearColor: Color): Ui {
 	sc.add(boxesTop.group);
 	sc.add(textsTop);
 	return {
-		sc: sc, boxes: boxes, texts: texts, labelIds: [], labelNodes: [], labelUsed: [], labelShown: [],
+		sc: sc, target: hudTarget(), boxes: boxes, texts: texts, labelIds: [], labelNodes: [], labelUsed: [], labelShown: [],
 		pointerId: NO_POINTER, down: false, x: 0.0, y: 0.0,
 		pressed: false, pressX: 0.0, pressY: 0.0, released: false, releaseX: 0.0, releaseY: 0.0,
 		activeId: NO_WIDGET,
@@ -231,9 +236,11 @@ export function beginUi(ui: Ui): void {
 	for (let i: int32 = 0; i < ui.labelUsed.length; i += 1) { ui.labelUsed[i] = false; }
 }
 
-let prepared: Scene2D[] = [];
+const TRANSPARENT: Color = rgba(0.0, 0.0, 0.0, 0.0);
+let prepared: Ui[] = [];
 
-// Paints the frame with no pass open; drawUi draws it into the screen pass the caller opens.
+// Paints the frame into the HUD's target with no pass open; drawUi lays it over the screen pass
+// the caller opens.
 export function endUi(ui: Ui): void {
 	// A press released over nothing that claimed it ends here.
 	if (ui.released) { ui.activeId = NO_WIDGET; }
@@ -247,11 +254,13 @@ export function endUi(ui: Ui): void {
 	hideUnused(ui.boxesTop);
 	const dpi: float32 = dpiScale();
 	ui.sc.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
-	prepared.push(ui.sc);
+	sizeHudTarget(ui.target);
+	ui.sc.context.drawTarget(ui.target, TRANSPARENT);
+	prepared.push(ui);
 }
 
 export function drawUi(): void {
-	for (const sc of prepared) { sc.drawScreen(); }
+	for (const ui of prepared) { drawHudPost(ui.target); }
 	prepared.length = 0;
 }
 

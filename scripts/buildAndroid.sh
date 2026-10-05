@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 [ -d vendor/void ] || bash scripts/fetchVoid.sh
+bash scripts/regenShaders.sh
 case "$(uname -s)" in
 	Darwin) NDK_DEFAULT="$HOME/Library/Android/sdk/ndk/28.0.13004108"; HOST_TAG="darwin-x86_64" ;;
 	Linux) NDK_DEFAULT="${ANDROID_HOME:-$HOME/Android/Sdk}/ndk/28.0.13004108"; HOST_TAG="linux-x86_64" ;;
