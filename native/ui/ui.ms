@@ -8,10 +8,9 @@
 // Layout is in design units: a fixed 360×800 portrait canvas, letterboxed into the surface.
 // Pointer pixels are mapped back through the same letterbox before any hit-test.
 //
-// void2d is retained (a Node2D tree), so the immediate API sits on top of it: boxes are drawn
-// into one Graphics node cleared each frame, and each text is a label node kept by widget id,
-// updated in place (void2d reshapes a label only when its text or style changes), and hidden
-// in a frame that does not draw it.
+// void2d is retained (a Node2D tree), so the immediate API sits on top of it: each box is a
+// rect node reused in call order and each text a label node kept by widget id, both updated in
+// place (void2d repaints only what changed) and hidden in a frame that does not draw them.
 //
 // Only the first finger down is tracked. Ids are the caller's: one id per widget, never 0.
 
@@ -20,18 +19,19 @@ import {
 	Scene2D,
 	NodeRef,
 	group,
-	graphics,
+	rect,
 	label,
 	addChild,
-	clear,
 	setText,
 	setTextStyle,
 	textStyle,
 	setColor,
 	setPosition,
+	setSize,
 	setVisible,
+	setBoxStyle,
 } from "@metascript/void/src/void2d/node";
-import { fillRoundedRect } from "@metascript/void/src/void2d/graphics";
+import { BoxStyle, uniformRadii, uniformBorders } from "@metascript/void/src/void2d/boxStyle";
 import { Color, rgba, ScaleMode } from "@metascript/void/src/void2d/types";
 import { Align } from "@metascript/void/src/void2d/textLayout";
 import { DEFAULT_FONT, fontFace } from "@metascript/void/src/void2d/font";
@@ -43,13 +43,32 @@ export const DESIGN_H: float32 = 800.0;
 const NO_POINTER: int32 = -1 as int32;
 const NO_WIDGET: int32 = 0 as int32;
 
+export struct BoxShape {
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	radius: float32;
+	color: Color;
+}
+
+// nodes[0, shown) were visible at the last endUi; shapes[k] is what nodes[k] holds.
+export interface BoxLayer {
+	group: NodeRef;
+	nodes: NodeRef[];
+	shapes: BoxShape[];
+	used: int32;
+	shown: int32;
+}
+
 export interface Ui {
 	sc: Scene2D;
-	boxes: NodeRef;
+	boxes: BoxLayer;
 	texts: NodeRef;
 	labelIds: int32[];
 	labelNodes: NodeRef[];
 	labelUsed: boolean[];
+	labelShown: boolean[];
 	pointerId: int32;
 	// The tracked pointer, in design units. `pressed` / `released` hold for the one frame in
 	// which the pointer went down / up, with where it happened; both can hold in the same
@@ -68,7 +87,7 @@ export interface Ui {
 	activeId: int32;
 	// Overlay layer (sheets, modals): drawn above everything else, and while `blockBase` is
 	// set only overlay widgets take touches. The kit adds its own layers in the same order.
-	boxesTop: NodeRef;
+	boxesTop: BoxLayer;
 	textsTop: NodeRef;
 	overlay: boolean;
 	blockBase: boolean;
@@ -90,16 +109,16 @@ export function createUi(clearColor: Color): Ui {
 	const _face: int32 = fontFace(DEFAULT_FONT);
 	const sc: Scene2D = Scene2D.create(clearColor);
 	sc.setScaleMode(ScaleMode.LetterBox, DESIGN_W, DESIGN_H);
-	const boxes: NodeRef = sc.graphics();
+	const boxes: BoxLayer = { group: sc.group(), nodes: [], shapes: [], used: 0, shown: 0 };
 	const texts: NodeRef = sc.group();
-	const boxesTop: NodeRef = sc.graphics();
+	const boxesTop: BoxLayer = { group: sc.group(), nodes: [], shapes: [], used: 0, shown: 0 };
 	const textsTop: NodeRef = sc.group();
-	sc.add(boxes);
+	sc.add(boxes.group);
 	sc.add(texts);
-	sc.add(boxesTop);
+	sc.add(boxesTop.group);
 	sc.add(textsTop);
 	return {
-		sc: sc, boxes: boxes, texts: texts, labelIds: [], labelNodes: [], labelUsed: [],
+		sc: sc, boxes: boxes, texts: texts, labelIds: [], labelNodes: [], labelUsed: [], labelShown: [],
 		pointerId: NO_POINTER, down: false, x: 0.0, y: 0.0,
 		pressed: false, pressX: 0.0, pressY: 0.0, released: false, releaseX: 0.0, releaseY: 0.0,
 		activeId: NO_WIDGET,
@@ -204,8 +223,8 @@ export function beginUi(ui: Ui): void {
 			},
 		};
 	}
-	ui.boxes.clear();
-	ui.boxesTop.clear();
+	ui.boxes.used = 0;
+	ui.boxesTop.used = 0;
 	ui.overlay = false;
 	ui.clipTop = 0.0;
 	ui.clipBottom = DESIGN_H;
@@ -219,8 +238,13 @@ export function endUi(ui: Ui): void {
 	// A press released over nothing that claimed it ends here.
 	if (ui.released) { ui.activeId = NO_WIDGET; }
 	for (let i: int32 = 0; i < ui.labelNodes.length; i += 1) {
-		ui.labelNodes[i].setVisible(ui.labelUsed[i]);
+		if (ui.labelUsed[i] != ui.labelShown[i]) {
+			ui.labelNodes[i].setVisible(ui.labelUsed[i]);
+			ui.labelShown[i] = ui.labelUsed[i];
+		}
 	}
+	hideUnused(ui.boxes);
+	hideUnused(ui.boxesTop);
 	const dpi: float32 = dpiScale();
 	ui.sc.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
 	prepared.push(ui.sc);
@@ -248,8 +272,41 @@ export function beginOverlay(ui: Ui): void { ui.overlay = true; }
 export function endOverlay(ui: Ui): void { ui.overlay = false; }
 
 export function box(ui: Ui, x: float32, y: float32, w: float32, h: float32, radius: float32, color: Color): void {
-	if (ui.overlay) { ui.boxesTop.fillRoundedRect(x, y, w, h, radius, color); }
-	else { ui.boxes.fillRoundedRect(x, y, w, h, radius, color); }
+	placeBox(ui.sc, ui.overlay ? ui.boxesTop : ui.boxes, x, y, w, h, radius, color);
+}
+
+function placeBox(sc: Scene2D, layer: BoxLayer, x: float32, y: float32, w: float32, h: float32, radius: float32,
+	color: Color): void {
+	const k: int32 = layer.used;
+	const shape: BoxShape = {
+		x: x, y: y, w: w, h: h, radius: Math.max(0.0, Math.min(radius, Math.min(w, h) * 0.5)) as float32, color: color,
+	};
+	if (k == (layer.nodes.length as int32)) {
+		const created: NodeRef = sc.rect(w, h, color);
+		layer.group.addChild(created);
+		layer.nodes.push(created);
+		layer.shapes.push({ x: 0.0, y: 0.0, w: w, h: h, radius: 0.0, color: color });
+	}
+	const n: NodeRef = layer.nodes[k];
+	const was: BoxShape = layer.shapes[k];
+	if (was != shape) {
+		if (was.radius != shape.radius) {
+			n.setBoxStyle(BoxStyle.create(uniformRadii(shape.radius), uniformBorders(0.0), color));
+		}
+		n.setPosition(x, y);
+		n.setSize(w, h);
+		n.setColor(color);
+		layer.shapes[k] = shape;
+	}
+	if (k >= layer.shown) { n.setVisible(true); }
+	layer.used = k + 1;
+}
+
+function hideUnused(layer: BoxLayer): void {
+	for (let i: int32 = layer.used; i < layer.shown; i += 1) {
+		layer.nodes[i].setVisible(false);
+	}
+	layer.shown = layer.used;
 }
 
 // `align` places the text within `w`: 0 left, 0.5 centred, 1 right.
@@ -264,6 +321,7 @@ export function text(ui: Ui, id: int32, s: string, x: float32, y: float32, w: fl
 		ui.labelIds.push(id);
 		ui.labelNodes.push(n);
 		ui.labelUsed.push(true);
+		ui.labelShown.push(true);
 		at = (ui.labelNodes.length - 1) as int32;
 	}
 	const n: NodeRef = ui.labelNodes[at];
@@ -303,7 +361,7 @@ export function button(ui: Ui, id: int32, x: float32, y: float32, w: float32, h:
 	let fill: Color = rgba(0.26, 0.29, 0.36, 1.0);
 	if (!enabled) { fill = rgba(0.18, 0.19, 0.22, 1.0); }
 	else if (held(ui, id, x, y, w, h)) { fill = rgba(0.42, 0.47, 0.58, 1.0); }
-	ui.boxes.fillRoundedRect(x, y, w, h, 12.0, fill);
+	placeBox(ui.sc, ui.boxes, x, y, w, h, 12.0, fill);
 	const size: float32 = 18.0;
 	let ink: Color = rgba(0.95, 0.96, 1.0, 1.0);
 	if (!enabled) { ink = rgba(0.55, 0.57, 0.62, 1.0); }
