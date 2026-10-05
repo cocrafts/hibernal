@@ -34,13 +34,11 @@ export function ownerFailure(error: OwnerError): ProgramError {
 	const mapped: HibernalError = match (error) {
 		OwnerError.Dead => HibernalError.Dead,
 		OwnerError.Refused => HibernalError.Refused,
-		OwnerError.Full => HibernalError.Full,
-		OwnerError.FedToday => HibernalError.FedToday,
 		OwnerError.TalkedOut => HibernalError.TalkedOut,
-		OwnerError.Insured => HibernalError.Insured,
 		OwnerError.NoSuchTier => HibernalError.Illegal,
 		OwnerError.EmptyHarvest => HibernalError.EmptyHarvest,
 		OwnerError.CoolingDown => HibernalError.CoolingDown,
+		OwnerError.SlotsFull => HibernalError.SlotsFull,
 	};
 	return hibernalError(mapped);
 }

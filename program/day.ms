@@ -39,6 +39,7 @@ import {
 	FightRecord,
 	GlobalConfig,
 	GrudgeError,
+	HeirError,
 	Listing,
 	MarketError,
 	MarketView,
@@ -57,6 +58,7 @@ import {
 	legalNodes,
 	listedItem,
 	listingGain,
+	overtimeBanked,
 	mixSeeds,
 	allocateNodeWithSums,
 	paidFor,
@@ -443,7 +445,13 @@ export function actedBy(
 	return { global: afterAttack, choice: choice };
 }
 
-export function dawned(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>, global: GlobalConfig, epoch: uint64): GlobalConfig {
+export function dawned(
+	block: Ptr<Block>,
+	pets: Span<Pet>,
+	records: Span<uint64>,
+	global: GlobalConfig,
+	epoch: uint64,
+): Result<GlobalConfig, ProgramError> {
 	let settled = global;
 	for (let seat = 0; seat < SEATS; seat++) {
 		if (records[seat] == 0) { continue; }
@@ -453,7 +461,7 @@ export function dawned(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>
 			const diedAt = record.diedEpoch;
 			if (diedAt == 0 || epoch < diedAt + GRACE_EPOCHS) { continue; }
 			const heir = pet.heirOf(epoch, settled);
-			if (!heir.ok) { continue; }
+			if (!heir.ok) { return Result.err(heirFailure(heir.error)); }
 			pets[seat] = heir.value.pet;
 			settled = heir.value.global;
 			record.diedEpoch = 0;
@@ -470,10 +478,21 @@ export function dawned(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>
 		const listing = block.listings[position];
 		if (!listing.expiredAt(epoch)) { continue; }
 		const seller = (listing.seller as int32) % BLOCK_SLOTS;
-		pets[seller] = pets[seller].boughtBack(listing);
+		const back = pets[seller].boughtBack(listing, settled);
+		if (!back.ok) { return Result.err(hibernalError(HibernalError.TreasuryShort)); }
+		pets[seller] = back.value.pet;
+		settled = back.value.global;
 		block.listed[position] = 0;
 	}
-	return settled;
+	return Result.ok(settled);
+}
+
+function heirFailure(error: HeirError): ProgramError {
+	const mapped: HibernalError = match (error) {
+		HeirError.Alive => HibernalError.Illegal,
+		HeirError.TreasuryShort => HibernalError.TreasuryShort,
+	};
+	return hibernalError(mapped);
 }
 
 export function revealed(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>, global: GlobalConfig): GlobalConfig {
@@ -513,6 +532,9 @@ export function dusked(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>
 			if (mate == seat || records[mate] == 0 || !pets[mate].alive) { continue; }
 			pets[mate] = { ...pets[mate], harvest: pets[mate].harvest + burial.value.perMate };
 		}
+	}
+	for (let seat = 0; seat < SEATS; seat++) {
+		if (records[seat] != 0) { pets[seat] = pets[seat].overtimeBanked(); }
 	}
 	return settled;
 }
@@ -741,7 +763,7 @@ export function roundStart(): Result<uint64, ProgramError> {
 	return scheduled(schedule, block, StepKind.Turn, now.slot + SEED_WAIT_SLOTS);
 }
 
-function dawnedBlock(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): void {
+function dawnedBlock(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<void, ProgramError> {
 	const world = x.world.data();
 	const epoch = block.epoch;
 	let global = world.global;
@@ -749,20 +771,22 @@ function dawnedBlock(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): 
 		global = global.settle(epoch);
 		world.epoch = epoch;
 	}
-	global = dawned(block, heap.pets, heap.records, global, epoch);
+	global = try dawned(block, heap.pets, heap.records, global, epoch);
 	world.global = revealed(block, heap.pets, heap.records, global);
 	block.dawnedEpoch = epoch;
 	storedPets(heap);
+	return Result.ok(null);
 }
 
-function dayEnded(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): void {
+function dayEnded(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<void, ProgramError> {
 	const world = x.world.data();
 	world.global = dusked(block, heap.pets, heap.records, world.global);
 	storedPets(heap);
 	block.epoch = block.epoch + 1;
 	block.round = 0;
-	dawnedBlock(x, block, heap);
+	const _dawned = try dawnedBlock(x, block, heap);
 	block.phase = Phase.Idle as uint8;
+	return Result.ok(null);
 }
 
 function actingTurn(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<boolean, ProgramError> {
@@ -826,11 +850,11 @@ export function turn(): Result<uint64, ProgramError> {
 	}
 	const heap = try loadedPets(block, TURN_PET_ACCOUNT);
 	if (block.dawnedEpoch != block.epoch) {
-		dawnedBlock(x, block, heap);
+		const _dawned = try dawnedBlock(x, block, heap);
 		return scheduled(schedule, block, StepKind.Turn, now.slot + config.turnGapSlots);
 	}
 	if ((block.cursor as int32) >= SEATS) {
-		dayEnded(x, block, heap);
+		const _ended = try dayEnded(x, block, heap);
 		return roundStartScheduled(schedule, block, now);
 	}
 	const roundDone = try actingTurn(x, block, heap);

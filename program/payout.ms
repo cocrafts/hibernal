@@ -40,6 +40,7 @@ import {
 	petSeeds,
 	vrfPayerSeeds,
 } from "./layout";
+import { EMISSION_CAP } from "../rules/index";
 
 const PET_INDEX: int32 = 2;
 const PAID_INDEX: int32 = 3;
@@ -144,6 +145,10 @@ export function claimReward(): Result<uint64, ProgramError> {
 	if (paidToday >= config.claimCapPerDay) { return Result.err(hibernalError(HibernalError.OverCap)); }
 	const room = config.claimCapPerDay - paidToday;
 	const amount = owed < room ? owed : room;
+	const supply = (try x.mint.read()).supply;
+	if (supply > EMISSION_CAP || amount > EMISSION_CAP - supply) {
+		return Result.err(hibernalError(HibernalError.SupplyCap));
+	}
 	const _minted = try mintTokens(
 		x.mint,
 		x.destination,

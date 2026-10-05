@@ -1,21 +1,21 @@
 import { Discriminator, ProgramError, Pubkey, Seeds, instructionDiscriminator, unchecked } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
-import { BlockSlot, GROWTH_CAP_BPS, GlobalConfig, Insurance, Pet, Region, born } from "../../rules/index";
+import { BlockSlot, GlobalConfig, Insurance, OwnerItem, Pet, Region, born, ownerSlots } from "../../rules/index";
 import {
 	Config,
 	HibernalError,
+	Ledger,
 	PetAccount,
-	Receipt,
 	ShopItem,
 	World,
 	configSeeds,
 	hibernalError,
+	ledgerSeeds,
 	petSeeds,
-	receiptSeeds,
+	revenueSeeds,
 	worldSeeds,
 } from "../layout";
 import { delegationProgram } from "std/solana/magicblock";
-import { INSURANCE_NONCE_BASE } from "../shop";
 import { entry } from "../main";
 
 function keyOf(seed: uint8): Pubkey {
@@ -39,8 +39,8 @@ const stagedPets: PetAccount[] = [];
 const seenPets: PetAccount[] = [];
 const stagedConfigs: Config[] = [];
 const stagedWorlds: World[] = [];
-const stagedReceipts: Receipt[] = [];
-const seenReceipts: Receipt[] = [];
+const stagedLedgers: Ledger[] = [];
+const seenLedgers: Ledger[] = [];
 
 function overlay(): uint64 {
 	const holder = unchecked(0);
@@ -67,14 +67,14 @@ function stageWorldEntry(): void {
 	at[] = stagedWorlds[stagedWorlds.length - 1];
 }
 
-function stageReceiptEntry(): void {
-	const at = overlay() as Ptr<Receipt>;
-	at[] = stagedReceipts[stagedReceipts.length - 1];
+function stageLedgerEntry(): void {
+	const at = overlay() as Ptr<Ledger>;
+	at[] = stagedLedgers[stagedLedgers.length - 1];
 }
 
-function seeReceiptEntry(): void {
-	const at = overlay() as Ptr<Receipt>;
-	seenReceipts.push(at[]);
+function seeLedgerEntry(): void {
+	const at = overlay() as Ptr<Ledger>;
+	seenLedgers.push(at[]);
 }
 
 function blankData(tag: Discriminator, size: uint64): uint8[] {
@@ -107,9 +107,9 @@ function petRecordOf(data: uint8[]): PetAccount {
 	return seenPets[seenPets.length - 1];
 }
 
-function receiptOf(data: uint8[]): Receipt {
-	run(programKey(), scratch(data), [], seeReceiptEntry);
-	return seenReceipts[seenReceipts.length - 1];
+function ledgerOf(data: uint8[]): Ledger {
+	run(programKey(), scratch(data), [], seeLedgerEntry);
+	return seenLedgers[seenLedgers.length - 1];
 }
 
 function address(seeds: Seeds): Pubkey {
@@ -256,51 +256,40 @@ function instructionData(name: string): uint8[] {
 	return bytes;
 }
 
-function buyData(item: ShopItem, tier: uint8, nonce: uint64): uint8[] {
+function buyData(item: ShopItem, tier: uint8): uint8[] {
 	const bytes = instructionData("Buy");
 	bytes.push(item as uint8);
 	bytes.push(tier);
-	pushU64(bytes, nonce);
 	return bytes;
 }
 
-function bufferKey(delegated: Pubkey): Pubkey {
-	return address(Seeds.empty(2).addText("buffer").addPubkey(delegated));
-}
+function ledgerKey(): Pubkey { return address(ledgerSeeds(mint)); }
 
-function buyAccounts(buyer: Pubkey, receipt: Pubkey, skr: uint64): HostAccount[] {
+function buyAccounts(buyer: Pubkey, skr: uint64): HostAccount[] {
 	return [
 		signerOf(buyer),
 		configHolder(),
 		petHolder(newborn(), Pubkey.delegationProgram()),
+		blank(ledgerKey()),
 		{ ...mintHolder(), writable: false },
 		tokenHolder(source, buyer, skr),
 		tokenHolder(treasury, keyOf(12), 0),
-		blank(receipt),
-		executable(programKey()),
-		blank(bufferKey(receipt)),
-		blank(keyOf(13)),
-		blank(keyOf(14)),
-		executable(Pubkey.delegationProgram()),
 		executable(Pubkey.tokenProgram()),
 		executable(Pubkey.systemProgram()),
 	];
 }
 
-function receiptHolder(item: ShopItem, tier: uint8, nonce: uint64, pet: Pubkey): HostAccount {
-	stagedReceipts.push({
-		pet: pet,
-		owner: owner,
-		nonce: nonce,
-		price: 1,
-		item: item as uint8,
-		tier: tier,
-		consumed: 0,
-		bump: bumpOf(receiptSeeds(pet, nonce)),
+function ledgerHolder(bought: uint32[], skin: uint8, ledgerMint: Pubkey): HostAccount {
+	stagedLedgers.push({
+		mint: ledgerMint,
+		bought: [bought[0], bought[1], bought[2], bought[3], bought[4], bought[5], bought[6]],
+		skin: skin,
+		bump: bumpOf(ledgerSeeds(ledgerMint)),
 		pad: 0,
 	});
-	const key = address(receiptSeeds(pet, nonce));
-	return account(key, programKey(), staged(Receipt.discriminator(), sizeof(Receipt) as uint64, stageReceiptEntry), 1_000_000);
+	const key = address(ledgerSeeds(ledgerMint));
+	const data = staged(Ledger.discriminator(), sizeof(Ledger) as uint64, stageLedgerEntry);
+	return { ...account(key, programKey(), data, 1_000_000), writable: false };
 }
 
 function code(error: HibernalError): uint64 {
@@ -311,71 +300,98 @@ function noon(seconds: int64): void {
 	setClock({ slot: 1, epochStartTimestamp: 0, epoch: 1, leaderScheduleEpoch: 1, unixTimestamp: seconds });
 }
 
-test "buying food moves the price in SKR to the treasury and delegates a receipt for the pet" {
-	const receipt = address(receiptSeeds(petKey(), 7));
-	const accounts = buyAccounts(owner, receipt, 10_000_000);
-	const before = invocations().length;
-	assert run(programKey(), accounts, buyData(ShopItem.Food, 2, 7), entry).result == 0;
-	assert amountOf(accounts[4]) == 7_000_000;
-	assert amountOf(accounts[5]) == 3_000_000;
-	assert accounts[6].owner == Pubkey.delegationProgram();
-	assert invocations().length > before;
-	const delegation = invocations()[invocations().length - 1];
-	assert delegation.program == Pubkey.delegationProgram();
-	let listsReceipt = false;
-	for (const meta of delegation.accounts) { listsReceipt = listsReceipt || meta.key == receipt; }
-	assert listsReceipt;
+test "buying food moves the price in SKR to the treasury and counts it in the pet's ledger" {
+	const accounts = buyAccounts(owner, 20_000_000);
+	assert run(programKey(), accounts, buyData(ShopItem.Food, 2), entry).result == 0;
+	assert amountOf(accounts[5]) == 17_000_000;
+	assert amountOf(accounts[6]) == 3_000_000;
+	assert accounts[3].owner == programKey();
+	assert ledgerOf(accounts[3].data).bought[2] == 1;
+	assert run(programKey(), accounts, buyData(ShopItem.Growth, 1), entry).result == 0;
+	assert run(programKey(), accounts, buyData(ShopItem.Food, 2), entry).result == 0;
+	const ledger = ledgerOf(accounts[3].data);
+	assert ledger.bought[2] == 2 && ledger.bought[4] == 1 && ledger.mint == mint;
+	assert run(programKey(), accounts, buyData(ShopItem.Skin, 1), entry).result == 0;
+	assert ledgerOf(accounts[3].data).skin == 2;
 }
 
 test "only the pet's owner can buy for it, and only with enough SKR" {
-	const receipt = address(receiptSeeds(petKey(), 8));
-	const stolen = buyAccounts(stranger, receipt, 10_000_000);
-	assert run(programKey(), stolen, buyData(ShopItem.Food, 0, 8), entry).result == ProgramError.constraintHasOne().code;
-	const poor = buyAccounts(owner, receipt, 500_000);
-	assert run(programKey(), poor, buyData(ShopItem.Food, 0, 8), entry).result != 0;
-	assert amountOf(poor[5]) == 0;
-	const unknown = buyAccounts(owner, receipt, 10_000_000);
-	assert run(programKey(), unknown, buyData(ShopItem.Food, 3, 8), entry).result == code(HibernalError.NoSuchFood);
+	const stolen = buyAccounts(stranger, 10_000_000);
+	assert run(programKey(), stolen, buyData(ShopItem.Food, 0), entry).result == ProgramError.constraintHasOne().code;
+	const poor = buyAccounts(owner, 500_000);
+	assert run(programKey(), poor, buyData(ShopItem.Food, 0), entry).result != 0;
+	assert amountOf(poor[6]) == 0;
+	const unknown = buyAccounts(owner, 10_000_000);
+	assert run(programKey(), unknown, buyData(ShopItem.Food, 3), entry).result == code(HibernalError.NoSuchFood);
 	const bogus = instructionData("Buy");
 	bogus.push(9);
 	bogus.push(0);
-	pushU64(bogus, 8);
 	assert run(programKey(), unknown, bogus, entry).result == code(HibernalError.NoSuchItem);
 }
 
-test "insurance is bought once per generation, whatever nonce the client sends" {
-	const receipt = address(receiptSeeds(petKey(), INSURANCE_NONCE_BASE));
-	const accounts = buyAccounts(owner, receipt, 100_000_000);
-	assert run(programKey(), accounts, buyData(ShopItem.Insurance, 0, 1), entry).result == 0;
-	assert amountOf(accounts[5]) == 20_000_000;
-	assert run(programKey(), accounts, buyData(ShopItem.Insurance, 0, 2), entry).result == code(HibernalError.AlreadyBought);
-	assert amountOf(accounts[5]) == 20_000_000;
-	const forged = buyAccounts(owner, receipt, 100_000_000);
-	assert run(programKey(), forged, buyData(ShopItem.Food, 0, INSURANCE_NONCE_BASE + 3), entry).result ==
-		code(HibernalError.WrongReceipt);
+test "loading moves paid items into the owner's two slots and leaves the rest waiting" {
+	const accounts = [petHolder(newborn(), programKey()), ledgerHolder([0, 0, 3, 0, 1, 0, 0], 0, mint)];
+	const load = instructionData("Load");
+	assert run(programKey(), accounts, load, entry).result == 0;
+	const record = petRecordOf(accounts[0].data);
+	assert record.pet.ownerSlots().first == OwnerItem.LargeFood;
+	assert record.pet.ownerSlots().second == OwnerItem.LargeFood;
+	assert record.loaded[2] == 2 && record.loaded[4] == 0;
+	assert run(programKey(), accounts, load, entry).result == 0;
+	assert petRecordOf(accounts[0].data).loaded[2] == 2;
+	stagedPets.push({ ...record, pet: record.pet.withSlots({ first: OwnerItem.None, second: OwnerItem.None }) });
+	const eaten = [account(petKey(), programKey(), staged(PetAccount.discriminator(), sizeof(PetAccount) as uint64, stagePetEntry), 1_000_000), accounts[1]];
+	assert run(programKey(), eaten, load, entry).result == 0;
+	const refilled = petRecordOf(eaten[0].data);
+	assert refilled.loaded[2] == 3 && refilled.loaded[4] == 1;
+	assert refilled.pet.ownerSlots().first == OwnerItem.LargeFood;
+	assert refilled.pet.ownerSlots().second == OwnerItem.MediumGrowth;
 }
 
-test "a food receipt feeds the pet once and is then spent" {
-	const hungry: Pet = { ...newborn(), hearts: 1 };
-	const accounts = [receiptHolder(ShopItem.Food, 2, 7, petKey()), petHolder(hungry, programKey()), worldHolder()];
-	assert run(programKey(), accounts, instructionData("Consume"), entry).result == 0;
-	const fed = petRecordOf(accounts[1].data).pet;
-	assert fed.hearts > 1 && fed.ownerFedToday == 1 && fed.bonding > 0;
-	assert receiptOf(accounts[0].data).consumed == 1;
-	assert run(programKey(), accounts, instructionData("Consume"), entry).result == code(HibernalError.AlreadyConsumed);
+test "insurance from the ledger arms at once even when both slots are full, and the skin dresses the pet" {
+	const accounts = [petHolder(newborn(), programKey()), ledgerHolder([2, 0, 0, 0, 0, 0, 1], 1, mint)];
+	assert run(programKey(), accounts, instructionData("Load"), entry).result == 0;
+	const record = petRecordOf(accounts[0].data);
+	assert record.pet.insurance == (Insurance.Armed as uint8);
+	assert record.loaded[6] == 1 && record.loaded[0] == 2;
+	assert record.pet.ownerSlots().first == OwnerItem.SmallFood;
+	assert record.pet.skin == 1;
 }
 
-test "growth and insurance receipts apply the owner rules, a receipt only fits its own pet" {
-	noon(3 * 86_400);
-	const growing = [receiptHolder(ShopItem.Growth, 2, 9, petKey()), petHolder(newborn(), programKey()), worldHolder()];
-	assert run(programKey(), growing, instructionData("Consume"), entry).result == 0;
-	const grown = petRecordOf(growing[1].data).pet;
-	assert grown.growthMultiplierBps as int32 == GROWTH_CAP_BPS - 500 && grown.growthMultiplierExpiry == 4;
-	const armed = [receiptHolder(ShopItem.Insurance, 0, INSURANCE_NONCE_BASE, petKey()), petHolder(newborn(), programKey()), worldHolder()];
-	assert run(programKey(), armed, instructionData("Consume"), entry).result == 0;
-	assert petRecordOf(armed[1].data).pet.insurance == (Insurance.Armed as uint8);
-	const twice = [receiptHolder(ShopItem.Insurance, 0, INSURANCE_NONCE_BASE + 1, petKey()), armed[1], worldHolder()];
-	assert run(programKey(), twice, instructionData("Consume"), entry).result == code(HibernalError.Insured);
-	const other = [receiptHolder(ShopItem.Food, 0, 10, keyOf(77)), petHolder({ ...newborn(), hearts: 1 }, programKey()), worldHolder()];
-	assert run(programKey(), other, instructionData("Consume"), entry).result == ProgramError.constraintHasOne().code;
+test "a ledger only loads into its own pet" {
+	const other = keyOf(77);
+	const accounts = [petHolder(newborn(), programKey()), ledgerHolder([1, 0, 0, 0, 0, 0, 0], 0, other)];
+	assert run(programKey(), accounts, instructionData("Load"), entry).result == ProgramError.constraintSeeds().code;
+	assert petRecordOf(accounts[0].data).loaded[0] == 0;
+}
+
+function withdrawData(amount: uint64): uint8[] {
+	const bytes = instructionData("WithdrawRevenue");
+	pushU64(bytes, amount);
+	return bytes;
+}
+
+function withdrawAccounts(signer: Pubkey, vaultOwner: Pubkey): HostAccount[] {
+	const revenue = address(revenueSeeds());
+	return [
+		signerOf(signer),
+		{ ...configHolder(), writable: true },
+		account(revenue, Pubkey.systemProgram(), [], 0),
+		tokenHolder(treasury, vaultOwner, 50_000_000),
+		{ ...mintHolder(), writable: false },
+		tokenHolder(keyOf(12), keyOf(9), 0),
+		executable(Pubkey.tokenProgram()),
+	];
+}
+
+test "only the authority withdraws SKR revenue, and only out of the program's vault" {
+	const accounts = withdrawAccounts(keyOf(9), address(revenueSeeds()));
+	assert run(programKey(), accounts, withdrawData(20_000_000), entry).result == 0;
+	assert amountOf(accounts[3]) == 30_000_000 && amountOf(accounts[5]) == 20_000_000;
+	const strangers = withdrawAccounts(stranger, address(revenueSeeds()));
+	assert run(programKey(), strangers, withdrawData(1), entry).result == code(HibernalError.NotAuthority);
+	const elsewhere = withdrawAccounts(keyOf(9), address(revenueSeeds()));
+	elsewhere[3] = tokenHolder(keyOf(13), address(revenueSeeds()), 50_000_000);
+	assert run(programKey(), elsewhere, withdrawData(1), entry).result == code(HibernalError.WrongTreasury);
+	assert amountOf(elsewhere[3]) == 50_000_000;
 }

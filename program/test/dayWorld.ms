@@ -32,7 +32,7 @@ import { Block, Config, Phase, PetAccount, Policy, VrfPayer, World as WorldAccou
 import { hydraProgram, magicVault } from "../hydra";
 
 export const WORLD_SEED: uint64 = 9001;
-export const PET_OFFSET: int32 = 88;
+export const PET_OFFSET: int32 = 120;
 export const TEST_DAY: uint64 = 36;
 export const TEST_DAYS: uint64 = 85;
 export const TURN_PET: int32 = 14;

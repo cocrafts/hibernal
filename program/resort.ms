@@ -49,7 +49,7 @@ export struct ResortBeginAccounts {
 export struct ResortClearAccounts {
 	authority: Signer;
 	config: Owned<Config>;
-	world: Owned<World>;
+	world: Mutable<World>;
 	resort: Mutable<Resort>;
 	block: Mutable<Block>;
 }
@@ -128,7 +128,8 @@ export function resortBegin(): Result<uint64, ProgramError> {
 export function resortClear(): Result<uint64, ProgramError> {
 	const x = try accounts<ResortClearAccounts>();
 	const _authorized = try authorized(x.config, x.authority);
-	const _resorting = try resorting(x.world.data());
+	const world = x.world.data();
+	const _resorting = try resorting(world);
 	const resort = x.resort.data();
 	const block = x.block.data();
 	if (block.rotation == resort.rotation) { return failed(HibernalError.OutOfOrder); }
@@ -145,7 +146,10 @@ export function resortClear(): Result<uint64, ProgramError> {
 		const listing = block.listings[index];
 		const seller = listing.seller as int32;
 		if (seller >= filled) { return failed(HibernalError.NotAMember); }
-		members[seller].pet = members[seller].pet.boughtBack(listing);
+		const back = members[seller].pet.boughtBack(listing, world.global);
+		if (!back.ok) { return failed(HibernalError.TreasuryShort); }
+		members[seller].pet = back.value.pet;
+		world.global = back.value.global;
 		block.listed[index] = 0;
 	}
 	for (let seat = 0; seat < SEATS; seat++) {

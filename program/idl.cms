@@ -16,19 +16,21 @@ import {
 	Paid,
 	PetAccount,
 	Policy,
-	Receipt,
+	Ledger,
 	Resort,
 	ResortAssignArgs,
 	ResortBeginArgs,
 	SeededArgs,
 	StepArgs,
 	VrfPayer,
+	WithdrawRevenueArgs,
 	World,
 } from "./layout";
 import {
 	CreateBlockAccounts,
 	DelegateVrfPayerAccounts,
 	InitializeAccounts,
+	WithdrawRevenueAccounts,
 	WritePolicyAccounts,
 	WritePolicyArgs,
 } from "./admin";
@@ -42,7 +44,7 @@ import {
 } from "./admission";
 import { RoundStartAccounts, SeededAccounts, StartBlockAccounts, SweepAccounts, TurnAccounts } from "./day";
 import { OwnerAccounts } from "./owner";
-import { BuyAccounts, ConsumeAccounts } from "./shop";
+import { BuyAccounts, LoadAccounts } from "./shop";
 import { ClaimRewardAccounts, CommitPetAccounts } from "./payout";
 import {
 	DelegateResortAccounts,
@@ -69,7 +71,7 @@ export function hibernalIdl(): string {
 		Talk: [OwnerAccounts],
 		Bank: [OwnerAccounts],
 		Buy: [BuyAccounts, BuyArgs],
-		Consume: [ConsumeAccounts],
+		Load: [LoadAccounts],
 		ResortBegin: [ResortBeginAccounts, ResortBeginArgs],
 		ResortClear: [ResortClearAccounts],
 		ResortAssign: [ResortAssignAccounts, ResortAssignArgs],
@@ -82,7 +84,8 @@ export function hibernalIdl(): string {
 		RoundStart: [RoundStartAccounts, StepArgs],
 		Turn: [TurnAccounts, StepArgs],
 		Sweep: [SweepAccounts],
-		accounts: [Config, Policy, World, Block, PetAccount, Paid, Resort, Receipt, VrfPayer],
+		WithdrawRevenue: [WithdrawRevenueAccounts, WithdrawRevenueArgs],
+		accounts: [Config, Policy, World, Block, PetAccount, Paid, Resort, Ledger, VrfPayer],
 		events: [],
 		errors: HibernalError,
 	});
@@ -97,7 +100,7 @@ test "the Hibernal IDL is Anchor's JSON with every instruction and account" {
 	assert parsed.ok;
 	if (parsed.ok) {
 		const idl = parsed.value;
-		assert idl.instructions.length() == 26;
+		assert idl.instructions.length() == 27;
 		assert idl.instructions.at(7).name.asString() == "process_undelegation";
 		assert idl.instructions.at(7).discriminator.at(0).asInt32() == 196;
 		assert idl.accounts.length() == 9;

@@ -1,11 +1,11 @@
 import { ProgramError, failWith, selectInstruction } from "std/solana";
 import { instruction } from "std/solana/macro";
 import { Op } from "./layout";
-import { createBlock, delegateVrfPayer, initialize, writePolicy } from "./admin";
+import { createBlock, delegateVrfPayer, initialize, withdrawRevenue, writePolicy } from "./admin";
 import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "./admission";
 import { roundStart, seeded, startBlock, sweep, turn } from "./day";
 import { bank, talk } from "./owner";
-import { buy, consume } from "./shop";
+import { buy, load } from "./shop";
 import { delegateResort, resortAssign, resortBegin, resortClear, resortFinish } from "./resort";
 import { claimReward, commitPet } from "./payout";
 
@@ -24,7 +24,7 @@ export function dispatch(): Result<uint64, ProgramError> {
 		Op.Talk => talk(),
 		Op.Bank => bank(),
 		Op.Buy => buy(),
-		Op.Consume => consume(),
+		Op.Load => load(),
 		Op.ResortBegin => resortBegin(),
 		Op.ResortClear => resortClear(),
 		Op.ResortAssign => resortAssign(),
@@ -37,6 +37,7 @@ export function dispatch(): Result<uint64, ProgramError> {
 		Op.RoundStart => roundStart(),
 		Op.Turn => turn(),
 		Op.Sweep => sweep(),
+		Op.WithdrawRevenue => withdrawRevenue(),
 	};
 }
 

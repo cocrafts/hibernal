@@ -58,7 +58,7 @@ function withResorting(data: uint8[]): uint8[] {
 	const copy: uint8[] = [];
 	for (const value of data) { copy.push(value); }
 	const scratch: WorldAccount[] = [{
-		global: { genesisTimestamp: 0, rewardPerWorkPower: 0, rewardEpoch: 0, totalWorkPower: 0, recycledPending: 0, protocolPending: 0, burned: 0, livingPets: 0, floorSlots: 0 },
+		global: { genesisTimestamp: 0, rewardPerWorkPower: 0, rewardEpoch: 0, totalWorkPower: 0, recycledPending: 0, treasury: 0, itemReserve: 0, emitted: 0, livingPets: 0, floorSlots: 0 },
 		epoch: 0, resortEvery: 0, rotation: 0, resortedEpoch: 0, bump: 0, resorting: 0, pad: 0, unplaced: 0, placed: 0, pad2: 0, secondsPerDay: 0,
 	}];
 	const target = scratch[0] as Ptr<void> as Ptr<uint8>;
@@ -141,7 +141,7 @@ function cancelsOf(key: Pubkey): int32 {
 
 test "the program keeps the sim's grudge window and the pet record keeps its pet at a fixed offset" {
 	assert GRUDGE_EPOCHS == SIM_GRUDGE_EPOCHS;
-	assert (sizeof PetAccount as int32) >= PET_OFFSET + (sizeof Pet as int32);
+	assert (sizeof PetAccount as int32) == PET_OFFSET + (sizeof Pet as int32);
 	assert seededDiscriminator() != 0;
 }
 

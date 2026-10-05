@@ -1,7 +1,7 @@
 import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
 import { delegationProgram, magicContext, magicProgram } from "std/solana/magicblock";
-import { BlockSlot, GlobalConfig, Pet, Region, born } from "../../rules/index";
+import { BlockSlot, EMISSION_CAP, GlobalConfig, Pet, Region, born } from "../../rules/index";
 import {
 	Config,
 	HibernalError,
@@ -274,6 +274,26 @@ test "a day's claims stop at the cap and resume the next day" {
 	assert u64At(accounts[5].data, 64) == 2 * CAP;
 	const ledger = ledgerOf(accounts[3]);
 	assert ledger.total == 2 * CAP && ledger.today == CAP && ledger.day == 20001;
+}
+
+function withSupply(holder: HostAccount, supply: uint64): HostAccount {
+	const data: uint8[] = [];
+	for (const byte of holder.data) { data.push(byte); }
+	for (let index = 0; index < 8; index++) {
+		data[36 + index] = ((supply >> ((index * 8) as uint64)) & 0xff) as uint8;
+	}
+	return { ...holder, data: data };
+}
+
+test "a claim never takes the HBRN supply past the 21M cap" {
+	dayClock(20000);
+	const accounts = claimAccounts(1_000, programKey());
+	accounts[4] = withSupply(accounts[4], EMISSION_CAP - 999);
+	assert run(programKey(), accounts, claim, entry).result == code(HibernalError.SupplyCap);
+	assert u64At(accounts[5].data, 64) == 0;
+	accounts[4] = withSupply(accounts[4], EMISSION_CAP - 1_000);
+	assert run(programKey(), accounts, claim, entry).result == 0;
+	assert u64At(accounts[4].data, 36) == EMISSION_CAP;
 }
 
 test "a claim is refused for a stranger, a foreign mint, another owner's wallet and a forged pet" {

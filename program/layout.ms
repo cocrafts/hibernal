@@ -26,7 +26,7 @@ export enum Op {
 	Talk,
 	Bank,
 	Buy,
-	Consume,
+	Load,
 	ResortBegin,
 	ResortClear,
 	ResortAssign,
@@ -39,6 +39,7 @@ export enum Op {
 	RoundStart,
 	Turn,
 	Sweep,
+	WithdrawRevenue,
 }
 
 export enum Phase {
@@ -157,6 +158,8 @@ export struct PetAccount {
 	pad: uint16;
 	claimedEpoch: uint64;
 	diedEpoch: uint64;
+	loaded: uint32[7];
+	pad2: uint32;
 	pet: Pet;
 }
 
@@ -238,14 +241,15 @@ export enum HibernalError {
 	NoSuchFood,
 	OverCap,
 	NoSuchItem,
-	AlreadyConsumed,
-	WrongReceipt,
-	AlreadyBought,
 	StaleStep,
 	ChainAlive,
 	NotIdle,
 	BadClock,
 	PetCap,
+	TreasuryShort,
+	SupplyCap,
+	WrongTreasury,
+	SlotsFull,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {
@@ -266,6 +270,10 @@ export function worldSeeds(): Seeds {
 
 export function mintSeeds(): Seeds {
 	return Seeds.empty(1).addText("mint");
+}
+
+export function revenueSeeds(): Seeds {
+	return Seeds.empty(1).addText("revenue");
 }
 
 export function resortSeeds(): Seeds {
@@ -291,28 +299,30 @@ export enum ShopItem {
 	Skin,
 }
 
-export struct Receipt {
-	pet: Pubkey;
-	owner: Pubkey;
-	nonce: uint64;
-	price: uint64;
-	item: uint8;
-	tier: uint8;
-	consumed: uint8;
+export const OWNER_ITEM_KINDS: int32 = 7;
+
+export struct Ledger {
+	mint: Pubkey;
+	bought: uint32[7];
+	skin: uint8;
 	bump: uint8;
-	pad: uint32;
+	pad: uint16;
 }
 
-export function discriminator(this typeof Receipt): Discriminator {
-	return @comptime { return accountDiscriminator("Receipt"); };
+export function discriminator(this typeof Ledger): Discriminator {
+	return @comptime { return accountDiscriminator("Ledger"); };
 }
 
-export function receiptSeeds(pet: Pubkey, nonce: uint64): Seeds {
-	return Seeds.empty(3).addText("receipt").addPubkey(pet).addU64(nonce);
+export function ledgerSeeds(mint: Pubkey): Seeds {
+	return Seeds.empty(2).addText("ledger").addPubkey(mint);
 }
 
 export function paidSeeds(mint: Pubkey): Seeds {
 	return Seeds.empty(2).addText("paid").addPubkey(mint);
+}
+
+export struct WithdrawRevenueArgs {
+	amount: uint64;
 }
 
 export struct InitializeArgs {
@@ -338,7 +348,6 @@ export struct CreateBlockArgs {
 export struct BuyArgs {
 	item: uint8;
 	tier: uint8;
-	nonce: uint64;
 }
 
 export struct ResortBeginArgs {

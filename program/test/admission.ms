@@ -18,8 +18,10 @@ import {
 	paidSeeds,
 	petSeeds,
 	policySeeds,
+	revenueSeeds,
 	worldSeeds,
 } from "../layout";
+import { associatedTokenAddress } from "std/solana/token";
 import { createBlock, initialize, writePolicy } from "../admin";
 import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "../admission";
 
@@ -145,6 +147,13 @@ function configKey(): Pubkey {
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
+function treasuryKey(): Pubkey {
+	const revenue = revenueSeeds().findProgramAddress(programKey());
+	if (!revenue.ok) { return Pubkey.zero(); }
+	const vault = associatedTokenAddress(revenue.value.key, keyOf(7, 0), Pubkey.tokenProgram());
+	return vault.ok ? vault.value.key : Pubkey.zero();
+}
+
 function policyKey(): Pubkey {
 	const found = policySeeds().findProgramAddress(programKey());
 	return found.ok ? found.value.key : Pubkey.zero();
@@ -195,6 +204,10 @@ const otherGroup = keyOf(5, 0);
 const validator = keyOf(6, 0);
 
 function initializeData(engine: uint64): uint8[] {
+	return initializeDataWith(engine, treasuryKey());
+}
+
+function initializeDataWith(engine: uint64, treasury: Pubkey): uint8[] {
 	const bytes = instructionBytes("Initialize");
 	pushKey(bytes, group);
 	pushU64(bytes, engine);
@@ -203,7 +216,7 @@ function initializeData(engine: uint64): uint8[] {
 	pushU64(bytes, 7);
 	pushKey(bytes, validator);
 	pushKey(bytes, keyOf(7, 0));
-	pushKey(bytes, keyOf(8, 0));
+	pushKey(bytes, treasury);
 	pushKey(bytes, keyOf(10, 0));
 	pushU64(bytes, EPOCH_SECONDS);
 	pushU64(bytes, 0);
@@ -342,13 +355,13 @@ function now(epoch: uint64): void {
 
 const PET_RECORD: int32 = 8;
 const PET_ORDINAL: int32 = PET_RECORD + 64;
-const PET_DATA: int32 = PET_RECORD + 88;
+const PET_DATA: int32 = PET_RECORD + 120;
 const PET_BLOCK: int32 = PET_DATA + 88;
 const PET_SLOT: int32 = PET_DATA + 128;
 const PET_ALIVE: int32 = PET_DATA + 129;
-const WORLD_LIVING: int32 = 8 + 56;
-const WORLD_PLACED: int32 = 8 + 104;
-const WORLD_RESORTING: int32 = 8 + 97;
+const WORLD_LIVING: int32 = 8 + 64;
+const WORLD_PLACED: int32 = 8 + 112;
+const WORLD_RESORTING: int32 = 8 + 105;
 const CONFIG_BLOCKS: int32 = 8 + 120;
 const CONFIG_PETS: int32 = 8 + 124;
 const POLICY_WRITTEN: int32 = 8 + 8;
@@ -368,7 +381,7 @@ test "initialize creates config, policy, world and the HBRN mint it signs for" {
 	assert u64At(made[1].data, 8 + 96) == ENGINE;
 	assert u64At(made[1].data, 8 + 104) == GENESIS;
 	assert keyAt(made[1].data, 8 + 136) == validator;
-	assert keyAt(made[1].data, 8 + 168) == keyOf(7, 0) && keyAt(made[1].data, 8 + 200) == keyOf(8, 0);
+	assert keyAt(made[1].data, 8 + 168) == keyOf(7, 0) && keyAt(made[1].data, 8 + 200) == treasuryKey();
 	assert made[2].owner == programKey() && made[3].owner == programKey();
 	assert u64At(made[3].data, 8) == GENESIS;
 	assert made[4].owner == Pubkey.tokenProgram() && made[4].data.length == 82;
@@ -379,6 +392,22 @@ test "initialize creates config, policy, world and the HBRN mint it signs for" {
 		}
 	}
 	assert mintInitialized;
+}
+
+test "initialize refuses an SKR treasury the program does not hold" {
+	now(0);
+	const made = [
+		wallet(authority),
+		blank(configKey()),
+		blank(policyKey()),
+		blank(worldKey()),
+		blank(mintKey()),
+		executable(Pubkey.tokenProgram()),
+		executable(Pubkey.systemProgram()),
+	];
+	const outcome = run(programKey(), made, initializeDataWith(ENGINE, keyOf(8, 0)), entry);
+	assert outcome.result == hibernalError(HibernalError.WrongTreasury).code;
+	assert made[1].owner != programKey();
 }
 
 test "writePolicy fills the policy in order, seals it once and refuses everything after" {

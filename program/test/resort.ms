@@ -155,16 +155,20 @@ function stageWorldEntry(): void {
 	if (!target.ok) { return; }
 	const world = (target.value.data().address + 8) as Ptr<World>;
 	const placedPets = data.readU32(0);
-	if (!placedPets.ok) { return; }
+	const treasury = data.readU64(4);
+	if (!placedPets.ok || !treasury.ok) { return; }
 	world.placed = placedPets.value;
+	world.global.itemReserve = treasury.value;
 }
 
-function worldHolder(placedPets: uint32): HostAccount {
+function worldHolder(placedPets: uint32, treasury: uint64): HostAccount {
 	const blank = stamped(holder(keyOf(151), sizeof(World) as int32), World.discriminator().word());
 	const data: uint8[] = [];
 	pushU32(data, placedPets);
+	pushU64(data, treasury);
 	return staged([blank], data, stageWorldEntry);
 }
+
 
 function peekBlockEntry(): void {
 	const target = unchecked(0);
@@ -186,7 +190,7 @@ function peekWorldEntry(): void {
 	const target = unchecked(0);
 	if (!target.ok) { return; }
 	const world = (target.value.data().address + 8) as Ptr<World>;
-	peeked = [world.resorting as uint64, world.rotation];
+	peeked = [world.resorting as uint64, world.rotation, world.global.itemReserve];
 }
 
 function beginEntry(): void {
@@ -261,6 +265,7 @@ const WORLD: int32 = 1;
 const RESORT: int32 = 2;
 const BLOCKS: int32 = 3;
 const PETS: int32 = 5;
+const FIXTURE_TREASURY: uint64 = 1000000000000;
 
 let state: HostAccount[] = [];
 
@@ -279,7 +284,7 @@ function fixture(): void {
 		state.push(petHolder(index as uint32, blockId, (index % 10) as uint8, might, index != 4));
 	}
 	state[CONFIG] = configHolder(20, 2);
-	state[WORLD] = worldHolder(20);
+	state[WORLD] = worldHolder(20, FIXTURE_TREASURY);
 	state[BLOCKS] = blockHolder(0, 0);
 	state[BLOCKS + 1] = blockHolder(1, 10);
 }
@@ -296,10 +301,11 @@ function begun(): uint64 {
 }
 
 function cleared(block: int32): uint64 {
-	const accounts: HostAccount[] = [authority(), state[CONFIG], readOnly(state[WORLD]), state[RESORT], state[BLOCKS + block]];
+	const accounts: HostAccount[] = [authority(), state[CONFIG], state[WORLD], state[RESORT], state[BLOCKS + block]];
 	const first = PETS + block * 10;
 	for (let seat = 0; seat < 10; seat++) { accounts.push(state[first + seat]); }
 	const outcome = run(programKey(), accounts, headed("ResortClear"), clearEntry);
+	state[WORLD] = accounts[2];
 	state[RESORT] = accounts[3];
 	state[BLOCKS + block] = accounts[4];
 	for (let seat = 0; seat < 10; seat++) { state[first + seat] = accounts[5 + seat]; }
@@ -397,6 +403,7 @@ test "finishing early is refused and a listing goes back to its seller" {
 	assert peek(state[BLOCKS], peekBlockEntry)[15] == 0;
 	const price = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1).sellPrice();
 	assert price > 0 && peek(state[PETS + 2], peekPetEntry)[2] == before + price;
+	assert peek(state[WORLD], peekWorldEntry)[2] == FIXTURE_TREASURY - price;
 	assert finished() == codeOf(HibernalError.Unfinished);
 }
 

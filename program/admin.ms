@@ -1,10 +1,13 @@
 import {
 	Account,
+	External,
+	ExternalMutable,
 	Mutable,
 	Owned,
 	Program,
 	ProgramError,
 	Pubkey,
+	Signer,
 	System,
 	Token,
 	Writable,
@@ -17,7 +20,7 @@ import {
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
 import { DelegationAccounts, DelegationConfig, anyValidator, delegate, delegationProgram, onValidator } from "std/solana/magicblock";
-import { createMintPda } from "std/solana/token";
+import { Mint, TokenAccount, associatedTokenAddress, createMintPda, transferTokensSigned } from "std/solana/token";
 import { ACTS_PER_EPOCH, GlobalConfig, PolicyError, checkPolicy, genesis } from "../rules/index";
 import {
 	Block,
@@ -36,8 +39,10 @@ import {
 	hibernalError,
 	mintSeeds,
 	policySeeds,
+	revenueSeeds,
 	vrfPayerSeeds,
 	worldSeeds,
+	WithdrawRevenueArgs,
 } from "./layout";
 
 const HBRN_DECIMALS: uint8 = 6;
@@ -50,6 +55,16 @@ export struct InitializeAccounts {
 	mint: Writable;
 	tokenProgram: Program<Token>;
 	systemProgram: Program<System>;
+}
+
+export struct WithdrawRevenueAccounts {
+	authority: Signer;
+	config: Mutable<Config>;
+	revenue: Account;
+	treasury: ExternalMutable<TokenAccount>;
+	skrMint: External<Mint>;
+	destination: ExternalMutable<TokenAccount>;
+	tokenProgram: Account;
 }
 
 export struct WritePolicyAccounts {
@@ -84,11 +99,26 @@ export function authorized(config: Mutable<Config>, authority: Pubkey): Result<P
 	return Result.ok(stored);
 }
 
+function revenueVault(skrMint: Pubkey, tokenProgram: Pubkey): Result<Pubkey, ProgramError> {
+	const revenue = try revenueSeeds().findProgramAddress(programId());
+	const vault = try associatedTokenAddress(revenue.key, skrMint, tokenProgram);
+	return Result.ok(vault.key);
+}
+
+function heldByProgram(treasury: Pubkey, skrMint: Pubkey): Result<boolean, ProgramError> {
+	const classic = try revenueVault(skrMint, Pubkey.tokenProgram());
+	const extended = try revenueVault(skrMint, Pubkey.token2022Program());
+	return Result.ok(treasury == classic || treasury == extended);
+}
+
 export function initialize(): Result<uint64, ProgramError> {
 	const a = try args<InitializeArgs>();
 	const x = try accounts<InitializeAccounts>();
 	if (a.secondsPerDay < (ACTS_PER_EPOCH as uint64) || a.slotMillis == 0 || a.turnGapSlots == 0) {
 		return Result.err(hibernalError(HibernalError.BadClock));
+	}
+	if (!(try heldByProgram(a.treasury, a.skrMint))) {
+		return Result.err(hibernalError(HibernalError.WrongTreasury));
 	}
 	const madeConfig = try createPda<Config>(x.authority, x.config, configSeeds());
 	const madePolicy = try createPda<Policy>(x.authority, x.policy, policySeeds());
@@ -205,4 +235,23 @@ export function delegateVrfPayer(): Result<uint64, ProgramError> {
 		systemProgram: x.systemProgram as Account,
 	};
 	return delegate(delegation, vrfPayerSeeds(), bump, config);
+}
+
+export function withdrawRevenue(): Result<uint64, ProgramError> {
+	const a = try args<WithdrawRevenueArgs>();
+	const x = try accounts<WithdrawRevenueAccounts>();
+	const config = try authorized(x.config, x.authority.key());
+	if (x.treasury.key() != config.treasury || x.skrMint.key() != config.skrMint) {
+		return Result.err(hibernalError(HibernalError.WrongTreasury));
+	}
+	const revenue = try revenueSeeds().findProgramAddress(programId());
+	if (x.revenue.key() != revenue.key) { return Result.err(ProgramError.constraintSeeds()); }
+	return transferTokensSigned(
+		x.treasury,
+		x.destination,
+		x.skrMint,
+		x.revenue,
+		a.amount,
+		revenueSeeds().withBump(revenue.bump),
+	);
 }
