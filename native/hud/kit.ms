@@ -51,6 +51,9 @@ export const SCREEN_WIDTH: float32 = 360.0;
 export const SCREEN_HEIGHT: float32 = 800.0;
 const SUB_ID_BASE: int32 = 1000000;
 const FONT_PATH: string = "assets/fonts/Silkscreen-Regular.ttf";
+const PIECE_DIRECTORY: string = "assets/hud/pieces/";
+// art/hud/cutHud.py cuts the pieces at the Seeker's pixels per design unit.
+const PIECE_DENSITY: float32 = 1200.0 / 360.0;
 
 // On Android files only open during init, while the asset root is the working directory, so
 // every icon loads in createKit.
@@ -59,6 +62,13 @@ export const ICON_NAMES: string[] = ["heart", "bag", "lock", "warning", "winter"
 	"copy", "back", "send", "worked", "ate", "levelUp", "gearBought", "gearSold", "fightWon", "fightLost", "gift",
 	"nodeSmallAllocated", "nodeSmallReachable", "nodeSmallLocked", "nodeNotableAllocated", "nodeNotableReachable",
 	"nodeNotableLocked", "nodeKeystoneAllocated", "nodeKeystoneReachable", "nodeKeystoneLocked", "recenter"];
+export const PIECE_NAMES: string[] = ["panel", "xpFrame", "slot", "plusSlot", "levelPlate", "endCap", "tab", "hatch", "dot",
+	"sword", "pistol", "shotgun", "core", "rifle", "statFrame", "statBadge", "statFillRedEnd", "statFillRedBody",
+	"statFillBlueEnd", "statFillBlueBody", "statFillGreenEnd", "statFillGreenBody", "statFillOrangeEnd", "statFillOrangeBody",
+	"statHeart", "statGift", "statGrowth", "medkit", "battery", "ammo", "shield", "drone", "shopFrame", "shopHologram", "shopCart", "shopCheck", "shopCell",
+	"shopCellSelected", "shopCellPlus", "shopCellDisabled", "shopTag", "shopBalance", "shopPurchase",
+	"shopCancel", "shopGem", "shopSword", "shopPistol", "shopShotgun", "shopCore", "shopMedkit", "shopBattery", "shopAmmo",
+	"shopShield", "shopDrone"];
 
 export interface Texture {
 	view: uint32;
@@ -83,6 +93,7 @@ export interface KitTextures {
 	parts: FrameParts;
 	frames: NamedTexture[];
 	icons: NamedTexture[];
+	pieces: NamedTexture[];
 	badges: Texture[];
 	white: Texture;
 }
@@ -108,6 +119,11 @@ export enum LookupError {
 	Missing,
 }
 
+export enum PieceLayer {
+	Frames,
+	Icons,
+}
+
 const sharedTextures: KitTextures[] = [];
 
 function textureOf(image: Pixels): Texture {
@@ -115,9 +131,17 @@ function textureOf(image: Pixels): Texture {
 }
 
 function loadIcon(name: string): Texture {
-	const pixels = loadImageSync(KIT_DIRECTORY + "icons/" + name + ".png", 4);
+	return loadTexture(KIT_DIRECTORY + "icons/" + name + ".png");
+}
+
+function loadTexture(path: string): Texture {
+	const pixels = loadImageSync(path, 4);
 	const width: int32 = imageWidth();
 	const height: int32 = imageHeight();
+	if (width <= 0 || height <= 0) {
+		console.log("kit: " + path + " did not load");
+		unreachable;
+	}
 	const view: uint32 = makeView(makeImageBytes(pixels, width, height));
 	freeImage(pixels);
 	return { view: view, width: width, height: height };
@@ -128,6 +152,10 @@ function createTextures(): KitTextures {
 	const icons: NamedTexture[] = [];
 	for (const name of ICON_NAMES) {
 		icons.push({ name: name, texture: loadIcon(name) });
+	}
+	const pieces: NamedTexture[] = [];
+	for (const name of PIECE_NAMES) {
+		pieces.push({ name: name, texture: loadTexture(PIECE_DIRECTORY + name + ".png") });
 	}
 	const badges: Texture[] = [];
 	for (const badge of parts.badges) {
@@ -144,6 +172,7 @@ function createTextures(): KitTextures {
 		parts: parts,
 		frames: [],
 		icons: icons,
+		pieces: pieces,
 		badges: badges,
 		white: { view: makeTextureView(makeImage(whitePixels, 2, 2)), width: 2, height: 2 },
 	};
@@ -306,6 +335,38 @@ function iconTexture(kit: Kit, name: string): Texture {
 	const texture: Texture = loadIcon(name);
 	kit.textures.icons.push({ name: name, texture: texture });
 	return texture;
+}
+
+function pieceTexture(kit: Kit, name: string): Texture {
+	for (const named of kit.textures.pieces) {
+		if (named.name == name) {
+			return named.texture;
+		}
+	}
+	console.log("kit: no piece " + name + " in " + PIECE_DIRECTORY + " (PIECE_NAMES loads them in createKit)");
+	unreachable;
+}
+
+export function pieceWidth(kit: Kit, name: string): float32 {
+	return (pieceTexture(kit, name).width as float32) / PIECE_DENSITY;
+}
+
+export function pieceHeight(kit: Kit, name: string): float32 {
+	return (pieceTexture(kit, name).height as float32) / PIECE_DENSITY;
+}
+
+// At its own size, top-left at (x, y).
+export function piece(kit: Kit, id: int32, layer: PieceLayer, name: string, x: float32, y: float32): void {
+	pieceSized(kit, id, layer, name, x, y, pieceWidth(kit, name), pieceHeight(kit, name));
+}
+
+export function pieceSized(kit: Kit, id: int32, layer: PieceLayer, name: string, x: float32, y: float32, width: float32,
+	height: float32): void {
+	const into: NodeRef = match (layer) {
+		PieceLayer.Frames => kit.frames,
+		PieceLayer.Icons => kit.icons,
+	};
+	place(kit, into, "piece" + id.toString(), pieceTexture(kit, name).view, x, y, width, height, WHITE);
 }
 
 export function icon(kit: Kit, id: int32, name: string, x: float32, y: float32, size: float32): void {

@@ -2,11 +2,11 @@
 // stand-in until the chain client exists.
 
 import { rgba } from "@metascript/void/src/void2d/types";
-import { Ui, createUi, beginUi, endUi, box, pressable } from "../ui/ui";
+import { Ui, createUi, beginUi, endUi, box, pressable, DESIGN_W, DESIGN_H } from "../ui/ui";
 import { Kit, createKit, beginKit, endKit, frame, badgeFrame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT, ALERT_RED,
 	SCREEN_HEIGHT } from "./kit";
 import { FrameLook } from "./frame";
-import { ButtonStyle, SignState, ChipKind, button, textLink, signButton, chip, badge } from "./buttons";
+import { SignState, ChipKind, textLink, signButton, chip, badge } from "./buttons";
 import { heartPips, bar, bondingBar, balance } from "./meters";
 import { Toasts, emptyToasts, pushToast, drawToasts, tooltip, reasonPill, walletBanner, syncChip } from "./notices";
 import { sheet, sheetTop } from "./overlays";
@@ -16,6 +16,9 @@ import { CHAR_LIGHT } from "./shapes";
 import { Signing, idleSigning, startSigning, advanceSigning } from "./signing";
 import { Nav, ScreenContext, openOverlay, closeOverlay } from "./screenChrome";
 import { screenFrame } from "./screens";
+import { HOTBAR_HEIGHT, EMPTY_SLOT, HotbarTap, HotbarTapKind, hotbar, hotbarXpLeft, hotbarPanelTop } from "./hotbar";
+import { SHOP_HEIGHT, SHOP_GAP, SHOP_OUTLINE_LEFT, ShopItem, ShopTap, ShopTapKind, shopPopup, selectedCount } from "./shopPopup";
+import { StatColour, statBars } from "./statBars";
 
 const MAX_HEARTS: int32 = 10;
 const MAX_TALKS: int32 = 5;
@@ -87,6 +90,10 @@ interface Home {
 	sheetOpen: float32;
 	// a screen's own sheet or modal, as of the last frame
 	screenOverlayOpen: boolean;
+	shopOpen: boolean;
+	shopSelected: boolean[];
+	inventory: string[];
+	skrBalance: int32;
 	feedPortion: int32;
 	feedSigning: Signing;
 	chat: ChatLine[];
@@ -118,6 +125,10 @@ export function initHudHome(): void {
 		openSheet: Sheet.None,
 		sheetOpen: 0.0,
 		screenOverlayOpen: false,
+		shopOpen: false,
+		shopSelected: [false, false, false, false, false, false, false, false, false],
+		inventory: ["sword", "pistol", "shotgun", "core", "rifle", EMPTY_SLOT],
+		skrBalance: STAND_IN_SKR_BALANCE,
 		feedPortion: NO_PORTION,
 		feedSigning: idleSigning(),
 		chat: [
@@ -368,27 +379,77 @@ function dockTabFor(screen: Nav): DockTab {
 	};
 }
 
+const STAND_IN_SKR_BALANCE: int32 = 1420;
+const SHOP_ITEMS: ShopItem[] = [
+	{ icon: "sword", shopIcon: "shopSword", price: 100 },
+	{ icon: "pistol", shopIcon: "shopPistol", price: 250 },
+	{ icon: "shotgun", shopIcon: "shopShotgun", price: 300 },
+	{ icon: "core", shopIcon: "shopCore", price: 200 },
+	{ icon: "medkit", shopIcon: "shopMedkit", price: 150 },
+	{ icon: "battery", shopIcon: "shopBattery", price: 120 },
+	{ icon: "ammo", shopIcon: "shopAmmo", price: 80 },
+	{ icon: "shield", shopIcon: "shopShield", price: 180 },
+	{ icon: "drone", shopIcon: "shopDrone", price: 220 },
+];
+
+const HOTBAR_ID: int32 = 300;
+const HOTBAR_BOTTOM_PADDING: float32 = 38.0;
+const STAND_IN_LEVEL: int32 = 12;
+const STAND_IN_XP: int32 = 620;
+const STAND_IN_XP_TO_NEXT: int32 = 1000;
+const SHOP_ID: int32 = 320;
+const TOASTS_Y: float32 = 330.0;
+const STAT_BARS_ID: int32 = 310;
+const STAT_BARS_TOP: float32 = 46.0;
+const STAT_BARS_RIGHT_PADDING: float32 = 8.0;
+const BONDING_MIN: float32 = -127.0;
+const BONDING_SPAN: float32 = 254.0;
+const STAND_IN_GROWTH_SHARE: float32 = 0.5;
+
+function freeSlots(home: Home): int32 {
+	let free: int32 = 0;
+	for (const slot of home.inventory) {
+		if (slot == EMPTY_SLOT) { free += 1; }
+	}
+	return free;
+}
+
+function closeShop(home: Home): void {
+	home.shopOpen = false;
+	for (let i: int32 = 0; i < home.shopSelected.length; i += 1) { home.shopSelected[i] = false; }
+}
+
 function homeFrame(home: Home): void {
-	const ui: Ui = home.ui;
-	// A tap on the scene collapses the expanded card.
-	if (home.tick < home.expandedUntil && ui.released && ui.releaseY > 260.0 && ui.releaseY < 600.0) {
-		home.expandedUntil = 0;
+	const barTop: float32 = DESIGN_H - HOTBAR_HEIGHT - HOTBAR_BOTTOM_PADDING;
+	const tapped: HotbarTap = hotbar(home.ui, home.kit, HOTBAR_ID, barTop, STAND_IN_LEVEL, STAND_IN_XP, STAND_IN_XP_TO_NEXT,
+		home.inventory);
+	if (home.shopOpen) {
+		const answer: ShopTap = shopPopup(home.ui, home.kit, SHOP_ID, hotbarXpLeft() - SHOP_OUTLINE_LEFT, barTop + hotbarPanelTop() - SHOP_GAP - SHOP_HEIGHT,
+			SHOP_ITEMS, home.shopSelected, freeSlots(home), home.skrBalance);
+		match (answer.kind) {
+			ShopTapKind.Nothing => {},
+			ShopTapKind.Close => { closeShop(home); },
+			ShopTapKind.Cancel => { closeShop(home); },
+			ShopTapKind.Toggle => { home.shopSelected[answer.item] = !home.shopSelected[answer.item]; },
+			ShopTapKind.Purchase => {
+				if (selectedCount(home.shopSelected) > 0) {
+					pushToast(home.toasts, "SKR PAYMENT IS NOT CONNECTED YET", true);
+				}
+			},
+		};
 	}
-	statusCard(home);
-	badges(home);
-	drawToasts(ui, home.kit, 60, home.toasts, 16.0, 612.0, 328.0);
-	if (button(ui, home.kit, 70, 16.0, 668.0, 156.0, 48.0, "FEED", ButtonStyle.Primary, true, 21)) {
-		home.openSheet = Sheet.Feed;
-	}
-	if (button(ui, home.kit, 71, 188.0, 668.0, 156.0, 48.0, "TALK " + home.talks.toString() + "/" + MAX_TALKS.toString(),
-		ButtonStyle.Primary, true, 22)) {
-		home.openSheet = Sheet.Talk;
-	}
-	const tapped: Result<DockTab, DockError> = dock(ui, home.kit, 80, DockTab.Home, true, 31);
-	if (tapped.ok) {
-		home.screen = navFor(tapped.value);
-	}
-	sheets(home);
+	// After the shop: the release that opens it lies outside it and would close it again.
+	match (tapped.kind) {
+		HotbarTapKind.Nothing => {},
+		HotbarTapKind.Menu => { home.screen = Nav.Settings; },
+		HotbarTapKind.Slot => { home.shopOpen = true; },
+	};
+	statBars(home.kit, STAT_BARS_ID, DESIGN_W - STAT_BARS_RIGHT_PADDING, STAT_BARS_TOP, [
+		{ colour: StatColour.Red, icon: "statHeart", share: (home.hearts as float32) / (MAX_HEARTS as float32) },
+		{ colour: StatColour.Blue, icon: "statGift", share: ((home.bonding as float32) - BONDING_MIN) / BONDING_SPAN },
+		{ colour: StatColour.Green, icon: "statGrowth", share: STAND_IN_GROWTH_SHARE },
+	]);
+	drawToasts(home.ui, home.kit, 60, home.toasts, 16.0, TOASTS_Y, 328.0);
 }
 
 // The screen scrolls under the toasts and the dock, so they go on the overlay.
@@ -432,7 +493,8 @@ export function frameHudHome(): void {
 	beginUi(home.ui);
 	beginKit(home.kit);
 	home.tick += 1;
-	home.ui.blockBase = home.openSheet != Sheet.None || (home.screen != Nav.Home && home.screenOverlayOpen);
+	home.ui.blockBase = home.openSheet != Sheet.None || (home.screen != Nav.Home && home.screenOverlayOpen)
+		|| (home.screen == Nav.Home && home.shopOpen);
 	if (home.screen == Nav.Home) {
 		homeFrame(home);
 	} else {

@@ -7,6 +7,7 @@ generator/   parametric Blender generator (Python): (bodyType, build, age, rarit
 source/      hand-made .blend files: burrow, campfire, props, harvest objects
 reference/   concept images to match (sceneDay.png, sceneNight.png)
 palettes/    palette sources for the LUT (day, night, Winter, Fading)
+hud/         HUD sprite sheets and mockups; cutHud.py cuts them into assets/hud/pieces/
 ```
 
 Export rules:
