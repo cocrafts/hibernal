@@ -427,6 +427,31 @@ Measured on engine `16948401298924711931`, commit `7ab5e6f` (`~/metacraft/hibern
 - On the way, every starvation with money (step26: one; step27: three) was a pet that knew it would not wake up (`DawnHearts` = 0) and did not buy: Fighters eating 45–55% of their hearts a day who lived on the owner's breakfast, and a bled Worker that kept fighting. With the food sale inside `buy`, the appetite ceiling and no reflex, step29 has none.
 - Persona recall of the learned brains (0.71–0.75) sits under the 0.8 the user set; reported, not gated.
 
+### Package 7: the 21M economy, owner slots and thinking wild pets — Measured
+
+The user decided on 2026-10-05 (`docs/BRIEF.md` D3, D4, D23, D37, D40–D42): emission halves every Winter to an exact 21M, nothing is burned and a treasury pays 1% of its balance back each day, the growth drug is a next-day forage boost, Overtime banks the harvest at dusk, owner consumables sit in slots 5–6, wild pets act with the brain in empty seats, and the teacher picks its keystone by persona and start region so all six are taught.
+
+Measured on engine `3052634712731184861`, tree `5281e361189eac9ae2b36ba777bf734a981c735f`, the shared Mac under load 40–70: `bc.py --envs 8 --steps 4000 --studentRounds 2 --name bc30`, `ppo.py --start bc30 --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7 (`p30s5`–`p30s7`, 50 minutes for the three in parallel), `evaluate.py --worlds 16` and `health.py --worlds 8` (seed 9001, fixed blocks, wilds on):
+
+| | Teacher | Clone | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with money for a meal (health) | 0 | 0 | 0 / 0 / 0 |
+| Starved, any, per 8 worlds (health) | 93 | 99 | 66 / 47 / 73 |
+| Early deaths per 100 lives (health) | 3.70 | 6.06 | 3.26 / 1.95 / 3.46 |
+| Own-world wealth, `$HBRN` per pet; deaths | 33,501; 206 | 33,096; 196 | 39,235 / 40,623 / 39,832; 143 / 105 / 178 |
+| Mixed world against the teacher | −1.1% (seat noise) | −0.6% | +52.6 / +27.4 / +54.7% |
+| Food bill at level 20, % of income | 48 | 49 | 34 / 32 / 31 |
+| % of income on mints; on the market | 10.5; 5.8 | 11.1; 6.3 | 8.9–10.0; 4.6–5.2 |
+| Income p90 / p99 / top against the median | 4.3 / 5.9 / 9.1 | 4.2 / 5.6 / 9.1 | 3.6–4.0 / 5.2–5.3 / 6.5–7.7 |
+| Start-region wealth, richest over poorest | 2.5 | 2.2 | 1.4 / 1.1 / 1.2 |
+| Persona told from one log, with revenge | 0.81 | 0.81 | 0.71 / 0.67 / 0.70 |
+
+- With `p30s5` in `out/actProbe/policy.txt`, `program/test/day.ms` replays days 36–120 of a block on the program and in the sim byte for byte (364 fights, 10 deaths, 8 heirs, 21 sales; wilds off, as on chain until the wild page lands), and `tools/chain/dayLiteSvm.mjs` replays the relay day with 0 bytes differing; worst act with a fight 979,254 CU (was 1,002,138). Program 468,216 bytes.
+- HBRN ledger (`msc run sim/ledger.ms`, 200 pets, 400 days, teacher): Σ balances + unsettled shares + pot + treasury + item reserve + dead estates against `emitted` drifts −38,910 base units (per-pet rounding) by day 400. Before the fixes the same harness found three sources minting from nothing, each disabled in a copy to size it: sim wild harvest ~3.5M, item buyback ~1.5M, growth bonus ~0.6M `$HBRN` by day 400; then a retiring wild losing its unpaid day, −991k.
+- 400-day teacher world, seed 7 (old rules → halving without release → final): deaths 756 → 993 → 751, median wallet 46,592 → 1,126 → 48,978 `$HBRN`, median level 20 → 15 → 20; all six keystones held (Tycoon, Berserker and Bulwark were never taken before).
+- Persona recall stays under the user's 0.8, as in package 5f; reported, not gated.
+
 ### Package 6: the policy on SBF — Measured (inference), observation open
 
 `tools/policyProbe.ms` (`--os=solana`) runs `rules/policy.ms` unchanged over a policy blob that stays in account data (`Ptr<PolicyBlob>` over the account, never copied onto the 4 KB stack), on fixed synthetic inputs: `checkPolicy`, one economy pass, the attack head for 9 targets and the tree head for 6 candidate nodes. `tools/chain/policyLiteSvm.mjs` runs it in LiteSVM 1.4.1 under a 1.4M limit (`npm ci` in `tools/chain` first) and writes the blob for `tools/policyHost.ms`, which runs the same inference natively. Measured 2026-09-26 on msc 0.2.55, engine `16948401298924711931`, checkpoint `p29s5` (step29), compute-unit log cost subtracted:
