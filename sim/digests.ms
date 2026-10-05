@@ -93,8 +93,11 @@ export function digestTree(): uint64 {
 export function digestEconomy(): uint64 {
 	let digest: Digest = { value: 2 };
 	for (let epoch: uint64 = 0; epoch < 400; epoch++) {
-		const rewardPerWorkPower = settleGlobal(0, 0, epoch, 1234, epoch * 7);
+		const settled = settleGlobal(0, 0, epoch, 1000, 1234, epoch * 7, 0, epoch * 11);
+		const rewardPerWorkPower = settled.rewardPerWorkPower;
 		digest = digest.absorb(rewardPerWorkPower ^
+			settled.emitted ^
+			settled.treasury ^
 			pendingReward(34, rewardPerWorkPower, rewardPerWorkPower / 3) ^
 			(xpToReach((epoch % 25) as int32) as uint64) ^
 			foodCost(((epoch % 3) as int32) as Food, (epoch % 50) as int32));
@@ -129,7 +132,7 @@ export function digestWorld(): uint64 {
 		digest = digest.absorb(pet.harvest ^ (pet.burrow << 1) ^ ((pet.xp as uint64) << 40));
 		digest = digest.absorb((pet.hearts as uint64) ^ ((pet.level as uint64) << 8) ^ pet.tree.bits);
 	}
-	return digest.absorb((world.stats.fights as uint64) ^ ((world.stats.wins as uint64) << 16) ^ world.global.burned).value;
+	return digest.absorb((world.stats.fights as uint64) ^ ((world.stats.wins as uint64) << 16) ^ world.global.treasury ^ world.global.itemReserve ^ world.global.emitted).value;
 }
 
 export function digestObserve(): uint64 {

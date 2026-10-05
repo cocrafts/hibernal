@@ -8,10 +8,11 @@ import {
 	splitmix,
 	mixSeeds,
 	talkedTo,
-	ownerFed,
+	foodItem,
+	growthItem,
+	withOwnerItem,
+	OwnerItem,
 	ownerBanked,
-	grownBy,
-	insured,
 } from "../rules/index";
 
 export const DEVOTED_PERCENT: uint64 = 25;
@@ -115,7 +116,7 @@ export function visited(this pet: Pet, habit: OwnerHabit, draw: uint64, epoch: u
 	const feedBelow = (cared.maxHearts as int64) * (habit.feedBelowBps as int64);
 	const hungry = (cared.hearts as int64) * (BPS as int64) < feedBelow;
 	if (hungry) {
-		const fed = cared.ownerFed(habit.food);
+		const fed = cared.withOwnerItem(foodItem(habit.food));
 		if (fed.ok) {
 			cared = fed.value;
 			skr += foodSkr(habit.food);
@@ -123,15 +124,16 @@ export function visited(this pet: Pet, habit: OwnerHabit, draw: uint64, epoch: u
 			refused = true;
 		}
 	}
-	if (rolled(draw, 1, habit.growthPercent)) {
-		const grown = cared.grownBy(habit.growthSteps, epoch);
+	const dose = growthItem(habit.growthSteps);
+	if (dose.ok && rolled(draw, 1, habit.growthPercent)) {
+		const grown = cared.withOwnerItem(dose.value);
 		if (grown.ok) {
 			cared = grown.value;
 			skr += habit.growthSteps * GROWTH_SKR_PER_STEP;
 		}
 	}
 	if (cared.insurance == (Insurance.None as uint8) && rolled(draw, 2, habit.insurePercent)) {
-		const armed = cared.insured();
+		const armed = cared.withOwnerItem(OwnerItem.Insurance);
 		if (armed.ok) {
 			cared = armed.value;
 			skr += INSURANCE_SKR;

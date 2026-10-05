@@ -321,7 +321,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	feel.tally(key, FeelCounter.AttacksWon, 1);
 	const target = blockStart(moment.index) + (defender.slot as int32);
 	if (world.isWild(target)) {
-		const taken = defender.harvest - world.wilds[target].harvest;
+		const taken = defender.harvest - world.pets[target].harvest;
 		feel.tally(key, FeelCounter.WildRaids, 1);
 		feel.tally(key, FeelCounter.WildLoot, (taken / HBRN_UNIT) as int32);
 		return;
@@ -367,7 +367,7 @@ export function closeEpoch(this feel: Feel, env: int32, world: World): void {
 		const key = env * feel.pets + index;
 		const pet = world.pets[index];
 		larders[key] = pet.larderOf();
-		if (!pet.alive) { continue; }
+		if (!pet.alive || pet.wild) { continue; }
 		feel.tally(key, FeelCounter.LivingEpochs, 1);
 		feel.tally(key, FeelCounter.HeartsSum, pet.hearts as int32);
 		feel.tally(key, FeelCounter.BondingSum, pet.bonding as int32);
@@ -452,7 +452,7 @@ export function closeEpisode(this feel: Feel, env: int32, world: World): void {
 		feel.tally(key, FeelCounter.Skr, ledger.skr);
 		feel.tally(key, FeelCounter.OwnerVisits, ledger.visits);
 		feel.tally(key, FeelCounter.OwnerRefusals, ledger.refusals);
-		if (!pet.alive) { continue; }
+		if (!pet.alive || pet.wild) { continue; }
 		feel.tally(key, FeelCounter.Living, 1);
 		feel.tally(key, FeelCounter.Wealth, ((pet.harvest + pet.burrow) / HBRN_UNIT) as int32);
 		feel.tally(key, FeelCounter.BornAtEnd, pet.bornEpoch as int32);
@@ -621,8 +621,8 @@ test "a portion bought counts its price as food spent" {
 test "a pet bitten to death in the fight still counts as robbed, not as a wild raid" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
-	const wilds = world.wilds;
-	wilds[5] = { ...wilds[5], alive: false, harvest: 900 * HBRN_UNIT };
+	const absent = world.absent;
+	absent[5] = { ...absent[5], alive: false, harvest: 900 * HBRN_UNIT };
 	const moment = world.momentOf(0, 3, Head.Attack, attackOn(5));
 	pets[5] = { ...pets[5], alive: false, hearts: 0 };
 	const feel = Feel.create(1, BLOCK_SLOTS);

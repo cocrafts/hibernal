@@ -524,7 +524,7 @@ function heldTurn(this start: Batch): Batch {
 	return batch;
 }
 
-test "a batch opens on day one while later claims stay empty and running" {
+test "a batch opens on day one with wilds holding the seats still to be claimed" {
 	let batch = Batch.create(5, 3, 2, 12);
 	assert batch.rows() == 6;
 	assert batch.cursor.epoch == 1;
@@ -537,7 +537,9 @@ test "a batch opens on day one while later claims stay empty and running" {
 	const legal = zeros(batch.rows() * actionCount(Head.Economy));
 	batch.observe(observations, legal);
 	for (let row = 0; row < batch.rows(); row++) {
-		const present = batch.petOf(row) == 0;
+		const seat = batch.worlds[row / batch.blocks].pets[batch.petOf(row)];
+		const present = batch.petOf(row) == 0 || seat.wild;
+		assert batch.petOf(row) == 0 || seat.wild;
 		const rest = legal[row * actionCount(Head.Economy) + (EconomyAction.Rest as int32)];
 		const firstFeature = observations[row * observationSize(Head.Economy)];
 		assert rest == (present ? 1 : 0);
@@ -549,7 +551,6 @@ test "a batch opens on day one while later claims stay empty and running" {
 	const dones = zeros(batch.rows());
 	batch.teacherActions(actions);
 	assert batch.step(Head.Economy, actions, rewards, dones).ok;
-	assert rewards[1] == 0;
 	assert dones[1] == (Done.Running as int32);
 }
 

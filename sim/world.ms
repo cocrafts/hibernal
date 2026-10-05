@@ -22,14 +22,7 @@ import {
 	INHERITANCE_TAX_PERCENT,
 	agedOut,
 	heirOf,
-	BOT_WEIGHT,
-	REWARD_SCALE,
-	NEWBORN_EPOCHS,
-	Stats,
-	Tree,
-	Talent,
 	TalentKind,
-	Insurance,
 	built,
 	withNode,
 	unrevealed,
@@ -65,6 +58,9 @@ import {
 	strengthOf,
 	resortsAt,
 	movedTo,
+	overtimeBanked,
+	wildOf,
+	retiredWild,
 } from "../rules/index";
 // C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
 // (msc v0.2.55); remove with
@@ -147,7 +143,7 @@ export struct World {
 	epoch: uint64;
 	round: int32;
 	turns: int32[];
-	wilds: Pet[];
+	absent: Pet[];
 	market: Listing[];
 	seed: uint64;
 	stats: WorldStats;
@@ -167,7 +163,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 	const personas: PersonaKind[] = [];
 	const origins: int32[] = [];
 	const turns: int32[] = [];
-	const wilds: Pet[] = [];
+	const absent: Pet[] = [];
 	for (let index = 0; index < blocks * BLOCK_SLOTS; index++) {
 		const slot = index % BLOCK_SLOTS;
 		turns.push(index);
@@ -185,7 +181,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 			global,
 		);
 		pets.push(hatched.pet);
-		wilds.push({ ...hatched.pet, alive: false });
+		absent.push({ ...hatched.pet, alive: false });
 		claimEpochs.push(0);
 		deathEpochs.push(0);
 		levelTenEpochs.push(0);
@@ -210,7 +206,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		epoch: 0,
 		round: 0,
 		turns: turns,
-		wilds: wilds,
+		absent: absent,
 		market: [],
 		seed: seed,
 		stats: {
@@ -270,36 +266,29 @@ export function robberOf(this world: World, index: int32): Result<BlockSlot, Gru
 
 export function beginEpoch(this world: World, epoch: uint64): World {
 	const pets = world.pets;
+	const absent = world.absent;
 	const claimEpochs = world.claimEpochs;
 	const grudges = world.grudges;
 	const deathEpochs = world.deathEpochs;
 	const levelTenEpochs = world.levelTenEpochs;
 	const levelTwentyEpochs = world.levelTwentyEpochs;
-	const before = world.global.rewardPerWorkPower;
 	let global = world.global.settle(epoch);
-	const botShare = (global.rewardPerWorkPower - before) * BOT_WEIGHT / REWARD_SCALE;
 	let heirs = world.stats.heirs;
 	for (let index = 0; index < world.pets.length; index++) {
-		let pet = pets[index];
 		const claimEpoch = claimEpochs[index];
-		if (claimEpoch != 0) {
-			if (epoch < claimEpoch) { continue; }
-			const claimed = Pet.born(
-				pet.blockId,
-				pet.blockSlot(),
-				pet.startRegion(),
-				claimEpoch,
-				global,
-			);
-			pet = claimed.pet;
-			pets[index] = pet;
+		if (claimEpoch != 0 && epoch >= claimEpoch) {
+			global = vacated(pets, absent, index, global);
+			const seat = pets[index];
+			const claimed = Pet.born(seat.blockId, seat.blockSlot(), seat.startRegion(), claimEpoch, global);
+			pets[index] = claimed.pet;
 			claimEpochs[index] = 0;
 			global = claimed.global;
 		}
-		if (!pet.alive) {
-			const diedAt = deathEpochs[index];
-			if (diedAt == 0 || epoch < diedAt + GRACE_EPOCHS) { continue; }
-			const heir = pet.heirOf(epoch, global);
+		const real = pets[index].wild ? absent[index] : pets[index];
+		const diedAt = deathEpochs[index];
+		if (claimEpochs[index] == 0 && !real.alive && diedAt != 0 && epoch >= diedAt + GRACE_EPOCHS) {
+			global = vacated(pets, absent, index, global);
+			const heir = real.heirOf(epoch, global);
 			if (!heir.ok) { unreachable; }
 			levelTenEpochs[index] = 0;
 			levelTwentyEpochs[index] = 0;
@@ -310,10 +299,15 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 			heirs += 1;
 			continue;
 		}
-		const ticked = pet.tickTo(global, epoch);
+		if (!pets[index].alive) { continue; }
+		const ticked = pets[index].tickTo(global, epoch);
 		if (!ticked.ok) { continue; }
 		pets[index] = ticked.value.pet;
 		global = ticked.value.global;
+		if (pets[index].wild && !pets[index].alive) {
+			global = vacated(pets, absent, index, global);
+			continue;
+		}
 		const randomness = mixSeeds(mixSeeds(world.seed, index as uint64), epoch);
 		const revealed = pets[index].revealTalent(global, randomness);
 		if (revealed.ok) {
@@ -328,7 +322,10 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 			continue;
 		}
 		const seller = listing.seller as int32;
-		pets[seller] = pets[seller].boughtBack(listing);
+		const back = pets[seller].boughtBack(listing, global);
+		if (!back.ok) { unreachable; }
+		pets[seller] = back.value.pet;
+		global = back.value.global;
 	}
 	const begun: World = {
 		...world,
@@ -338,7 +335,7 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		stats: { ...world.stats, heirs: heirs },
 	};
 	const placed = resortsAt(epoch, world.resort.every) ? begun.resorted() : begun.newbornsPlacedWeak();
-	return placed.ownersVisited().wildsAwake(botShare).inRound(0);
+	return placed.ownersVisited().wildsSpawned().inRound(0);
 }
 
 export function personaOf(this world: World, index: int32): PersonaKind {
@@ -346,7 +343,18 @@ export function personaOf(this world: World, index: int32): PersonaKind {
 }
 
 function isFree(this world: World, index: int32): boolean {
-	return !world.pets[index].alive && world.claimEpochs[index] == 0;
+	return !world.realAt(index).alive && world.claimEpochs[index] == 0;
+}
+
+export function realAt(this world: World, index: int32): Pet {
+	return world.pets[index].wild ? world.absent[index] : world.pets[index];
+}
+
+function vacated(pets: Pet[], absent: Pet[], index: int32, global: GlobalConfig): GlobalConfig {
+	const wild = pets[index];
+	if (!wild.wild) { return global; }
+	pets[index] = absent[index];
+	return wild.retiredWild(global);
 }
 
 export function strengthOrder(this world: World): int32[] {
@@ -372,7 +380,7 @@ export function strengthOrder(this world: World): int32[] {
 
 export function permuted(this world: World, origins: int32[]): World {
 	const pets: Pet[] = [];
-	const wilds: Pet[] = [];
+	const absent: Pet[] = [];
 	const claimEpochs: uint64[] = [];
 	const deathEpochs: uint64[] = [];
 	const levelTenEpochs: uint64[] = [];
@@ -388,7 +396,7 @@ export function permuted(this world: World, origins: int32[]): World {
 		const slot = (index % BLOCK_SLOTS) as BlockSlot;
 		const moved = origin != index;
 		pets.push(moved ? world.pets[origin].movedTo(blockId, slot) : world.pets[origin]);
-		wilds.push(world.wilds[origin].movedTo(blockId, slot));
+		absent.push(world.absent[origin].movedTo(blockId, slot));
 		claimEpochs.push(world.claimEpochs[origin]);
 		deathEpochs.push(world.deathEpochs[origin]);
 		levelTenEpochs.push(world.levelTenEpochs[origin]);
@@ -402,7 +410,7 @@ export function permuted(this world: World, origins: int32[]): World {
 	return {
 		...world,
 		pets: pets,
-		wilds: wilds,
+		absent: absent,
 		claimEpochs: claimEpochs,
 		deathEpochs: deathEpochs,
 		levelTenEpochs: levelTenEpochs,
@@ -419,11 +427,18 @@ export function permuted(this world: World, origins: int32[]): World {
 
 export function resorted(this world: World): World {
 	const pets = world.pets;
+	let global = world.global;
+	for (let index = 0; index < pets.length; index++) {
+		global = vacated(pets, world.absent, index, global);
+	}
 	for (const listing of world.market) {
 		const seller = listing.seller as int32;
-		pets[seller] = pets[seller].boughtBack(listing);
+		const back = pets[seller].boughtBack(listing, global);
+		if (!back.ok) { unreachable; }
+		pets[seller] = back.value.pet;
+		global = back.value.global;
 	}
-	const unlisted: World = { ...world, market: [] };
+	const unlisted: World = { ...world, global: global, market: [] };
 	const order = unlisted.strengthOrder();
 	const everyone: World = unlisted.permuted(order);
 	const forgotten = everyone.pets;
@@ -451,62 +466,48 @@ export function newbornsPlacedWeak(this world: World): World {
 		free -= 1;
 		moved = true;
 	}
-	return moved ? world.permuted(origins) : world;
+	if (!moved) { return world; }
+	let global = world.global;
+	for (let index = 0; index < origins.length; index++) {
+		if (origins[index] != index) { global = vacated(world.pets, world.absent, index, global); }
+	}
+	const settled: World = { ...world, global: global };
+	return settled.permuted(origins);
 }
 
-export function wildsAwake(this world: World, harvest: uint64): World {
-	const wilds = world.wilds;
+export function wildsSpawned(this world: World): World {
+	if (!world.resort.wildDefenders) { return world; }
+	const pets = world.pets;
+	const absent = world.absent;
 	const level = Math.max(world.medianLevel(), 1);
-	for (let index = 0; index < world.pets.length; index++) {
-		const pet = world.pets[index];
-		if (pet.alive || !world.resort.wildDefenders) {
-			wilds[index] = { ...wilds[index], alive: false };
-			continue;
-		}
-		const region = pet.startRegion();
-		const tree = Tree.empty().withNode(region as int32);
-		const stats = Stats.built(tree, level, Talent.unrevealed());
-		wilds[index] = {
-			...pet.withTreeBonuses(stats),
-			alive: true,
-			level: level as uint16,
-			forage: stats.forage as uint16,
-			might: stats.might as uint16,
-			grit: stats.grit as uint16,
-			maxHearts: stats.maxHearts as uint8,
-			hearts: stats.maxHearts as uint8,
-			tree: tree,
-			harvest: harvest,
-			burrow: 0,
-			bornEpoch: world.epoch - Math.min(world.epoch, NEWBORN_EPOCHS),
-			lastTickEpoch: world.epoch,
-			fightDay: world.epoch,
-			fightsInToday: 0,
-			bitesInToday: 0,
-			fightsOutToday: 0,
-			slotsAttackedToday: 0 as BitSet<BlockSlot>,
-			talentKind: TalentKind.None as uint8,
-			gear: Gear.bare(),
-			insurance: Insurance.None as uint8,
-			rage: 0,
-		};
+	let global = world.global;
+	for (let index = 0; index < pets.length; index++) {
+		const seat = pets[index];
+		const settled = world.claimEpochs[index] != 0 || world.deathEpochs[index] != 0;
+		if (seat.alive || !settled) { continue; }
+		const region = seat.startRegion();
+		const spawned = wildOf(seat.blockId, seat.blockSlot(), region, level, world.epoch, global);
+		absent[index] = seat;
+		pets[index] = spawned.pet;
+		world.grudges[index] = Grudge.none();
+		global = spawned.global;
 	}
-	return world;
+	return { ...world, global: global };
 }
 
 export function isWild(this world: World, position: int32): boolean {
-	return !world.pets[position].alive && world.wilds[position].alive;
+	return world.pets[position].wild;
 }
 
 export function defenderAt(this world: World, position: int32): Pet {
-	return world.isWild(position) ? world.wilds[position] : world.pets[position];
+	return world.pets[position];
 }
 
 export function ownersVisited(this world: World): World {
 	const pets = world.pets;
 	const ledgers = world.ownerLedgers;
 	for (let index = 0; index < pets.length; index++) {
-		if (!pets[index].alive) { continue; }
+		if (!pets[index].alive || pets[index].wild) { continue; }
 		const habit = habitOf(world.owners[index]);
 		const draw = visitDraw(world.seed, index, world.epoch);
 		if (!habit.visits(draw)) { continue; }
@@ -550,7 +551,7 @@ export function ownersOpened(this world: World): World {
 	const now = world.epoch * EPOCH_SECONDS + (world.round as uint64) * roundSeconds;
 	for (let index = 0; index < pets.length; index++) {
 		const pet = pets[index];
-		if (!pet.alive) { continue; }
+		if (!pet.alive || pet.wild) { continue; }
 		const draw = openDraw(world.seed, index, world.epoch, world.round);
 		if (!habitOf(world.owners[index]).opens(draw)) { continue; }
 		const banked = pet.ownerBanked(now);
@@ -576,6 +577,10 @@ export function endEpoch(this world: World): World {
 	let deaths = world.stats.deaths;
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = pets[index];
+		if (pet.wild) {
+			if (!pet.alive) { global = vacated(pets, world.absent, index, global); }
+			continue;
+		}
 		if (claimEpochs[index] != 0) { continue; }
 		if (pet.alive && pet.level >= 10 && levelTenEpochs[index] == 0) {
 			levelTenEpochs[index] = world.epoch;
@@ -598,13 +603,16 @@ export function endEpoch(this world: World): World {
 			pets[base + slot] = { ...mate, harvest: mate.harvest + burial.value.perMate };
 		}
 	}
+	for (let index = 0; index < world.pets.length; index++) {
+		pets[index] = pets[index].overtimeBanked();
+	}
 	return { ...world, global: global, stats: { ...world.stats, deaths: deaths } };
 }
 
 export function surroundingsOf(this world: World, index: int32): Surroundings {
 	return {
 		pets: world.pets,
-		wilds: world.wilds,
+		wilds: world.absent,
 		base: blockStart(index),
 		actor: (index % BLOCK_SLOTS) as BlockSlot,
 		global: world.global,
@@ -750,24 +758,11 @@ export function applyAttack(this world: World, index: int32, choice: int32): Wor
 	if (slot < 0 || slot >= BLOCK_SLOTS || target == index) { return world.counted(true); }
 	const entropy = mixSeeds(world.seed, pet.blockId as uint64);
 	const seed = fightSeed(entropy, pet.slot as int32, slot, world.epoch, world.round);
-	const wild = world.isWild(target);
 	const defender = world.defenderAt(target);
 	const settled = pet.settleAttack(defender, level, world.global, world.epoch, seed);
 	if (!settled.ok) { return world.counted(true); }
 	pets[index] = settled.value.attacker;
 	const won = settled.value.record.loot > 0 ? 1 : 0;
-	if (wild) {
-		const wilds = world.wilds;
-		const tamed = settled.value.defender;
-		const kept = tamed.burrow - defender.burrow;
-		wilds[target] = { ...tamed, alive: true, hearts: defender.hearts, burrow: 0 };
-		const global = settled.value.global;
-		return {
-			...world,
-			global: { ...global, recycledPending: global.recycledPending + kept },
-			stats: { ...world.stats, fights: world.stats.fights + 1, wins: world.stats.wins + won },
-		};
-	}
 	pets[target] = settled.value.defender;
 	const grudges = world.grudges;
 	const robber = world.robberOf(index);
@@ -791,7 +786,7 @@ export function sortedWealth(this world: World): uint64[] {
 	const wealth: uint64[] = [];
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = world.pets[index];
-		if (!pet.alive) { continue; }
+		if (!pet.alive || pet.wild) { continue; }
 		const value = pet.harvest + pet.burrow;
 		let position = wealth.length;
 		wealth.push(value);
@@ -814,7 +809,7 @@ export function medianLevel(this world: World): int32 {
 	const levels: int32[] = [];
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = world.pets[index];
-		if (!pet.alive) { continue; }
+		if (!pet.alive || pet.wild) { continue; }
 		const level = pet.level as int32;
 		let position = levels.length;
 		levels.push(level);
@@ -846,7 +841,7 @@ export function medianEpoch(epochs: uint64[]): uint64 {
 export function living(this world: World): int32 {
 	let count = 0;
 	for (let index = 0; index < world.pets.length; index++) {
-		if (world.pets[index].alive) { count += 1; }
+		if (world.pets[index].alive && !world.pets[index].wild) { count += 1; }
 	}
 	return count;
 }
@@ -992,6 +987,8 @@ test "a listed item sells to a pet that wants it, and an unsold one is bought ba
 	assert world.stats.sales == 1 && world.stats.lastSeller == 0;
 	assert world.stats.illegal == 0;
 	world.pets[0] = { ...world.pets[0], gear: Gear.bare().with(GearSlot.Head, might) };
+	const reserve = world.global.itemReserve + might.sellPrice();
+	world = { ...world, global: { ...world.global, itemReserve: reserve } };
 	world = world.applyEconomy(0, EconomyAction.ListItem);
 	const listedBurrow = world.pets[0].burrow;
 	world = world.endEpoch().beginEpoch(1 + LISTING_DAYS - 1);
@@ -1005,10 +1002,11 @@ test "an heir takes the slot after the grace period" {
 	let world = World.create(1, 5).beginEpoch(1);
 	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0 };
 	world = world.endEpoch().beginEpoch(1 + GRACE_EPOCHS - 1);
-	assert !world.pets[7].alive;
+	assert !world.realAt(7).alive;
+	assert world.pets[7].wild && world.pets[7].alive;
 	assert world.stats.heirs == 0;
 	world = world.beginEpoch(1 + GRACE_EPOCHS);
-	assert world.pets[7].alive;
+	assert world.pets[7].alive && !world.pets[7].wild;
 	assert world.pets[7].lineageGeneration == 1;
 	assert world.pets[7].slot == 7;
 	assert world.pets[7].bornEpoch == 1 + GRACE_EPOCHS;
