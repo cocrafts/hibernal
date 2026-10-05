@@ -1251,28 +1251,52 @@ const TERRAIN_STEP: float32 = 0.25;
 const TERRAIN_SKIP_START: float32 = 0.8;
 const TERRAIN_SKIP_END: float32 = 0.4;
 const TERRAIN_EPSILON: float32 = 0.03;
+const PILLAR_REACH_MARGIN: float32 = 0.01;
 let shadowView: uint32 = 0;
 let shadowSampler: uint32 = 0;
 let groundHeights: Vec<float32> = [];
 
-// box: centre x, z, the footprint's axes (cos, sin of its turn), half sizes along them, top, foot
-function blocksLine(px: float32, pz: float32, light: float32, aim: float32, box: Vec<float32>): boolean {
-	const cx: float32 = box[0];
-	const cz: float32 = box[1];
-	const c: float32 = box[2];
-	const sn: float32 = box[3];
+// World metres. reachSquared must reach past the footprint's corners: passesClear skips a pillar
+// on it, and a shorter reach drops shadows.
+struct PillarBox {
+	x: float32;
+	z: float32;
+	cos: float32;
+	sin: float32;
+	halfAlong: float32;
+	halfAcross: float32;
+	top: float32;
+	foot: float32;
+	reachSquared: float32;
+}
+
+function passesClear(px: float32, pz: float32, box: PillarBox): boolean {
+	const lengthSquared: float32 = px * px + pz * pz;
+	const along: float32 = lengthSquared > 0.0 ? (box.x * px + box.z * pz) / lengthSquared : (0.0 as float32);
+	const t: float32 = along < 0.0 ? (0.0 as float32) : (along > 1.0 ? (1.0 as float32) : along);
+	const dx: float32 = box.x - px * t;
+	const dz: float32 = box.z - pz * t;
+	return dx * dx + dz * dz > box.reachSquared;
+}
+
+function blocksLine(px: float32, pz: float32, light: float32, aim: float32, box: PillarBox): boolean {
+	if (passesClear(px, pz, box)) { return false; }
+	const cx: float32 = box.x;
+	const cz: float32 = box.z;
+	const c: float32 = box.cos;
+	const sn: float32 = box.sin;
 	// the line from the fire (world origin) to the point, in the pillar's own axes
 	const ax: float32 = (0.0 - cx) * c + (0.0 - cz) * sn;
 	const az: float32 = -(0.0 - cx) * sn + (0.0 - cz) * c;
 	const bx: float32 = (px - cx) * c + (pz - cz) * sn;
 	const bz: float32 = -(px - cx) * sn + (pz - cz) * c;
-	if (bx > -box[4] && bx < box[4] && bz > -box[5] && bz < box[5]) { return false; }
+	if (bx > -box.halfAlong && bx < box.halfAlong && bz > -box.halfAcross && bz < box.halfAcross) { return false; }
 	let enter: float32 = 0.0;
 	let leave: float32 = 1.0;
 	for (let axis = 0; axis < 2; axis++) {
 		const start: float32 = axis == 0 ? ax : az;
 		const d: float32 = axis == 0 ? bx - ax : bz - az;
-		const half: float32 = box[4 + axis];
+		const half: float32 = axis == 0 ? box.halfAlong : box.halfAcross;
 		if (d > -0.000001 && d < 0.000001) {
 			if (start < -half || start > half) { return false; }
 		} else {
@@ -1284,15 +1308,15 @@ function blocksLine(px: float32, pz: float32, light: float32, aim: float32, box:
 	}
 	if (enter > leave) { return false; }
 	const height: float32 = light + (aim - light) * enter;
-	return height < box[6];
+	return height < box.top;
 }
 
 // A pillar's footprint as a turned box: the turn that gives its vertices' smallest bounding
 // rectangle (the exporter bakes the turn into the vertices, so the node only carries the centre).
-function pillarBox(at: Vec3, mesh: MeshData): Vec<float32> {
+function pillarBox(at: Vec3, mesh: MeshData): PillarBox {
 	const v: Vec<float32> = mesh.vertices;
 	const count: int32 = mesh.vertexCount();
-	let best: Vec<float32> = [];
+	let best: PillarBox = { x: 0.0, z: 0.0, cos: 1.0, sin: 0.0, halfAlong: 0.0, halfAcross: 0.0, top: 0.0, foot: 0.0, reachSquared: 0.0 };
 	let bestArea: float32 = 1.0e9;
 	for (let step = 0; step < 180; step++) {
 		const a: float32 = (step as float32) * 0.0087266;   // half a degree
@@ -1312,8 +1336,13 @@ function pillarBox(at: Vec3, mesh: MeshData): Vec<float32> {
 			bestArea = area;
 			const mid0: float32 = (lo0 + hi0) * 0.5;
 			const mid1: float32 = (lo1 + hi1) * 0.5;
-			best = [at.x + mid0 * c - mid1 * sn, at.z + mid0 * sn + mid1 * c, c, sn,
-				(hi0 - lo0) * 0.5, (hi1 - lo1) * 0.5, at.y + mesh.bounds.max.y, at.y + mesh.bounds.min.y];
+			const reach: float32 = (Math.sqrt((hi0 - lo0) * (hi0 - lo0) + (hi1 - lo1) * (hi1 - lo1)) as float32) * 0.5
+				+ PILLAR_REACH_MARGIN;
+			best = {
+				x: at.x + mid0 * c - mid1 * sn, z: at.z + mid0 * sn + mid1 * c, cos: c, sin: sn,
+				halfAlong: (hi0 - lo0) * 0.5, halfAcross: (hi1 - lo1) * 0.5,
+				top: at.y + mesh.bounds.max.y, foot: at.y + mesh.bounds.min.y, reachSquared: reach * reach,
+			};
 		}
 	}
 	return best;
@@ -1384,8 +1413,7 @@ function terrainBlocks(px: float32, pz: float32, light: float32, aim: float32): 
 function buildShadowMap(data: GltfData): void {
 	const started: float64 = performance.now();
 	rasterizeGround(data);
-	// per pillar: blocksLine's box, world metres
-	const boxes: Vec<Vec<float32>> = [];
+	const boxes: Vec<PillarBox> = [];
 	for (const node of data.nodes) {
 		if (!node.name.startsWith("PILLAR") || node.mesh < 0) { continue; }
 		boxes.push(pillarBox(node.local.position, data.meshes[node.mesh]));
