@@ -3,7 +3,7 @@
 // from t3ssel8r-lab's grassLab.ms; data in assets/campfire/, the LitRamp and BillboardRamp
 // programs from native/voidPatches/0002. The HUD comes in through setLabHud.
 //
-// Env: LAB_RAMP 0 / LAB_SHADER 0 switch to void's toon programs, LAB_WALKER 0 removes the walker,
+// Env: LAB_WALKER 0 removes the walker,
 // LAB_SNOW 1 turns the snow on, LAB_PARTICLES 0 turns it and the embers off, LAB_WALLS 0 lights walls
 // per texel, LAB_ZOOM 125 zooms out 1.25x, LAB_WIND 0 stills the grass, LAB_PAN texels per 100 frames
 // the camera slides, LAB_SNAP 0 turns the snap off, LAB_PALETTE 0/1, LAB_OUTLINE 0, LAB_HUD 0 hides
@@ -12,34 +12,29 @@
 import { gfxSetup, fbWidth, fbHeight } from "@metascript/void/src/sokol/gpu";
 import {
 	LIGHT_UNIFORM_LENGTH,
-	TOON_UNIFORM_SLOT,
-	TOON_UNIFORM_LENGTH,
-	RAMP_UNIFORM_SLOT,
-	RAMP_UNIFORM_LENGTH,
-	SPRITE_RAMP_UNIFORM_LENGTH,
-	SPRITE_UNIFORM_SLOT,
-	SPRITE_UNIFORM_LENGTH,
+	MATERIAL_UNIFORM_SLOT,
+	MATERIAL_UNIFORM_LENGTH,
 	Program,
-	VertexLayout,
-	Filter,
-	Wrap,
 	makeVertexBuffer,
 	makeImage,
-	makeTextureView,
-	originTopLeft,
 } from "@metascript/void/src/void3d/gpu3d";
-import { RenderState, Face, Compare } from "@metascript/void/src/void3d/pass";
+import { makeTextureView, originTopLeft, endPass, commit } from "@metascript/void/src/gpu/door";
+import { RenderState, Face, Compare, FilterMode, Wrap } from "@metascript/void/src/gpu/state";
+import { Sampler, beginScreenPass } from "@metascript/void/src/gpu/target";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "@metascript/void/src/void3d/material";
-import { Sampler } from "@metascript/void/src/void3d/target";
 import {
 	DrawContext,
 	DrawItem,
 	GpuMesh,
+	MeshId,
+	MaterialId,
+	NO_MESH,
+	MaterialError,
 	MeshUploadError,
+	StreamError,
 	addMesh,
 	addMeshData,
 	addMaterial,
-	StreamError,
 	addStreamMesh,
 	writeStream,
 	reserveUniforms,
@@ -53,36 +48,45 @@ import {
 	PixelArtError,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
+	RAMP_UNIFORM_SLOT,
+	RAMP_UNIFORM_LENGTH,
+	SPRITE_RAMP_UNIFORM_LENGTH,
 	GLOW_LENGTH,
 	setGlow,
 	setPalette,
 	setSettings,
-	renderFrame,
+	prepareFrame,
+	drawToScreen,
 } from "@metascript/void/src/void3d/pixelArtRenderer";
 import { Vec3, vec3, Vec4, vec4, Mat4, Quat, quatBetween } from "@metascript/void/src/math/math3d";
 import { sinf, cosf } from "@metascript/void/src/math/mat4";
 import { MeshData, MeshError, Box, addBox, LIT_VERTEX_STRIDE } from "@metascript/void/src/void3d/meshData";
 import { float32At } from "@metascript/void/src/void3d/gltfDecode";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
+	NO_NODE_ID,
+	Transform3D,
 	SceneError,
 	LightError,
 	LightKind,
-	identityTransform,
-	transformAt,
 	addMeshNode,
 	addLightNode,
 	setLocal,
 	setMeshOf,
 	setVisible,
-	setLightPower,
 	setAmbient,
 	collectLights,
 	refresh,
 	syncWorld,
 } from "@metascript/void/src/void3d/scene";
-import { OrthoCamera, CameraView, CameraError, CAMERA_BLOCK_LENGTH } from "@metascript/void/src/void3d/camera";
+import {
+	Camera3D,
+	ProjectionKind,
+	CameraView,
+	CameraError,
+	CAMERA_BLOCK_LENGTH,
+} from "@metascript/void/src/void3d/camera";
 import { GltfData, GltfError, loadGltf } from "@metascript/void/src/void3d/gltf";
 import { GltfMeshBinding, GltfSceneError, addGltfNodes } from "@metascript/void/src/void3d/gltfScene";
 import {
@@ -105,7 +109,6 @@ import {
 	labExit,
 } from "./labio.h";
 import { setup2d } from "@metascript/void/src/void2d/draw";
-import { skipNextCommit } from "@metascript/void/src/sokol/gpu";
 
 // Declared here rather than imported: a Span parameter is what msc lowers to C's pointer + length.
 extern function labReadFloats(out: Span<float32>, path: cstring): int64;
@@ -126,8 +129,6 @@ const DEFAULT_ZOOM: int32 = 138;
 
 // Heights above the ground under the fire (data/fire.f32: 0 on the lab's lawn, 0.5 m down in the hills).
 const FIRE_HEIGHT: float32 = 1.0;
-const FIRE_POWER: float32 = 1.7;
-const FIRE_RADIUS: float32 = 9.0;
 const LIGHT_LEVELS: float32 = 7.0;
 const FLICKER_EVERY: int32 = 5;          // frames per flicker step (12 fps at 60)
 const FLAME_EVERY: int32 = 5;
@@ -148,19 +149,13 @@ const FLAME_CELL_W: int32 = 20;
 const FLAME_CELL_H: int32 = 28;
 const INSTANCE_STRIDE: int32 = 8;
 
-// The toon shader lights grass as base * (ambient + moon) + fire; the clumps are
-// grassColor * tint + fire, so grassColor is the ground's base times the same ambient + moon.
 const AMBIENT_R: float32 = 0.26;
 const AMBIENT_G: float32 = 0.30;
 const AMBIENT_B: float32 = 0.52;
 const MOON_POWER: float32 = 0.18;
-const GRASS_R: float32 = 0.22;
-const GRASS_G: float32 = 0.30;
-const GRASS_B: float32 = 0.52;
 // The lab's GRASS_WRAP: the lawn takes this share of the firelight whatever its normal, and
 // the clumps the same (as a surface facing up, weighted by the rest, sampled at the root).
 const GRASS_WRAP: float32 = 0.75;
-const WIND_SWAY: float32 = 0.09;         // m at a clump's top in a full gust, ~3 texels
 
 // The ramp look: scripts/grass_lab.py's numbers. Rows of data/ramps.rgba (export_void.py
 // RAMP_ROWS); 3 night steps, then 16 fire bands from 0.05 in steps of 0.058; the fire's falloff
@@ -278,7 +273,6 @@ let WALLS_AT_ORIGIN: float32 = 1.0;
 const TALL_MARK: float32 = 0.0;    // off (one colour); export_void.py: ground vertex red above 0.24 is long grass
 const TALL_MARK_UNUSED: float32 = 0.24;         // export_void.py: ground vertex red above this is long grass
 const BLADE_JITTER: float32 = 0.0;       // the lab's BLADE_LIGHT_JITTER (0.012, a sigma) as a range
-const TINT_PER_STEP: float32 = 0.11;     // toon looks: a clump's ramp steps as a tint
 const ROW_TUFT: float32 = 4.0;
 const TUFT_STEPS: float32 = 2.0;         // the lab's pale tufts: two steps up the tuft ramp
 const TUFT_CELL_W: int32 = 8;
@@ -299,7 +293,7 @@ const FLOWER_SWAY: float32 = 0.4;
 // The sprig grid over the 60 m map: per cell the chosen root (x, y, z) and its hash (2: none).
 const FLOWER_GRID: int32 = 40;
 const FLOWER_ORIGIN: float32 = -32.0;
-const sprigAt: Vec<float32> = new Array(FLOWER_GRID * FLOWER_GRID * 4);
+let sprigAt: Vec<float32> = new Array(FLOWER_GRID * FLOWER_GRID * 4);
 
 // The lab's wind (Dylearn's): blowing to screen right and away, two noises +-20 deg apart,
 // 3.2 m cells at 2.4 m/s, gust = clamp(n1 * n2 * 3.2 - 0.25); 3 texels at a full gust, 0.55 of
@@ -335,26 +329,21 @@ const RANDOM_MULTIPLIER: uint64 = 6364136223846793005;
 const RANDOM_INCREMENT: uint64 = 1442695040888963407;
 const RANDOM_RANGE: float32 = 16777216.0;
 
-const CORNERS: Vec<float32> = [
-	-0.5, 0.0, 0.5, 0.0, 0.5, 1.0,
-	-0.5, 0.0, 0.5, 1.0, -0.5, 1.0,
-];
-
-const MATERIAL_UNIFORM_LENGTH: int32 =
-	3 * TOON_UNIFORM_LENGTH + 4 * SPRITE_UNIFORM_LENGTH + 6 * RAMP_UNIFORM_LENGTH + 5 * SPRITE_RAMP_UNIFORM_LENGTH;
+const SCENE_UNIFORM_LENGTH: int32 =
+	2 * MATERIAL_UNIFORM_LENGTH + 6 * RAMP_UNIFORM_LENGTH + 8 * SPRITE_RAMP_UNIFORM_LENGTH;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
+	PIXEL_ART_UNIFORM_LENGTH + SCENE_UNIFORM_LENGTH,
 );
 let renderer: PixelArtRenderer = makeRenderer();
-let tree: Scene = Scene.create();
-const sceneItems: Vec<DrawItem> = [];
+let tree: Scene3D = Scene3D.create(context);
+let sceneItems: Vec<DrawItem> = [];
 const lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
-let fireLight: NodeId = { index: -1, generation: 0 };
+let cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
+let fireLight: NodeId3D = NO_NODE_ID;
 // The flame: two nodes, one per atlas (frames 0-3, 4-5), one shown at a time.
-let flameNode: NodeId = { index: -1, generation: 0 };
-let flameNode2: NodeId = { index: -1, generation: 0 };
-let firstFlameMesh: int32 = 0;
+let flameNode: NodeId3D = NO_NODE_ID;
+let flameNode2: NodeId3D = NO_NODE_ID;
+const flameMeshes: Vec<MeshId> = [];
 // The lab counts frames of a 60 fps clock. Here the count follows the host clock, so the scene
 // keeps its pace on a phone drawing 30 fps; a capture run (LAB_CAPTURE) still counts frames.
 let frameIndex: int32 = 0;
@@ -373,16 +362,12 @@ let captureAt: int32 = -1;
 // LAB_ZOOM: percent of the lab's view (125: out to 1.25x, the widest the game camera goes).
 let zoomOut: float32 = 1.0;
 let windWanted: boolean = true;
-// LAB_SHADER 0: the lab's shader parameters all at 0 (plain toon light, sprites lit a quarter
-// unit up from every side, no wind) - the look before void's shader gained them.
-let labShader: float32 = 1.0;
-let rampLook: boolean = true;
 let walkerWanted: boolean = false;
 // The sprite blocks rewritten every frame (the walker moves, the texel size can change).
 const spriteBlocks: Vec<UniformBlock> = [];
 const spriteSettings: Vec<Vec<float32>> = [];
 let walkerPath: Vec<float32> = [];
-let walkerNode: NodeId = { index: -1, generation: 0 };
+let walkerNode: NodeId3D = NO_NODE_ID;
 let windDirX: float32 = 0.0;
 let windDirZ: float32 = 0.0;
 let walkerX: float32 = 1000.0;
@@ -398,15 +383,15 @@ const WALKER_CLIP: string = "roamHills";
 const WALKER_LOOPS: string = "roamLoop";
 // The roam clips in walkerAnim: where each starts and how many frames it has; the one playing
 // and the scene time it started at.
-const loopFirst: Vec<int32> = [];
+let loopFirst: Vec<int32> = [];
 // With a motion graph, each walk's station of departure and arrival (walkerGraph.bin).
-const walkFrom: Vec<int32> = [];
-const walkTo: Vec<int32> = [];
-const loopFrames: Vec<int32> = [];
+let walkFrom: Vec<int32> = [];
+let walkTo: Vec<int32> = [];
+let loopFrames: Vec<int32> = [];
 let loopNow: int32 = 0;
 let loopStartedAt: float32 = 0.0;
-const walkerParts: Vec<NodeId> = [];
-const walkerAnim: Vec<float32> = [];
+let walkerParts: Vec<NodeId3D> = [];
+let walkerAnim: Vec<float32> = [];
 
 // The snow and embers of void's campfire (src/examples/campfireScene.ms, M11),
 // its emitters unchanged. Stepped at 1/30 s every other frame, as its 30 fps clock, and run for
@@ -433,10 +418,10 @@ let particlesWanted: boolean = false;
 let snowWanted: boolean = false;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
-let snowNode: NodeId = { index: -1, generation: 0 };
-let emberNode: NodeId = { index: -1, generation: 0 };
-let snowMesh: int32 = 0;
-let emberMesh: int32 = 0;
+let snowNode: NodeId3D = NO_NODE_ID;
+let emberNode: NodeId3D = NO_NODE_ID;
+let snowMesh: MeshId = NO_MESH;
+let emberMesh: MeshId = NO_MESH;
 const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
 const emberInstances: Vec<float32> = new Array(emberState().maxParts * PARTICLE_INSTANCE_STRIDE);
 
@@ -519,7 +504,7 @@ const NIGHT_FLAT_PERCENT: int32 = 25;
 const NIGHT_FLAT_COLOR: Vec3 = vec3(0.09, 0.13, 0.24);
 let nightFlat: float32 = 0.0;
 let fogGlow: float32 = 0.0;
-const glowValues: Vec<float32> = new Array(GLOW_LENGTH);
+let glowValues: Vec<float32> = new Array(GLOW_LENGTH);
 
 function labLook(): PixelArtLook {
 	return {
@@ -541,14 +526,27 @@ function labLook(): PixelArtLook {
 }
 
 function makeRenderer(): PixelArtRenderer {
-	let pool: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
 	// Variables, not calls: the bun dev compiler checks a `this typeof` call's ref parameter
 	// against the argument one to its right and refuses an expression there (msc 0.2.54 does not).
 	const settings: PixelArtSettings = PixelArtSettings.full();
 	const look: PixelArtLook = labLook();
-	const created: Result<PixelArtRenderer, PixelArtError> = PixelArtRenderer.create(pool, settings, look);
-	context = pool;
+	const created: Result<PixelArtRenderer, PixelArtError> = PixelArtRenderer.create(context, settings, look);
 	if (created.ok) { return created.value; }
+	console.log("grass lab: the pixel-art renderer was refused: " + created.error.toString());
+	unreachable;
+}
+
+function materialOf(material: Material): MaterialId {
+	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
+	if (added.ok) { return added.value; }
+	console.log("grass lab: a material was refused: " + added.error.toString());
+	unreachable;
+}
+
+function meshOf(mesh: GpuMesh): MeshId {
+	const added: Result<MeshId, MeshUploadError> = addMesh(context, mesh);
+	if (added.ok) { return added.value; }
+	console.log("grass lab: a mesh was refused: " + added.error.toString());
 	unreachable;
 }
 
@@ -568,7 +566,7 @@ function readFloats(name: string): Vec<float32> {
 	const path: string = DATA + name;
 	const size: int64 = labFileSize(path);
 	if (size <= 0) { console.log("grass lab: missing " + path); return []; }
-	const values: Vec<float32> = new Array((size / 4) as int32);
+	let values: Vec<float32> = new Array((size / 4) as int32);
 	const _read: int64 = floatsInto(path, values);
 	return values;
 }
@@ -577,7 +575,7 @@ function readWords(name: string): Vec<uint32> {
 	const path: string = DATA + name;
 	const size: int64 = labFileSize(path);
 	if (size <= 0) { console.log("grass lab: missing " + path); return []; }
-	const values: Vec<uint32> = new Array((size / 4) as int32);
+	let values: Vec<uint32> = new Array((size / 4) as int32);
 	const _read: int64 = wordsInto(path, values);
 	return values;
 }
@@ -586,7 +584,7 @@ function readWords(name: string): Vec<uint32> {
 function readBytes(name: string): Vec<uint8> {
 	const words: Vec<uint32> = readWords(name);
 	const count: int32 = words.length as int32;
-	const values: Vec<uint8> = new Array(count * 4);
+	let values: Vec<uint8> = new Array(count * 4);
 	for (let i = 0; i < count; i++) {
 		const word: uint32 = words[i];
 		values[i * 4] = (word & 255) as uint8;
@@ -605,14 +603,6 @@ function atlasImage(name: string, width: int32, height: int32): uint32 {
 }
 
 // ---- scene ------------------------------------------------------------------------------
-
-function spriteBlock(red: float32, green: float32, blue: float32, normalWeight: float32, atRoot: float32): UniformBlock {
-	const block: UniformBlock = try reserveUniforms(context, SPRITE_UNIFORM_SLOT, SPRITE_UNIFORM_LENGTH)
-		catch NO_UNIFORMS;
-	const values: Vec<float32> = [red, green, blue, 0.0, LIGHT_LEVELS, normalWeight, atRoot, 0.0];
-	writeUniforms(context, block, values);
-	return block;
-}
 
 // A LitRamp / BillboardRamp block (shader3d.glsl rampParams): row, top row + 1, level offset,
 // mark or jitter; then the lab's bands, falloff, walls and wrap, moon cuts and vignette.
@@ -637,14 +627,14 @@ const TRAIL_MOVE: float32 = 0.08;
 let walkerShadowX: float32 = 0.0;
 let walkerShadowZ: float32 = 0.0;
 let walkerShadowTop: float32 = 0.0;
-const feet: Vec<float32> = [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0];
-const trail: Vec<float32> = [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0];
-const trailBorn: Vec<float32> = [-100.0, -100.0, -100.0, -100.0, -100.0, -100.0];
-const trailWeight: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+let feet: Vec<float32> = [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0];
+let trail: Vec<float32> = [1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0];
+let trailBorn: Vec<float32> = [-100.0, -100.0, -100.0, -100.0, -100.0, -100.0];
+let trailWeight: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 let trailNext: int32 = 0;
 let trailLastAt: float32 = -100.0;
 const litBlocks: Vec<UniformBlock> = [];
-const litValues: Vec<Vec<float32>> = [];
+let litValues: Vec<Vec<float32>> = [];
 
 // LAB_WALKER_FX 0 turns the shadow, the feet and the trail off (for side-by-side checks).
 let walkerFx: boolean = true;
@@ -769,8 +759,8 @@ function updateSprites(metresPerTexel: float32): void {
 	}
 }
 
-function rampLit(state: RenderState, ramps: uint32, sampler: uint32, block: UniformBlock): int32 {
-	return addMaterial(context, {
+function rampLit(state: RenderState, ramps: uint32, sampler: uint32, block: UniformBlock): MaterialId {
+	return materialOf({
 		...Material.plain(Program.LitRamp, state, Phase.Opaque),
 		texture0: ramps,
 		texture2: shadowView,
@@ -791,7 +781,7 @@ function flowerCellOf(v: float32): int32 {
 // Picks the sprigs' roots, before the clumps so they can keep clear of them.
 function placeSprigs(): void {
 	for (let c = 0; c < FLOWER_GRID * FLOWER_GRID; c++) { sprigAt[c * 4 + 3] = 2.0; }
-	if (!rampLook || !SPRIGS_WANTED) { return; }
+	if (!SPRIGS_WANTED) { return; }
 	const read: Vec<float32> = readFloats("clumps_short.f32");
 	for (let i = 0; i < (read.length as int32) / INSTANCE_STRIDE; i++) {
 		const at: int32 = i * INSTANCE_STRIDE;
@@ -831,8 +821,8 @@ function nearSprig(x: float32, z: float32): boolean {
 	return false;
 }
 
-function addFlowers(root: NodeId, corners: uint32, ramps: uint32, sampler: uint32, state: RenderState): boolean {
-	const instances: Vec<float32> = [];
+function addFlowers(root: NodeId3D, ramps: uint32, sampler: uint32, state: RenderState): boolean {
+	let instances: Vec<float32> = [];
 	for (let c = 0; c < FLOWER_GRID * FLOWER_GRID; c++) {
 		if (sprigAt[c * 4 + 3] > 1.5) { continue; }
 		instances.push(sprigAt[c * 4]);
@@ -847,7 +837,7 @@ function addFlowers(root: NodeId, corners: uint32, ramps: uint32, sampler: uint3
 	const count: int32 = (instances.length as int32) / INSTANCE_STRIDE;
 	console.log("grass lab: " + count.toString() + " sprigs");
 	if (count == 0) { return true; }
-	const material: int32 = addMaterial(context, {
+	const material: MaterialId = materialOf({
 		...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
 		texture0: atlasImage("atlas_flower.rgba", FLOWER_CELL_W * 4, FLOWER_CELL_H),
 		texture1: ramps,
@@ -856,11 +846,8 @@ function addFlowers(root: NodeId, corners: uint32, ramps: uint32, sampler: uint3
 		sampler1: shadowSampler,
 		uniforms: spriteRampBlock(ROW_FLOWER, FLOWER_STEPS, FLOWER_SWAY, 0.0, NO_FAR),
 	});
-	const mesh: int32 = addMesh(
-		context,
-		GpuMesh.external(VertexLayout.Billboard, corners, makeVertexBuffer(instances), 6, count),
-	);
-	const node: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), mesh, material);
+	const mesh: MeshId = meshOf(GpuMesh.particles(makeVertexBuffer(instances), count));
+	const node: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), mesh, material);
 	return node.ok;
 }
 
@@ -923,11 +910,11 @@ function slopeSteps(x: float32, z: float32): float32 {
 }
 
 // `steps`: the material's own ramp steps (long grass one up); `sway`: its share of the wind.
-function addClumps(root: NodeId, corners: uint32, file: string, texture: uint32, ramps: uint32, sampler: uint32, state: RenderState, steps: float32, sway: float32, cellW: int32, cellH: int32, keep: float32): boolean {
+function addClumps(root: NodeId3D, file: string, texture: uint32, ramps: uint32, sampler: uint32, state: RenderState, steps: float32, sway: float32, cellW: int32, cellH: int32, keep: float32): boolean {
 	const read: Vec<float32> = readFloats(file);
 	// The rosettes are several times the lab's blades, so a share `keep` of the clumps (hashed on
 	// their root, so it is the same every run) still covers the ground, and the rest are dropped.
-	const instances: Vec<float32> = [];
+	let instances: Vec<float32> = [];
 	for (let i = 0; i < (read.length as int32) / INSTANCE_STRIDE; i++) {
 		const at: int32 = i * INSTANCE_STRIDE;
 		const h: float32 = fractOf(sinf(read[at] * 12.9898 + read[at + 2] * 78.233) * 43758.547);
@@ -935,8 +922,8 @@ function addClumps(root: NodeId, corners: uint32, file: string, texture: uint32,
 		// The rosettes reach about a metre past their root: keep them off the logs.
 		if (read[at] * read[at] + read[at + 2] * read[at + 2] < FIRE_GRASS_CLEAR * FIRE_GRASS_CLEAR) { continue; }
 		// and off the sprigs, which stand in a little clearing of their own
-		if (rampLook && nearSprig(read[at], read[at + 2])) { continue; }
-		if (rampLook && GRASS_PATCHES && !inGrassPatch(read[at], read[at + 2])) { continue; }
+		if (nearSprig(read[at], read[at + 2])) { continue; }
+		if (GRASS_PATCHES && !inGrassPatch(read[at], read[at + 2])) { continue; }
 		for (let k = 0; k < INSTANCE_STRIDE; k++) { instances.push(read[at + k]); }
 	}
 	const count: int32 = (instances.length as int32) / INSTANCE_STRIDE;
@@ -947,55 +934,25 @@ function addClumps(root: NodeId, corners: uint32, file: string, texture: uint32,
 	//   whole lawn), so short grass is the lawn's colour and long grass one step up from it;
 	// - the sprites keep their size in texels when the camera zooms out (their width and height
 	//   are world metres, so at 1.38x they drew 0.72 as big and the blades turned to noise).
-	if (rampLook) {
-		for (let i = 0; i < count; i++) {
-			const at: int32 = i * INSTANCE_STRIDE;
-			if (UNIFORM_CLUMPS) { instances[at + 6] = SLOPE_SHADING ? slopeSteps(instances[at], instances[at + 2]) : 0.0; }
-			instances[at + 4] = (cellW as float32) * LAB_METRES_PER_TEXEL * zoomOut;
-			instances[at + 5] = (cellH as float32) * LAB_METRES_PER_TEXEL * zoomOut;
-		}
+	for (let i = 0; i < count; i++) {
+		const at: int32 = i * INSTANCE_STRIDE;
+		if (UNIFORM_CLUMPS) { instances[at + 6] = SLOPE_SHADING ? slopeSteps(instances[at], instances[at + 2]) : 0.0; }
+		instances[at + 4] = (cellW as float32) * LAB_METRES_PER_TEXEL * zoomOut;
+		instances[at + 5] = (cellH as float32) * LAB_METRES_PER_TEXEL * zoomOut;
 	}
-	// shape.z holds the clump's ramp step; the toon programs take it, and the material's, as a tint.
-	if (!rampLook) {
-		for (let i = 0; i < count; i++) {
-			const at: int32 = i * INSTANCE_STRIDE + 6;
-			instances[at] = 1.0 + (instances[at] + steps) * TINT_PER_STEP;
-		}
-	}
-	const light: float32 = AMBIENT_R + MOON_POWER;
-	let material: int32 = 0;
-	if (rampLook) {
-		material = addMaterial(context, {
-			...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
-			texture0: texture,
-			texture1: ramps,
-			texture2: shadowView,
-			sampler0: sampler,
-			sampler1: shadowSampler,
-			uniforms: spriteRampBlock(ROW_GRASS, steps + (GRASS_PATCHES ? CLUMP_LIFT : 0.0), sway, 1.0, steps > 0.5 ? TALL_FAR : SHORT_FAR),
-		});
-	} else {
-		const block: UniformBlock = spriteBlock(
-			GRASS_R * (AMBIENT_R + MOON_POWER),
-			GRASS_G * (AMBIENT_G + MOON_POWER),
-			GRASS_B * (AMBIENT_B + MOON_POWER),
-			(1.0 - GRASS_WRAP) * labShader,
-			labShader,
-		);
-		material = addMaterial(context, {
-			...Material.plain(Program.Billboard, state, Phase.Opaque),
-			texture0: texture,
-			sampler0: sampler,
-			uniforms: block,
-		});
-	}
-	const mesh: int32 = addMesh(
-		context,
-		GpuMesh.external(VertexLayout.Billboard, corners, makeVertexBuffer(instances), 6, count),
-	);
-	const placed: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), mesh, material);
+	const material: MaterialId = materialOf({
+		...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
+		texture0: texture,
+		texture1: ramps,
+		texture2: shadowView,
+		sampler0: sampler,
+		sampler1: shadowSampler,
+		uniforms: spriteRampBlock(ROW_GRASS, steps + (GRASS_PATCHES ? CLUMP_LIFT : (0.0 as float32)), sway, 1.0, steps > 0.5 ? TALL_FAR : SHORT_FAR),
+	});
+	const mesh: MeshId = meshOf(GpuMesh.particles(makeVertexBuffer(instances), count));
+	const placed: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), mesh, material);
 	console.log("grass lab: " + file + " clumps " + count.toString());
-	return placed.ok && light > 0.0;
+	return placed.ok;
 }
 
 function flameInstance(frame: int32): Vec<float32> {
@@ -1009,19 +966,15 @@ function flameInstance(frame: int32): Vec<float32> {
 	return [x, fireGround + FLAME_ROOT + y, z, frame as float32, width, height, 1.0, 1.0];
 }
 
-function litMaterial(state: RenderState, flatWalls: float32, wrap: float32): int32 {
-	const toon: UniformBlock = try reserveUniforms(context, TOON_UNIFORM_SLOT, TOON_UNIFORM_LENGTH)
+function litMaterial(state: RenderState): MaterialId {
+	const toon: UniformBlock = try reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH)
 		catch NO_UNIFORMS;
-	const values: Vec<float32> = [LIGHT_LEVELS, flatWalls, wrap, 0.0];
+	const values: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
 	writeUniforms(context, toon, values);
-	return addMaterial(context, { ...Material.plain(Program.Lit, state, Phase.Opaque), uniforms: toon });
+	return materialOf({ ...Material.plain(Program.Lit, state, Phase.Opaque), uniforms: toon });
 }
 
 function cosOf(angle: float32): float32 { return sinf(angle + 1.5707963); }
-
-// The ramp look takes the lab's fire; the toon looks keep the one tuned for them.
-function firePower(): float32 { return rampLook ? LAB_FIRE_GAIN : FIRE_POWER; }
-function fireRadius(): float32 { return rampLook ? LAB_FIRE_R : FIRE_RADIUS; }
 
 // The camera looks along -(sin yaw, cos yaw) on the ground (camera.ms basisOf).
 function snowCentre(): Vec3 {
@@ -1030,20 +983,20 @@ function snowCentre(): Vec3 {
 
 // Each emitter draws from a stream mesh under its own node, depth-tested with the scene; added
 // before the flame, which is drawn last over everything.
-function setupParticles(root: NodeId, state: RenderState): boolean {
-	const material: int32 = addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
-	const snowStream: Result<int32, StreamError> = addStreamMesh(context, snow.capacity);
-	const emberStream: Result<int32, StreamError> = addStreamMesh(context, embers.capacity);
+function setupParticles(root: NodeId3D, state: RenderState): boolean {
+	const material: MaterialId = materialOf(Material.plain(Program.Particle, state, Phase.Opaque));
+	const snowStream: Result<MeshId, StreamError> = addStreamMesh(context, snow.capacity);
+	const emberStream: Result<MeshId, StreamError> = addStreamMesh(context, embers.capacity);
 	if (!snowStream.ok || !emberStream.ok) { console.log("grass lab: particle streams refused"); return false; }
 	snowMesh = snowStream.value;
 	emberMesh = emberStream.value;
-	const snowPlaced: Result<NodeId, SceneError> =
-		addMeshNode(tree, root, transformAt(snowCentre()), snowMesh, material);
-	const emberPlaced: Result<NodeId, SceneError> =
-		addMeshNode(tree, root, transformAt(vec3(0.0, fireGround + EMBER_HEIGHT, 0.0)), emberMesh, material);
+	const snowPlaced: Result<NodeId3D, SceneError> =
+		addMeshNode(tree, root, Transform3D.fromTranslation(snowCentre()), snowMesh, material);
+	const emberPlaced: Result<NodeId3D, SceneError> =
+		addMeshNode(tree, root, Transform3D.fromTranslation(vec3(0.0, fireGround + EMBER_HEIGHT, 0.0)), emberMesh, material);
 	if (!snowPlaced.ok || !emberPlaced.ok) { console.log("grass lab: particle nodes refused"); return false; }
 	snowNode = snowPlaced.value;
-	const _shown: Result<int32, SceneError> = setVisible(tree, snowNode, snowWanted);
+	setVisible(tree, snowNode, snowWanted);
 	emberNode = emberPlaced.value;
 	const _synced: int32 = syncWorld(tree);
 	for (let i = 0; i < PARTICLE_WARMUP_STEPS; i++) {
@@ -1055,13 +1008,13 @@ function setupParticles(root: NodeId, state: RenderState): boolean {
 	return true;
 }
 
-function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId): boolean {
+function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId3D): boolean {
 	const world: Result<Mat4, SceneError> = tree.worldOf(node);
 	if (!world.ok) { return false; }
 	return updateEmitter(emitter, PARTICLE_STEP, world.value).ok;
 }
 
-function drawEmitter(ref emitter: ParticleEmitter, node: NodeId, mesh: int32, instances: Span<float32>): boolean {
+function drawEmitter(ref emitter: ParticleEmitter, node: NodeId3D, mesh: MeshId, instances: Span<float32>): boolean {
 	const world: Result<Mat4, SceneError> = tree.worldOf(node);
 	if (!world.ok) { return false; }
 	const written: Result<int32, ParticleError> = writeInstances(emitter, world.value, instances);
@@ -1072,10 +1025,10 @@ function drawEmitter(ref emitter: ParticleEmitter, node: NodeId, mesh: int32, in
 // The walker's nodes keep their glTF hierarchy and are posed each frame from walkerAnim. The body
 // is lit by its own vertex colours (the toon program); the lens takes its ramp row, one red at
 // every level: it glows.
-function setupFourLegs(root: NodeId, state: RenderState, body: int32, lens: int32): boolean {
+function setupFourLegs(root: NodeId3D, body: MaterialId, lens: MaterialId): boolean {
 	const file = readFile(WALKER_DIR + "walker.glb");
 	if (!file.ok) { return false; }
-	const glb: uint8[] = file.value.asBytes();
+	const glb: uint8[] = [...file.value.asBytes()];
 	const all: Span<uint8> = glb;
 	if ((glb.length as int32) < 28 || wordAt(all, 0) != 0x46546C67) { console.log("grass lab: walker.glb is not a GLB"); return false; }
 	const jsonLength: int32 = wordAt(all, 12);
@@ -1087,11 +1040,9 @@ function setupFourLegs(root: NodeId, state: RenderState, body: int32, lens: int3
 	if (!loaded.ok) { console.log("grass lab: walker.glb refused: " + loaded.error.toString()); return false; }
 	const parts: GltfData = loaded.value;
 	// A mesh takes the material of the node that draws it: the lens its glowing red.
-	const bindings: Vec<GltfMeshBinding> = [];
+	let bindings: Vec<GltfMeshBinding> = [];
 	for (let i = 0; i < (parts.meshes.length as int32); i++) {
-		let mesh: MeshData = parts.meshes[i];
-		encodeColors(mesh);
-		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, mesh);
+		const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, parts.meshes[i]);
 		if (!uploaded.ok) { return false; }
 		bindings.push({ mesh: uploaded.value, material: body });
 	}
@@ -1112,10 +1063,10 @@ function setupFourLegs(root: NodeId, state: RenderState, body: int32, lens: int3
 // stations that all start and end in their station's pose. When it is there the walker plays it:
 // every walk is a clip, and at the end of one the next is drawn from those leaving the station it
 // reached (not straight back where it came from, when there is another).
-function loadGraph(root: NodeId): boolean {
+function loadGraph(root: NodeId3D): boolean {
 	const file = readFile(WALKER_DIR + "walkerGraph.bin");
 	if (!file.ok) { return false; }
-	const bytes: uint8[] = file.value.asBytes();
+	const bytes: uint8[] = [...file.value.asBytes()];
 	const all: Span<uint8> = bytes;
 	const size: int32 = bytes.length as int32;
 	if (size < 24 || wordAt(all, 0) != 0x46524757) { console.log("grass lab: walkerGraph.bin is not a graph"); return false; }
@@ -1127,7 +1078,7 @@ function loadGraph(root: NodeId): boolean {
 		const length: int32 = wordAt(all, at);
 		const name: string = textAt(all, at + 4, length);
 		at = at + 4 + ((length + 3) / 4) * 4;
-		const found: Result<NodeId, SceneError> = tree.findByName(root, name);
+		const found: Result<NodeId3D, SceneError> = tree.findByName(root, name);
 		if (!found.ok) { console.log("grass lab: walker.glb has no node " + name); return false; }
 		walkerParts.push(found.value);
 	}
@@ -1146,7 +1097,7 @@ function loadGraph(root: NodeId): boolean {
 			const raw: int32 = (all[at + k * 2] as int32) | ((all[at + k * 2 + 1] as int32) << 8);
 			const signed: int32 = raw >= 32768 ? raw - 65536 : raw;
 			const isTranslation: boolean = k % WALKER_POSE < 3;
-			walkerAnim.push((signed as float32) / (isTranslation ? 1000.0 : 32767.0));
+			walkerAnim.push((signed as float32) / (isTranslation ? (1000.0 as float32) : (32767.0 as float32)));
 		}
 		at = at + values * 2;
 	}
@@ -1154,7 +1105,7 @@ function loadGraph(root: NodeId): boolean {
 	return true;
 }
 
-function loadRoamClip(root: NodeId): boolean {
+function loadRoamClip(root: NodeId3D): boolean {
 	if (loadGraph(root)) { return true; }
 	walkerParts.length = 0;
 	loopFirst.length = 0;
@@ -1164,7 +1115,7 @@ function loadRoamClip(root: NodeId): boolean {
 	walkerAnim.length = 0;
 	const file = readFile(WALKER_DIR + "walkerClips.bin");
 	if (!file.ok) { console.log("grass lab: no walkerClips.bin"); return false; }
-	const bytes: uint8[] = file.value.asBytes();
+	const bytes: uint8[] = [...file.value.asBytes()];
 	const all: Span<uint8> = bytes;
 	const size: int32 = bytes.length as int32;
 	if (size < 16 || wordAt(all, 0) != 0x504C4357) { console.log("grass lab: walkerClips.bin is not a clip file"); return false; }
@@ -1175,7 +1126,7 @@ function loadRoamClip(root: NodeId): boolean {
 		const length: int32 = wordAt(all, at);
 		const name: string = textAt(all, at + 4, length);
 		at = at + 4 + ((length + 3) / 4) * 4;
-		const found: Result<NodeId, SceneError> = tree.findByName(root, name);
+		const found: Result<NodeId3D, SceneError> = tree.findByName(root, name);
 		if (!found.ok) { console.log("grass lab: walker.glb has no node " + name); return false; }
 		walkerParts.push(found.value);
 	}
@@ -1216,22 +1167,6 @@ function textAt(bytes: Span<uint8>, at: int32, length: int32): string {
 	const text: uint8[] = [];
 	for (let i = 0; i < length; i++) { text.push(bytes[at + i]); }
 	return text.asString();
-}
-
-function displayValue(linear: float32): float32 {
-	if (linear <= 0.0031308) { return (linear * 12.92) as float32; }
-	return (1.055 * Math.pow(linear, 1.0 / 2.4) - 0.055) as float32;
-}
-
-// glTF's COLOR_0 is linear light; the lit program shades the vertex colour as a display value.
-function encodeColors(ref mesh: MeshData): void {
-	const count: int32 = mesh.vertexCount();
-	for (let v = 0; v < count; v++) {
-		const at: int32 = v * LIT_VERTEX_STRIDE + 6;
-		mesh.vertices[at] = displayValue(mesh.vertices[at]);
-		mesh.vertices[at + 1] = displayValue(mesh.vertices[at + 1]);
-		mesh.vertices[at + 2] = displayValue(mesh.vertices[at + 2]);
-	}
 }
 
 // The clip frame for now. A clip that ran out hands over to another one, never the same twice
@@ -1284,12 +1219,11 @@ function poseFourLegs(): boolean {
 	for (let i = 0; i < count; i++) {
 		const k: int32 = first + i * WALKER_POSE;
 		const rotation: Quat = { x: walkerAnim[k + 3], y: walkerAnim[k + 4], z: walkerAnim[k + 5], w: walkerAnim[k + 6] };
-		const posed: Result<int32, SceneError> = setLocal(tree, walkerParts[i], {
-			...identityTransform(),
+		setLocal(tree, walkerParts[i], {
+			...Transform3D.identity(),
 			position: vec3(walkerAnim[k], walkerAnim[k + 1], walkerAnim[k + 2]),
 			rotation: rotation,
 		});
-		if (!posed.ok) { return false; }
 	}
 	// The first clip node is the walker's root: where it stands, which is what pushes the grass.
 	walkerX = walkerAnim[first];
@@ -1319,7 +1253,7 @@ const TERRAIN_SKIP_END: float32 = 0.4;
 const TERRAIN_EPSILON: float32 = 0.03;
 let shadowView: uint32 = 0;
 let shadowSampler: uint32 = 0;
-const groundHeights: Vec<float32> = [];
+let groundHeights: Vec<float32> = [];
 
 // box: centre x, z, the footprint's axes (cos, sin of its turn), half sizes along them, top, foot
 function blocksLine(px: float32, pz: float32, light: float32, aim: float32, box: Vec<float32>): boolean {
@@ -1457,7 +1391,7 @@ function buildShadowMap(data: GltfData): void {
 		boxes.push(pillarBox(node.local.position, data.meshes[node.mesh]));
 	}
 	const light: float32 = fireGround + FIRE_HEIGHT;
-	const texels: Vec<uint32> = new Array(SHADOW_SIZE * SHADOW_SIZE);
+	let texels: Vec<uint32> = new Array(SHADOW_SIZE * SHADOW_SIZE);
 	const step: float32 = 2.0 * SHADOW_HALF / (SHADOW_SIZE as float32);
 	let hidden: int32 = 0;
 	for (let row = 0; row < SHADOW_SIZE; row++) {
@@ -1484,7 +1418,7 @@ function buildShadowMap(data: GltfData): void {
 		}
 	}
 	shadowView = makeTextureView(makeImage(texels, SHADOW_SIZE, SHADOW_SIZE));
-	shadowSampler = Sampler.create(Filter.Linear, Wrap.Clamp).handle;
+	shadowSampler = Sampler.create(FilterMode.Linear, Wrap.Clamp).handle;
 	console.log("grass lab: fire shadows from " + (boxes.length as int32).toString() + " pillars, "
 		+ hidden.toString() + " texels behind the terrain, "
 		+ ((performance.now() - started) as int32).toString() + " ms");
@@ -1504,7 +1438,7 @@ const LEAF_CARD_FAR: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 // crowns, which read better from the moon's steps alone (0.5 turns them on).
 const LEAF_MARK: float32 = 2.0;
 
-function addPlants(root: NodeId, state: RenderState, ramps: uint32, sampler: uint32, wood: int32): boolean {
+function addPlants(root: NodeId3D, state: RenderState, ramps: uint32, sampler: uint32, wood: MaterialId): boolean {
 	if (labFileSize(DATA + "plants.gltf") <= 0) { return true; }
 	const json = readFile(DATA + "plants.gltf");
 	if (!json.ok) { return true; }
@@ -1512,12 +1446,12 @@ function addPlants(root: NodeId, state: RenderState, ramps: uint32, sampler: uin
 	const loaded: Result<GltfData, GltfError> = loadGltf(json.value, buffer);
 	if (!loaded.ok) { console.log("grass lab: plants.gltf was refused: " + loaded.error.toString()); return false; }
 	const data: GltfData = loaded.value;
-	const leaf: int32 = rampLit(state, ramps, sampler, rampBlock(ROW_LEAF, 0.0, 0.0, LEAF_MARK, 0.0, LEAF_WRAP, NO_FAR));
+	const leaf: MaterialId = rampLit(state, ramps, sampler, rampBlock(ROW_LEAF, 0.0, 0.0, LEAF_MARK, 0.0, LEAF_WRAP, NO_FAR));
 	const bindings: Vec<GltfMeshBinding> = [];
 	for (let i = 0; i < (data.meshes.length as int32); i++) {
-		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, data.meshes[i]);
+		const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, data.meshes[i]);
 		if (!uploaded.ok) { console.log("grass lab: a plant mesh did not upload"); return false; }
-		let material: int32 = leaf;
+		let material: MaterialId = leaf;
 		for (const node of data.nodes) {
 			if (node.mesh == i && node.name.startsWith("TRUNK_")) { material = wood; }
 		}
@@ -1525,14 +1459,14 @@ function addPlants(root: NodeId, state: RenderState, ramps: uint32, sampler: uin
 	}
 	const added: Result<int32, GltfSceneError> = addGltfNodes(tree, root, data, bindings);
 	if (!added.ok) { console.log("grass lab: the plants were refused"); return false; }
-	const cards: Vec<float32> = readFloats("plant_leaves.f32");
+	let cards: Vec<float32> = readFloats("plant_leaves.f32");
 	const cardCount: int32 = (cards.length as int32) / INSTANCE_STRIDE;
 	if (cardCount > 0) {
 		for (let i = 0; i < cardCount; i++) {
 			cards[i * INSTANCE_STRIDE + 4] = (SHORT_CELL_W as float32) * LAB_METRES_PER_TEXEL * zoomOut;
 			cards[i * INSTANCE_STRIDE + 5] = (SHORT_CELL_H as float32) * LAB_METRES_PER_TEXEL * zoomOut;
 		}
-		const cardMaterial: int32 = addMaterial(context, {
+		const cardMaterial: MaterialId = materialOf({
 			...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
 			texture0: atlasImage("atlas_short.rgba", SHORT_CELL_W * 4, SHORT_CELL_H),
 			texture1: ramps,
@@ -1541,16 +1475,25 @@ function addPlants(root: NodeId, state: RenderState, ramps: uint32, sampler: uin
 			sampler1: shadowSampler,
 			uniforms: spriteRampBlock(ROW_LEAF, 0.0, LEAF_CARD_SWAY, 0.0, LEAF_CARD_FAR),
 		});
-		const cardMesh: int32 = addMesh(
-			context,
-			GpuMesh.external(VertexLayout.Billboard, makeVertexBuffer(CORNERS), makeVertexBuffer(cards), 6, cardCount),
-		);
-		const cardNode: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), cardMesh, cardMaterial);
+		const cardMesh: MeshId = meshOf(GpuMesh.particles(makeVertexBuffer(cards), cardCount));
+		const cardNode: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), cardMesh, cardMaterial);
 		if (!cardNode.ok) { return false; }
 		console.log("grass lab: " + cardCount.toString() + " leaf cards");
 	}
 	console.log("grass lab: " + (data.nodes.length as int32).toString() + " plant nodes");
 	return true;
+}
+
+function flameMaterial(state: RenderState, atlas: uint32, ramps: uint32, sampler: uint32): MaterialId {
+	return materialOf({
+		...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
+		texture0: atlas,
+		texture1: ramps,
+		texture2: shadowView,
+		sampler0: sampler,
+		sampler1: shadowSampler,
+		uniforms: spriteRampBlock(ROW_LENS, 0.0, 0.0, 0.0, NO_FAR),
+	});
 }
 
 function setup(): boolean {
@@ -1567,58 +1510,45 @@ function setup(): boolean {
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
-	const sampler: Sampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
+	const sampler: Sampler = Sampler.create(FilterMode.Nearest, Wrap.Clamp);
 	const ramps: uint32 = atlasImage("ramps.rgba", RAMP_WIDTH, RAMP_ROWS);
 	// Stones and logs: firelit walls are flat faces. The lawn: wrapped light, as the clumps.
-	let lit: int32 = 0;
-	let lawn: int32 = 0;
-	let wood: int32 = 0;
-	if (rampLook) {
-		lawn = rampLit(state, ramps, sampler.handle, rampBlock(ROW_GRASS, 0.0, LAWN_STEPS, TALL_MARK, 0.0, GRASS_WRAP, LAWN_FAR));
-		lit = rampLit(state, ramps, sampler.handle, rampBlock(ROW_STONE, ROW_TOP + 1.0, 0.0, 0.0, 1.0, 0.0, STONE_FAR));
-		wood = rampLit(state, ramps, sampler.handle, rampBlock(ROW_WOOD, 0.0, 0.0, 0.0, 0.0, WOOD_WRAP, NO_FAR));
-	} else {
-		lit = litMaterial(state, labShader, 0.0);
-		lawn = litMaterial(state, 0.0, GRASS_WRAP * labShader);
-		wood = lit;
-	}
+	const lawn: MaterialId = rampLit(state, ramps, sampler.handle, rampBlock(ROW_GRASS, 0.0, LAWN_STEPS, TALL_MARK, 0.0, GRASS_WRAP, LAWN_FAR));
+	const lit: MaterialId = rampLit(state, ramps, sampler.handle, rampBlock(ROW_STONE, ROW_TOP + 1.0, 0.0, 0.0, 1.0, 0.0, STONE_FAR));
+	const wood: MaterialId = rampLit(state, ramps, sampler.handle, rampBlock(ROW_WOOD, 0.0, 0.0, 0.0, 0.0, WOOD_WRAP, NO_FAR));
 
 	// The exporter writes one node per mesh, in the same order.
 	const bindings: Vec<GltfMeshBinding> = [];
 	for (let i = 0; i < (data.meshes.length as int32); i++) {
-		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, data.meshes[i]);
+		const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, data.meshes[i]);
 		if (!uploaded.ok) { console.log("grass lab: a mesh did not upload"); return false; }
 		const name: string = data.nodes[i].name;
-		let material: int32 = lit;
+		let material: MaterialId = lit;
 		if (name == "GROUND") { material = lawn; }
 		if (name.startsWith("LOG_")) { material = wood; }
 		bindings.push({ mesh: uploaded.value, material: material });
 	}
-	const root: NodeId = tree.rootId();
+	const root: NodeId3D = tree.rootId();
 	const added: Result<int32, GltfSceneError> = addGltfNodes(tree, root, data, bindings);
 	if (!added.ok) { console.log("grass lab: the glTF nodes were refused"); return false; }
-	if (rampLook && !addPlants(root, state, ramps, sampler.handle, wood)) { return false; }
+	if (!addPlants(root, state, ramps, sampler.handle, wood)) { return false; }
 
 	// The lab's moon, (-0.45, 0.25, 0.86) toward it in Blender's Z up, is (-0.45, 0.86, -0.25) here.
 	const moonToward: Vec3 = vec3(-0.45, 0.86, -0.25).normalized();
-	const moon: Result<NodeId, SceneError> = addLightNode(
+	const _moon: NodeId3D = addLightNode(
 		tree,
 		root,
-		{ ...identityTransform(), rotation: quatBetween(vec3(0.0, 0.0, 1.0), moonToward.scaled(-1.0)) },
+		{ ...Transform3D.identity(), rotation: quatBetween(vec3(0.0, 0.0, 1.0), moonToward.scaled(-1.0)) },
 		{ kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0), radius: 0.0, power: MOON_POWER, priority: 100 },
 	);
-	if (!moon.ok) { return false; }
-	const fire: Result<NodeId, SceneError> = addLightNode(
+	fireLight = addLightNode(
 		tree,
 		root,
-		transformAt(vec3(0.0, fireGround + FIRE_HEIGHT, 0.0)),
-		{ kind: LightKind.Point, color: vec3(1.0, 0.42, 0.16), radius: fireRadius(), power: firePower(), priority: 0 },
+		Transform3D.fromTranslation(vec3(0.0, fireGround + FIRE_HEIGHT, 0.0)),
+		{ kind: LightKind.Point, color: vec3(1.0, 0.42, 0.16), radius: LAB_FIRE_R, power: LAB_FIRE_GAIN, priority: 0 },
 	);
-	if (!fire.ok) { return false; }
-	fireLight = fire.value;
 	setAmbient(tree, vec3(AMBIENT_R, AMBIENT_G, AMBIENT_B));
 
-	const corners: uint32 = makeVertexBuffer(CORNERS);
 	// The wind blows to screen right and away from the camera, in world x, z.
 	const rightX: float32 = cosOf(CAMERA_YAW);
 	const rightZ: float32 = -sinf(CAMERA_YAW);
@@ -1632,34 +1562,27 @@ function setup(): boolean {
 	const flameAtlas: uint32 = atlasImage("atlas_flame.rgba", FLAME_CELL_W * 4, FLAME_CELL_H);
 	const flameAtlas2: uint32 = atlasImage("atlas_flame2.rgba", FLAME_CELL_W * 4, FLAME_CELL_H);
 	placeSprigs();
-	if (!addClumps(root, corners, "clumps_short.f32", shortAtlas, ramps, sampler.handle, state, 0.0, SHORT_SWAY, SHORT_CELL_W, SHORT_CELL_H, SHORT_KEEP)) { return false; }
-	if (!addClumps(root, corners, "clumps_tall.f32", tallAtlas, ramps, sampler.handle, state, TALL_STEPS, TALL_SWAY, TALL_CELL_W, TALL_CELL_H, TALL_KEEP)) { return false; }
-	if (rampLook && SPRIGS_WANTED && !addFlowers(root, corners, ramps, sampler.handle, state)) { return false; }
-	if (rampLook) {
-		// The lab's pale tufts: still, two steps up the tuft ramp.
-		const tufts: Vec<float32> = readFloats("tufts.f32");
-		const tuftCount: int32 = (tufts.length as int32) / INSTANCE_STRIDE;
-		const tuftMaterial: int32 = addMaterial(context, {
-			...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
-			texture0: atlasImage("atlas_tuft.rgba", TUFT_CELL_W * 4, TUFT_CELL_H),
-			texture1: ramps,
-			texture2: shadowView,
-			sampler0: sampler.handle,
-			sampler1: shadowSampler,
-			uniforms: spriteRampBlock(ROW_TUFT, TUFT_STEPS, 0.0, 0.0, NO_FAR),
-		});
-		const tuftMesh: int32 = addMesh(
-			context,
-			GpuMesh.external(VertexLayout.Billboard, corners, makeVertexBuffer(tufts), 6, tuftCount),
-		);
-		const tuftNode: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), tuftMesh, tuftMaterial);
-		if (!tuftNode.ok) { return false; }
-	}
+	if (!addClumps(root, "clumps_short.f32", shortAtlas, ramps, sampler.handle, state, 0.0, SHORT_SWAY, SHORT_CELL_W, SHORT_CELL_H, SHORT_KEEP)) { return false; }
+	if (!addClumps(root, "clumps_tall.f32", tallAtlas, ramps, sampler.handle, state, TALL_STEPS, TALL_SWAY, TALL_CELL_W, TALL_CELL_H, TALL_KEEP)) { return false; }
+	if (SPRIGS_WANTED && !addFlowers(root, ramps, sampler.handle, state)) { return false; }
+	// The lab's pale tufts: still, two steps up the tuft ramp.
+	const tufts: Vec<float32> = readFloats("tufts.f32");
+	const tuftCount: int32 = (tufts.length as int32) / INSTANCE_STRIDE;
+	const tuftMaterial: MaterialId = materialOf({
+		...Material.plain(Program.BillboardRamp, state, Phase.Opaque),
+		texture0: atlasImage("atlas_tuft.rgba", TUFT_CELL_W * 4, TUFT_CELL_H),
+		texture1: ramps,
+		texture2: shadowView,
+		sampler0: sampler.handle,
+		sampler1: shadowSampler,
+		uniforms: spriteRampBlock(ROW_TUFT, TUFT_STEPS, 0.0, 0.0, NO_FAR),
+	});
+	const tuftMesh: MeshId = meshOf(GpuMesh.particles(makeVertexBuffer(tufts), tuftCount));
+	const tuftNode: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), tuftMesh, tuftMaterial);
+	if (!tuftNode.ok) { return false; }
 	if (walkerWanted && labFileSize(WALKER_DIR + "walker.glb") > 0) {
-		const lens: int32 = rampLook
-			? rampLit(state, ramps, sampler.handle, rampBlock(ROW_LENS, 0.0, 0.0, 0.0, 0.0, 0.0, NO_FAR))
-			: litMaterial(state, 0.0, 0.0);
-		if (!setupFourLegs(root, state, litMaterial(state, 0.0, 0.0), lens)) { console.log("grass lab: the four-legged walker was refused"); return false; }
+		const lens: MaterialId = rampLit(state, ramps, sampler.handle, rampBlock(ROW_LENS, 0.0, 0.0, 0.0, 0.0, 0.0, NO_FAR));
+		if (!setupFourLegs(root, litMaterial(state), lens)) { console.log("grass lab: the four-legged walker was refused"); return false; }
 	} else if (walkerWanted) {
 		// A placeholder figure as the lab's (8 x 36 texels: 0.25 m across, 1.3 m tall), lit as wood.
 		walkerPath = readFloats("walker.f32");
@@ -1672,9 +1595,9 @@ function setup(): boolean {
 			color: { red: 0.16, green: 0.12, blue: 0.2, alpha: 1.0 },
 		};
 		const built: Result<int32, MeshError> = addBox(figure, body);
-		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, figure);
+		const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, figure);
 		if (!built.ok || !uploaded.ok) { return false; }
-		const walker: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), uploaded.value, wood);
+		const walker: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), uploaded.value, wood);
 		if (!walker.ok) { return false; }
 		walkerNode = walker.value;
 	}
@@ -1689,36 +1612,25 @@ function setup(): boolean {
 	const overlay: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(false, Compare.LessEqual);
-	firstFlameMesh = context.meshes.length as int32;
 	for (let i = 0; i < 4; i++) {
-		addMesh(context, GpuMesh.external(VertexLayout.Billboard, corners, makeVertexBuffer(flameInstance(i)), 6, 1));
+		flameMeshes.push(meshOf(GpuMesh.particles(makeVertexBuffer(flameInstance(i)), 1)));
 	}
-	const flame: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), firstFlameMesh,
-		addMaterial(context, {
-			...Material.plain(Program.Billboard, overlay, Phase.Opaque),
-			texture0: flameAtlas,
-			sampler0: sampler.handle,
-			uniforms: spriteBlock(0.0, 0.0, 0.0, 0.0, 0.0),
-		}));
-	const flame2: Result<NodeId, SceneError> = addMeshNode(tree, root, identityTransform(), firstFlameMesh,
-		addMaterial(context, {
-			...Material.plain(Program.Billboard, overlay, Phase.Opaque),
-			texture0: flameAtlas2,
-			sampler0: sampler.handle,
-			uniforms: spriteBlock(0.0, 0.0, 0.0, 0.0, 0.0),
-		}));
+	const flame: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), flameMeshes[0],
+		flameMaterial(overlay, flameAtlas, ramps, sampler.handle));
+	const flame2: Result<NodeId3D, SceneError> = addMeshNode(tree, root, Transform3D.identity(), flameMeshes[0],
+		flameMaterial(overlay, flameAtlas2, ramps, sampler.handle));
 	if (!flame.ok || !flame2.ok) { return false; }
 	flameNode = flame.value;
 	flameNode2 = flame2.value;
 
-	const palette: Vec<uint32> = readWords(rampLook ? "palette.u32" : "palette_toon.u32");
+	const palette: Vec<uint32> = readWords("palette.u32");
 	let settings: PixelArtSettings = { ...PixelArtSettings.full(), margin: 1 };
 	if (labEnvInt("LAB_OUTLINE", 1) == 0) { settings = { ...settings, outline: false }; }
 	setSettings(renderer, settings);
 	// The ramp look's colours are ramp colours already; the LUT would only pull what the outline
 	// darkens onto whatever palette colour is nearest (the pale tufts' among them), so it is off
 	// there unless asked for.
-	if (labEnvInt("LAB_PALETTE", rampLook ? 0 : 1) != 0 && (palette.length as int32) > 0) {
+	if (labEnvInt("LAB_PALETTE", 0) != 0 && (palette.length as int32) > 0) {
 		const filled: Result<int32, PaletteError> = setPalette(renderer, palette);
 		if (filled.ok) { setSettings(renderer, { ...renderer.settings, palette: true }); }
 	}
@@ -1732,11 +1644,14 @@ function setup(): boolean {
 function noHud(): void {}
 let hudWanted: boolean = false;
 let hudInit: () => void = noHud;
-let hudFrame: () => void = noHud;
+let hudPrepare: () => void = noHud;
+let hudDraw: () => void = noHud;
 
-export function setLabHud(init: () => void, frame: () => void): void {
+// `prepare` runs with no pass open, `draw` inside the screen pass after the scene's blit.
+export function setLabHud(init: () => void, prepare: () => void, draw: () => void): void {
 	hudInit = init;
-	hudFrame = frame;
+	hudPrepare = prepare;
+	hudDraw = draw;
 	hudWanted = true;
 }
 
@@ -1746,7 +1661,6 @@ export function initLab(): void {
 	snapWanted = labEnvInt("LAB_SNAP", 1) != 0;
 	captureAt = labEnvInt("LAB_CAPTURE", -1);
 	windWanted = labEnvInt("LAB_WIND", 1) != 0;
-	rampLook = labEnvInt("LAB_RAMP", 1) != 0;
 	walkerWanted = labEnvInt("LAB_WALKER", 1) != 0;
 	particlesWanted = labEnvInt("LAB_PARTICLES", 1) != 0;
 	hudWanted = hudWanted && labEnvInt("LAB_HUD", 1) != 0;
@@ -1758,11 +1672,6 @@ export function initLab(): void {
 	nightFlat = (labEnvInt("LAB_FLAT", NIGHT_FLAT_PERCENT) as float32) / 100.0;
 	LAB_FIRE_FALL = -(labEnvInt("LAB_FALL", 70) as float32) / 100.0;
 	WALLS_AT_ORIGIN = labEnvInt("LAB_WALLS", 1) != 0 ? 1.0 : 0.0;
-	if (labEnvInt("LAB_SHADER", 1) == 0) {
-		labShader = 0.0;
-		windWanted = false;
-		rampLook = false;
-	}
 	ready = setup();
 	// after the scene: its gfxSetup is done and the HUD's assets load inside the asset root
 	if (ready && hudWanted) {
@@ -1806,31 +1715,24 @@ function advanceClock(): float32 {
 function seconds(): float32 { return (frameIndex as float32) / FRAMES_PER_SECOND; }
 
 function flicker(): void {
-	if (rampLook && due(FLICKER_EVERY)) {
+	if (due(FLICKER_EVERY)) {
 		// The lab keeps the fire still and breathes its reach.
 		const held: float32 = ((frameIndex - frameIndex % FLICKER_EVERY) as float32) / FRAMES_PER_SECOND;
 		const loop: float32 = held / FLICKER_LOOP_SECONDS - ((held / FLICKER_LOOP_SECONDS) as int32 as float32);
 		const light: int32 = tree.nodes[fireLight.index].payload;
 		tree.lights[light].radius = LAB_FIRE_R * labFlicker(loop);
-	} else if (!rampLook && due(FLICKER_EVERY)) {
-		const dx: float32 = (nextRandom() - 0.5) * 0.14;
-		const dz: float32 = (nextRandom() - 0.5) * 0.14;
-		const moved: Result<int32, SceneError> = setLocal(tree, fireLight, transformAt(vec3(dx, fireGround + FIRE_HEIGHT, dz)));
-		const powered: Result<int32, SceneError> =
-			setLightPower(tree, fireLight, firePower() * (0.93 + nextRandom() * 0.14));
-		if (!moved.ok || !powered.ok) { return; }
 	}
 	const cell: int32 = (frameIndex / FLAME_EVERY) % FLAME_FRAMES;
 	const first: boolean = cell < 4;
-	const shown: NodeId = first ? flameNode : flameNode2;
-	const _swapped: Result<int32, SceneError> = setMeshOf(tree, shown, firstFlameMesh + (first ? cell : cell - 4));
-	const _one: Result<int32, SceneError> = setVisible(tree, flameNode, first);
-	const _two: Result<int32, SceneError> = setVisible(tree, flameNode2, !first);
+	const shown: NodeId3D = first ? flameNode : flameNode2;
+	const _swapped: Result<int32, SceneError> = setMeshOf(tree, shown, flameMeshes[first ? cell : cell - 4]);
+	setVisible(tree, flameNode, first);
+	setVisible(tree, flameNode2, !first);
 }
 
 // The fire's place in the low-res target (texelOf in camera.ms, the target's row order) and
 // depth, for the post pass's fog glow.
-function placeGlow(view: CameraView): void {
+function placeGlow(view: CameraView, worldPerTexel: float32): void {
 	const fire: Vec4 = vec4(0.0, fireGround + FOG_GLOW_HEIGHT, 0.0, 1.0) * view.viewProj;
 	const width: float32 = view.texelWidth as float32;
 	const height: float32 = view.texelHeight as float32;
@@ -1838,7 +1740,7 @@ function placeGlow(view: CameraView): void {
 	glowValues[1] = (originTopLeft() ? 1.0 - fire.y : fire.y + 1.0) * 0.5 * height;
 	glowValues[2] = fire.z;
 	glowValues[3] = fogGlow;
-	glowValues[4] = view.worldPerTexel;
+	glowValues[4] = worldPerTexel;
 	glowValues[5] = CAMERA_FAR - CAMERA_NEAR;
 	glowValues[6] = FOG_GLOW_SOFT;
 	glowValues[7] = FOG_GLOW_BANDS;
@@ -1861,77 +1763,20 @@ function placeGlow(view: CameraView): void {
 	setGlow(renderer, glowValues);
 }
 
+const SCREEN_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+
+// An embedded view's frame must end in commit(), so a frame the scene cannot draw still opens
+// the screen pass for the HUD and commits.
 export function frameLab(): void {
-	if (!ready) { return; }
-	const _passed: float32 = advanceClock();
-	const none: float32 = 0.0;
-	const sized: Result<LowResView, ViewError> = renderer.viewFor(fbWidth(), fbHeight(), none, none);
-	if (!sized.ok) { return; }
-	const grid: LowResView = sized.value;
-	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
-	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE * zoomOut / shortSide;
-	const centred: OrthoCamera = {
-		target: vec3(0.0, TARGET_HEIGHT, 0.0),
-		yaw: CAMERA_YAW,
-		pitch: CAMERA_PITCH,
-		worldPerTexel: worldPerTexel,
-		nearPlane: CAMERA_NEAR,
-		farPlane: CAMERA_FAR,
-		snap: snapWanted,
-	};
-	// A slow slide to the right and a little up the screen, so every sub-texel offset shows.
-	const texels: float32 = ((panPer100 * frameIndex) as float32) / 100.0;
-	const basis = centred.basisOf();
-	const target: Vec3 = centred.target + basis.right.scaled(texels * worldPerTexel)
-		+ basis.up.scaled(texels * 0.37 * worldPerTexel);
-	const camera: OrthoCamera = { ...centred, target: target };
-	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
-	if (!resolved.ok) { return; }
-	const view: CameraView = resolved.value;
-	const shifted: Result<LowResView, ViewError> =
-		renderer.viewFor(fbWidth(), fbHeight(), view.remainderX, view.remainderY);
-	if (!shifted.ok) { return; }
-	view.writeCameraBlock(cameraParams);
-	placeGlow(view);
-	// The billboard program reads the wind from the camera block's spare lanes: the sway in
-	// cameraRight.w, the time (s, at 60 fps) in cameraUp.w.
-	if (windWanted) {
-		cameraParams[19] = WIND_SWAY;
-		cameraParams[23] = (frameIndex as float32) / 60.0;
-	}
+	const prepared: boolean = ready && prepareLab();
+	if (hudWanted) { hudPrepare(); }
+	beginScreenPass(SCREEN_CLEAR);
+	if (prepared) { drawToScreen(renderer); }
+	if (hudWanted) { hudDraw(); }
+	endPass();
+	commit();
 
-	flicker();
-	if (walkerWanted && (walkerParts.length as int32) > 0) {
-		if (!poseFourLegs()) { return; }
-	} else if (walkerWanted && (walkerPath.length as int32) >= 3) {
-		const steps: int32 = (walkerPath.length as int32) / 3;
-		const at: int32 = ((seconds() * WALKER_FPS) as int32) % steps;
-		walkerX = walkerPath[at * 3];
-		walkerZ = walkerPath[at * 3 + 2];
-		const placed: Result<int32, SceneError> =
-			setLocal(tree, walkerNode, transformAt(vec3(walkerX, walkerPath[at * 3 + 1], walkerZ)));
-		if (!placed.ok) { return; }
-	}
-	if (walkerWanted) { trackWalker(); }
-	if (rampLook) { updateSprites(worldPerTexel); }
-	const drawn: int32 = refresh(tree, sceneItems);
-	if (drawn == 0) { return; }
-	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
-	if (!lit.ok) { return; }
-	if (particlesWanted && due(PARTICLE_EVERY)) {
-		const snowed: boolean = !snowWanted
-			|| (advanceEmitter(snow, snowNode) && drawEmitter(snow, snowNode, snowMesh, snowInstances));
-		if (!snowed || !advanceEmitter(embers, emberNode)
-			|| !drawEmitter(embers, emberNode, emberMesh, emberInstances)) {
-			console.log("grass lab: a particle emitter failed to step or draw");
-			return;
-		}
-	}
-	if (hudWanted) { skipNextCommit(); }
-	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, shifted.value);
-	if (hudWanted) { hudFrame(); }
-
-	if (captureAt >= 0) {
+	if (prepared && captureAt >= 0) {
 		const out: string = "out/shots/";
 		if (frameIndex == captureAt || frameIndex == captureAt + 30 || frameIndex == captureAt + 60) {
 			const saved: int32 = labCapture(out + "frame_" + frameIndex.toString() + ".ppm");
@@ -1939,6 +1784,74 @@ export function frameLab(): void {
 		}
 		if (frameIndex >= captureAt + 60) { labExit(0); }
 	}
-	previousIndex = frameIndex;
+	if (prepared) { previousIndex = frameIndex; }
 }
 
+function prepareLab(): boolean {
+	const _passed: float32 = advanceClock();
+	const none: float32 = 0.0;
+	const sized: Result<LowResView, ViewError> = renderer.viewFor(fbWidth(), fbHeight(), none, none);
+	if (!sized.ok) { return false; }
+	const grid: LowResView = sized.value;
+	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
+	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE * zoomOut / shortSide;
+	const centred: Camera3D = {
+		position: vec3(0.0, TARGET_HEIGHT, 0.0),
+		yaw: CAMERA_YAW,
+		pitch: CAMERA_PITCH,
+		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: worldPerTexel, snap: snapWanted },
+		nearPlane: CAMERA_NEAR,
+		farPlane: CAMERA_FAR,
+	};
+	// A slow slide to the right and a little up the screen, so every sub-texel offset shows.
+	const texels: float32 = ((panPer100 * frameIndex) as float32) / 100.0;
+	const basis = centred.basisOf();
+	const target: Vec3 = centred.position + basis.right.scaled(texels * worldPerTexel)
+		+ basis.up.scaled(texels * 0.37 * worldPerTexel);
+	const camera: Camera3D = { ...centred, position: target };
+	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
+	if (!resolved.ok) { return false; }
+	const view: CameraView = resolved.value;
+	const shifted: Result<LowResView, ViewError> =
+		renderer.viewFor(fbWidth(), fbHeight(), view.remainderX, view.remainderY);
+	if (!shifted.ok) { return false; }
+	view.writeCameraBlock(cameraParams);
+	placeGlow(view, worldPerTexel);
+	// BillboardRamp reads the time (s, at 60 fps) from the camera block's spare lane cameraUp.w.
+	if (windWanted) {
+		cameraParams[23] = (frameIndex as float32) / 60.0;
+	}
+
+	flicker();
+	if (walkerWanted && (walkerParts.length as int32) > 0) {
+		if (!poseFourLegs()) { return false; }
+	} else if (walkerWanted && (walkerPath.length as int32) >= 3) {
+		const steps: int32 = (walkerPath.length as int32) / 3;
+		const at: int32 = ((seconds() * WALKER_FPS) as int32) % steps;
+		walkerX = walkerPath[at * 3];
+		walkerZ = walkerPath[at * 3 + 2];
+		setLocal(tree, walkerNode, Transform3D.fromTranslation(vec3(walkerX, walkerPath[at * 3 + 1], walkerZ)));
+	}
+	if (walkerWanted) { trackWalker(); }
+	updateSprites(worldPerTexel);
+	const drawn: int32 = refresh(tree, sceneItems);
+	if (drawn == 0) { return false; }
+	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
+	if (!lit.ok) { return false; }
+	if (particlesWanted && due(PARTICLE_EVERY)) {
+		const snowed: boolean = !snowWanted
+			|| (advanceEmitter(snow, snowNode) && drawEmitter(snow, snowNode, snowMesh, snowInstances));
+		if (!snowed || !advanceEmitter(embers, emberNode)
+			|| !drawEmitter(embers, emberNode, emberMesh, emberInstances)) {
+			console.log("grass lab: a particle emitter failed to step or draw");
+			return false;
+		}
+	}
+	const framed: Result<int32, PixelArtError> =
+		prepareFrame(renderer, sceneItems, cameraParams, lightParams, shifted.value);
+	if (!framed.ok) {
+		console.log("grass lab: the frame was refused: " + framed.error.toString());
+		return false;
+	}
+	return true;
+}

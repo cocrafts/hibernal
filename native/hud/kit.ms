@@ -2,11 +2,26 @@
 // Sprites are kept by widget id and hidden in a frame that does not draw them.
 
 import { makeImage as makeImageBytes, makeView } from "@metascript/void/src/sokol/gpu";
-import { makeImage, makeTextureView } from "@metascript/void/src/void3d/gpu3d";
-import { Node2D, group, sprite, addChildAt, addChild } from "@metascript/void/src/void2d/node";
+import { makeImage } from "@metascript/void/src/void3d/gpu3d";
+import { makeTextureView } from "@metascript/void/src/gpu/door";
+import {
+	NodeRef,
+	group,
+	sprite,
+	addChildAt,
+	addChild,
+	local,
+	content,
+	setTile,
+	setSize,
+	setPosition,
+	setColor,
+	setVisible,
+	setFont,
+} from "@metascript/void/src/void2d/node";
 import { Color, rgba, tile } from "@metascript/void/src/void2d/types";
-import { addFont, faceFor } from "@metascript/void/src/void2d/labelText";
-import { TextLayout, TextStyle } from "@metascript/void/src/void2d/textLayout";
+import { FontId, FontError, addFont } from "@metascript/void/src/void2d/font";
+import { TextLayout, TextStyle, Align } from "@metascript/void/src/void2d/textLayout";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "@metascript/void/src/assets/image";
 import { Ui, text } from "../ui/ui";
 import {
@@ -53,7 +68,7 @@ export interface Texture {
 
 export interface KeptSprite {
 	key: string;
-	node: Node2D;
+	node: NodeRef;
 	used: boolean;
 }
 
@@ -64,7 +79,7 @@ export interface NamedTexture {
 
 // Built once per process and shared by every Kit: a frame or icon texture is never made twice.
 export interface KitTextures {
-	font: int32;
+	font: FontId;
 	parts: FrameParts;
 	frames: NamedTexture[];
 	icons: NamedTexture[];
@@ -73,12 +88,12 @@ export interface KitTextures {
 }
 
 export interface Kit {
-	backs: Node2D;
-	backsTop: Node2D;
-	frames: Node2D;
-	icons: Node2D;
-	framesTop: Node2D;
-	iconsTop: Node2D;
+	backs: NodeRef;
+	backsTop: NodeRef;
+	frames: NodeRef;
+	icons: NodeRef;
+	framesTop: NodeRef;
+	iconsTop: NodeRef;
 	sprites: KeptSprite[];
 	textures: KitTextures;
 	overlay: boolean;
@@ -119,8 +134,13 @@ function createTextures(): KitTextures {
 		badges.push(textureOf(badge));
 	}
 	const whitePixels: uint32[] = [0xFFFFFFFF as uint32, 0xFFFFFFFF as uint32, 0xFFFFFFFF as uint32, 0xFFFFFFFF as uint32];
+	const font: Result<FontId, FontError> = addFont(FONT_PATH);
+	if (!font.ok) {
+		console.log("kit: " + FONT_PATH + " did not load: " + font.error.toString());
+		unreachable;
+	}
 	return {
-		font: addFont(FONT_PATH),
+		font: font.value,
 		parts: parts,
 		frames: [],
 		icons: icons,
@@ -136,22 +156,23 @@ export function createKit(ui: Ui): Kit {
 		sharedTextures.push(createTextures());
 	}
 	const kit: Kit = {
-		backs: group(),
-		backsTop: group(),
-		frames: group(),
-		icons: group(),
-		framesTop: group(),
-		iconsTop: group(),
+		backs: ui.sc.group(),
+		backsTop: ui.sc.group(),
+		frames: ui.sc.group(),
+		icons: ui.sc.group(),
+		framesTop: ui.sc.group(),
+		iconsTop: ui.sc.group(),
 		sprites: [],
 		textures: sharedTextures[0],
 		overlay: false,
 	};
-	ui.sc.root.addChildAt(kit.frames, 0);
-	ui.sc.root.addChildAt(kit.icons, 2);
-	ui.sc.root.addChildAt(kit.framesTop, 4);
-	ui.sc.root.addChildAt(kit.iconsTop, 6);
-	ui.sc.root.addChildAt(kit.backs, 0);
-	ui.sc.root.addChildAt(kit.backsTop, 5);
+	const root: NodeRef = ui.sc.refOf(ui.sc.root);
+	root.addChildAt(kit.frames, 0);
+	root.addChildAt(kit.icons, 2);
+	root.addChildAt(kit.framesTop, 4);
+	root.addChildAt(kit.iconsTop, 6);
+	root.addChildAt(kit.backs, 0);
+	root.addChildAt(kit.backsTop, 5);
 	return kit;
 }
 
@@ -169,7 +190,7 @@ export function beginKit(kit: Kit): void {
 
 export function endKit(kit: Kit): void {
 	for (const kept of kit.sprites) {
-		kept.node.visible = kept.used;
+		kept.node.setVisible(kept.used);
 	}
 }
 
@@ -190,30 +211,28 @@ function keptSprite(kit: Kit, key: string): Result<KeptSprite, LookupError> {
 	return Result.err(LookupError.Missing);
 }
 
-function layerFor(kit: Kit, layer: Node2D): Node2D {
-	if (!kit.overlay || layer === kit.backs || layer === kit.backsTop) {
+function layerFor(kit: Kit, layer: NodeRef): NodeRef {
+	if (!kit.overlay || layer == kit.backs || layer == kit.backsTop) {
 		return layer;
 	}
-	return layer === kit.frames ? kit.framesTop : kit.iconsTop;
+	return layer == kit.frames ? kit.framesTop : kit.iconsTop;
 }
 
-function newSprite(kit: Kit, layer: Node2D, key: string, view: uint32, width: float32, height: float32): KeptSprite {
-	const kept: KeptSprite = { key: key, node: sprite(tile(view, width, height)), used: true };
+function newSprite(kit: Kit, layer: NodeRef, key: string, view: uint32, width: float32, height: float32): KeptSprite {
+	const kept: KeptSprite = { key: key, node: layer.scene.sprite(tile(view, width, height)), used: true };
 	layerFor(kit, layer).addChild(kept.node);
 	kit.sprites.push(kept);
 	return kept;
 }
 
-function place(kit: Kit, layer: Node2D, key: string, view: uint32, x: float32, y: float32, width: float32, height: float32,
+function place(kit: Kit, layer: NodeRef, key: string, view: uint32, x: float32, y: float32, width: float32, height: float32,
 	tint: Color): void {
 	const found: Result<KeptSprite, LookupError> = keptSprite(kit, key);
 	const kept: KeptSprite = found.ok ? found.value : newSprite(kit, layer, key, view, width, height);
-	kept.node.sheet = tile(view, width, height);
-	kept.node.w = width;
-	kept.node.h = height;
-	kept.node.x = x;
-	kept.node.y = y;
-	kept.node.color = tint;
+	kept.node.setTile(tile(view, width, height));
+	kept.node.setSize(width, height);
+	kept.node.setPosition(x, y);
+	kept.node.setColor(tint);
 	kept.used = true;
 }
 
@@ -262,10 +281,11 @@ export function frameSqueezed(kit: Kit, id: int32, x: float32, y: float32, width
 	if (!found.ok) {
 		return;
 	}
-	const node: Node2D = found.value.node;
-	const full: float32 = node.w;
-	node.w = full * squeeze;
-	node.x = node.x + (full - node.w) * 0.5;
+	const node: NodeRef = found.value.node;
+	const full: float32 = node.content().w;
+	const narrowed: float32 = full * squeeze;
+	node.setSize(narrowed, node.content().h);
+	node.setPosition(node.local().x + (full - narrowed) * 0.5, node.local().y);
 }
 
 // The badge art is drawn for a 40-unit square and scales with `size`.
@@ -305,7 +325,7 @@ export function iconTinted(kit: Kit, id: int32, name: string, x: float32, y: flo
 }
 
 function textStyle(kit: Kit, size: float32, maxWidth: float32): TextStyle {
-	return { face: faceFor(kit.textures.font), size: size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: maxWidth, align: 0.0 };
+	return { font: kit.textures.font, size: size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: maxWidth, align: Align.Left };
 }
 
 export function measure(kit: Kit, line: string, size: float32): TextSize {
@@ -324,7 +344,7 @@ export function say(ui: Ui, kit: Kit, id: int32, line: string, x: float32, y: fl
 	text(ui, id, line, x, y, width, size, color, align);
 	for (let index: int32 = 0; index < ui.labelIds.length; index += 1) {
 		if (ui.labelIds[index] === id) {
-			ui.labelNodes[index].fontId = kit.textures.font;
+			ui.labelNodes[index].setFont(kit.textures.font);
 		}
 	}
 }

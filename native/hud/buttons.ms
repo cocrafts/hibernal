@@ -77,7 +77,7 @@ export function button(ui: Ui, kit: Kit, id: int32, x: float32, y: float32, widt
 	const down: boolean = enabled && held(ui, id, x, y, width, height);
 	frame(kit, id, x, y, width, height, seed, buttonLook(style, enabled));
 	const size: TextSize = measure(kit, label, 8.0);
-	say(ui, kit, id, label, x, y + (height - size.height) * 0.5 + (down ? 1.0 : 0.0), width, 8.0,
+	say(ui, kit, id, label, x, y + (height - size.height) * 0.5 + (down ? (1.0 as float32) : (0.0 as float32)), width, 8.0,
 		buttonInk(style, enabled, down), 0.5);
 	return clicked;
 }
@@ -88,7 +88,7 @@ export function textLink(ui: Ui, kit: Kit, id: int32, x: float32, y: float32, la
 	const clicked: boolean = pressable(ui, id, x - 6.0, y - 14.0, width + 12.0, 36.0) && enabled;
 	const down: boolean = enabled && held(ui, id, x - 6.0, y - 14.0, width + 12.0, 36.0);
 	const ink: Color = !enabled ? DISABLED_INK : (down ? EMBER_PRESSED : EMBER_HOT);
-	say(ui, kit, id, label, x, y + (down ? 1.0 : 0.0), width + 8.0, 8.0, ink, 0.0);
+	say(ui, kit, id, label, x, y + (down ? (1.0 as float32) : (0.0 as float32)), width + 8.0, 8.0, ink, 0.0);
 	box(ui, x, y + 11.0, width, 1.0, 0.0, !enabled ? DISABLED_INK : (down ? EMBER_PRESSED : EMBER));
 	return clicked;
 }

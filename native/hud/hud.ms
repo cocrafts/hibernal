@@ -3,6 +3,7 @@
 
 import { initHudHome, frameHudHome, takeGalleryRequest } from "./home";
 import { initGallery, frameGallery, takeHomeRequest } from "./gallery";
+import { drawUi } from "../ui/ui";
 
 let showingGallery: boolean = false;
 
@@ -19,4 +20,8 @@ export function frameHud(): void {
 		frameHudHome();
 		if (takeGalleryRequest()) { showingGallery = true; }
 	}
+}
+
+export function drawHud(): void {
+	drawUi();
 }

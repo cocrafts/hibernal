@@ -54,7 +54,7 @@ export function treeNode(ui: Ui, kit: Kit, id: int32, centreX: float32, centreY:
 // At the tree's zoom: the sprite and its touch target grow with it.
 export function treeNodeScaled(ui: Ui, kit: Kit, id: int32, centreX: float32, centreY: float32, shape: NodeShape, state: NodeState,
 	scale: float32): boolean {
-	const target: float32 = NODE_TARGET * (scale > 1.0 ? scale : 1.0);
+	const target: float32 = NODE_TARGET * (scale > 1.0 ? scale : (1.0 as float32));
 	const tapped: boolean = pressable(ui, id, centreX - target * HALF, centreY - target * HALF, target, target);
 	const size: float32 = nodeSize(shape) * scale;
 	icon(kit, id, nodeIcon(shape, state), centreX - size * HALF, centreY - size * HALF, size);

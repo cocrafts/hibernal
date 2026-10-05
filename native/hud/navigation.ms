@@ -60,7 +60,7 @@ export function dock(ui: Ui, kit: Kit, id: int32, active: DockTab, digestUnread:
 		}
 		const down: boolean = held(ui, tabId, slotX, DOCK_Y, slot, DOCK_HEIGHT);
 		const on: boolean = tab == active;
-		iconTinted(kit, tabId, dockIcon(tab), centreX - 11.0, DOCK_Y + 9.0 + (down ? 1.0 : 0.0), 22.0,
+		iconTinted(kit, tabId, dockIcon(tab), centreX - 11.0, DOCK_Y + 9.0 + (down ? (1.0 as float32) : (0.0 as float32)), 22.0,
 			on || down ? WHITE : RESTING_ICON);
 		say(ui, kit, tabId, dockName(tab), slotX, DOCK_Y + 35.0, slot, 8.0, on ? EMBER_HOT : INK, 0.5);
 		if (on) {

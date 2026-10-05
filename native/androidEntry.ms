@@ -3,10 +3,10 @@
 
 import { initLab, frameLab, setLabHud } from "./scene/campfireScene";
 import { embedRegister } from "@metascript/void/src/sokol/gpu";
-import { initHud, frameHud } from "./hud/hud";
+import { initHud, frameHud, drawHud } from "./hud/hud";
 
 function register(): void {
-	setLabHud(initHud, frameHud);
+	setLabHud(initHud, frameHud, drawHud);
 	embedRegister(initLab, frameLab);
 }
 

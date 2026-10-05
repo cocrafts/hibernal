@@ -1,7 +1,6 @@
 // Every kit piece, a page at a time, to review on the phone. Tapping the title goes back to Home.
 
 import { rgba } from "@metascript/void/src/void2d/types";
-import { loadNextPass } from "@metascript/void/src/sokol/gpu";
 import { Ui, createUi, beginUi, endUi, pressable, held } from "../ui/ui";
 import { Kit, createKit, beginKit, endKit, frame, badgeFrame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT, EMBER_PRESSED, ALERT_RED,
 	GROWTH_GREEN } from "./kit";
@@ -181,7 +180,7 @@ function framesPage(gallery: Gallery): void {
 		const down: boolean = held(ui, id, x, 352.0, 100.0, 48.0);
 		pressable(ui, id, x, 352.0, 100.0, 48.0);
 		frame(kit, id, x, 352.0, 100.0, 48.0, 20 + position + shift, enabled ? FrameLook.Normal : FrameLook.Disabled);
-		say(ui, kit, id, enabled ? "PRESS" : "OFF", x, 370.0 + (down ? 1.0 : 0.0), 100.0, 8.0,
+		say(ui, kit, id, enabled ? "PRESS" : "OFF", x, 370.0 + (down ? (1.0 as float32) : (0.0 as float32)), 100.0, 8.0,
 			!enabled ? INK_MUTED : (down ? EMBER_PRESSED : EMBER_HOT), 0.5);
 	}
 	const badgeIcons: string[] = ["gear", "winter", "growth", "insured"];
@@ -316,7 +315,7 @@ function controlsPage(gallery: Gallery): void {
 function demoSheet(gallery: Gallery): void {
 	const ui: Ui = gallery.ui;
 	const kit: Kit = gallery.kit;
-	gallery.sheetOpen = gallery.sheetOpen + ((gallery.sheetWanted ? 1.0 : 0.0) - gallery.sheetOpen) * SHEET_EASE;
+	gallery.sheetOpen = gallery.sheetOpen + ((gallery.sheetWanted ? (1.0 as float32) : (0.0 as float32)) - gallery.sheetOpen) * SHEET_EASE;
 	if (gallery.sheetOpen <= 0.01) {
 		return;
 	}
@@ -445,6 +444,5 @@ export function frameGallery(): void {
 		GalleryPage.Odds => oddsPage(gallery),
 	};
 	endKit(kit);
-	loadNextPass();
 	endUi(ui);
 }

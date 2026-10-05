@@ -98,7 +98,7 @@ export function tabs(ui: Ui, kit: Kit, id: int32, x: float32, y: float32, width:
 		const size: TextSize = measure(kit, labels[tab], 8.0);
 		const pill: string = counts[tab] > 0 ? counts[tab].toString() : "";
 		const pillWidth: float32 = pill == "" ? 0.0 : measure(kit, pill, 8.0).width + 8.0;
-		const left: float32 = tabX + (tabWidth - size.width - (pillWidth > 0.0 ? pillWidth + 4.0 : 0.0)) * 0.5;
+		const left: float32 = tabX + (tabWidth - size.width - (pillWidth > 0.0 ? pillWidth + 4.0 : (0.0 as float32))) * 0.5;
 		say(ui, kit, subId(id, tab), labels[tab], left, y + 10.0, size.width + 2.0, 8.0, tab == active ? EMBER_HOT : INK_MUTED, 0.0);
 		if (pillWidth > 0.0) {
 			box(ui, left + size.width + 4.0, y + 8.0, pillWidth, 12.0, 0.0, EMBER);

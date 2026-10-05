@@ -15,11 +15,26 @@
 //
 // Only the first finger down is tracked. Ids are the caller's: one id per widget, never 0.
 
-import { Scene, scene, add, setScaleMode, present } from "@metascript/void/src/void2d/scene";
-import { Node2D, group, graphics, label, addChild } from "@metascript/void/src/void2d/node";
-import { clear, fillRoundedRect } from "@metascript/void/src/void2d/graphics";
+import { add, setScaleMode, prepare, drawScreen } from "@metascript/void/src/void2d/scene";
+import {
+	Scene2D,
+	NodeRef,
+	group,
+	graphics,
+	label,
+	addChild,
+	clear,
+	setText,
+	setTextStyle,
+	textStyle,
+	setColor,
+	setPosition,
+	setVisible,
+} from "@metascript/void/src/void2d/node";
+import { fillRoundedRect } from "@metascript/void/src/void2d/graphics";
 import { Color, rgba, ScaleMode } from "@metascript/void/src/void2d/types";
-import { faceFor } from "@metascript/void/src/void2d/labelText";
+import { Align } from "@metascript/void/src/void2d/textLayout";
+import { DEFAULT_FONT, fontFace } from "@metascript/void/src/void2d/font";
 import { fbWidth, fbHeight, dpiScale } from "@metascript/void/src/sokol/gpu";
 import { PointerPhase, takePointerEvents } from "../input/pointer";
 
@@ -29,11 +44,11 @@ const NO_POINTER: int32 = -1 as int32;
 const NO_WIDGET: int32 = 0 as int32;
 
 export interface Ui {
-	sc: Scene;
-	boxes: Node2D;
-	texts: Node2D;
+	sc: Scene2D;
+	boxes: NodeRef;
+	texts: NodeRef;
 	labelIds: int32[];
-	labelNodes: Node2D[];
+	labelNodes: NodeRef[];
 	labelUsed: boolean[];
 	pointerId: int32;
 	// The tracked pointer, in design units. `pressed` / `released` hold for the one frame in
@@ -53,8 +68,8 @@ export interface Ui {
 	activeId: int32;
 	// Overlay layer (sheets, modals): drawn above everything else, and while `blockBase` is
 	// set only overlay widgets take touches. The kit adds its own layers in the same order.
-	boxesTop: Node2D;
-	textsTop: Node2D;
+	boxesTop: NodeRef;
+	textsTop: NodeRef;
 	overlay: boolean;
 	blockBase: boolean;
 	// A second finger, for pinch: tracked while the first one is down. It never presses a
@@ -72,13 +87,13 @@ export interface Ui {
 export function createUi(clearColor: Color): Ui {
 	// Load the default font now: on Android and iOS only init runs inside the asset root, so
 	// a font first touched by a frame's text() would not be found.
-	faceFor(0 as int32);
-	const sc = scene(clearColor);
+	const _face: int32 = fontFace(DEFAULT_FONT);
+	const sc: Scene2D = Scene2D.create(clearColor);
 	sc.setScaleMode(ScaleMode.LetterBox, DESIGN_W, DESIGN_H);
-	const boxes = graphics();
-	const texts = group();
-	const boxesTop = graphics();
-	const textsTop = group();
+	const boxes: NodeRef = sc.graphics();
+	const texts: NodeRef = sc.group();
+	const boxesTop: NodeRef = sc.graphics();
+	const textsTop: NodeRef = sc.group();
 	sc.add(boxes);
 	sc.add(texts);
 	sc.add(boxesTop);
@@ -197,13 +212,31 @@ export function beginUi(ui: Ui): void {
 	for (let i: int32 = 0; i < ui.labelUsed.length; i += 1) { ui.labelUsed[i] = false; }
 }
 
+let prepared: Scene2D[] = [];
+
+// Paints the frame with no pass open; drawUi draws it into the screen pass the caller opens.
 export function endUi(ui: Ui): void {
 	// A press released over nothing that claimed it ends here.
 	if (ui.released) { ui.activeId = NO_WIDGET; }
 	for (let i: int32 = 0; i < ui.labelNodes.length; i += 1) {
-		ui.labelNodes[i].visible = ui.labelUsed[i];
+		ui.labelNodes[i].setVisible(ui.labelUsed[i]);
 	}
-	ui.sc.present();
+	const dpi: float32 = dpiScale();
+	ui.sc.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
+	prepared.push(ui.sc);
+}
+
+export function drawUi(): void {
+	for (const sc of prepared) { sc.drawScreen(); }
+	prepared.length = 0;
+}
+
+function alignOf(align: float32): Align {
+	if (align == 0.0) { return Align.Left; }
+	if (align == 0.5) { return Align.Center; }
+	if (align == 1.0) { return Align.Right; }
+	console.log("ui: text align " + align.toString() + " is not 0, 0.5 or 1");
+	unreachable;
 }
 
 function inside(px: float32, py: float32, x: float32, y: float32, w: float32, h: float32): boolean {
@@ -219,29 +252,25 @@ export function box(ui: Ui, x: float32, y: float32, w: float32, h: float32, radi
 	else { ui.boxes.fillRoundedRect(x, y, w, h, radius, color); }
 }
 
-// `align` places the text within `w`: 0 left, 0.5 centred, 1 right. void2d aligns a label
-// around its own x (a line starts at x - width * align), so x moves to that point of the span.
+// `align` places the text within `w`: 0 left, 0.5 centred, 1 right.
 export function text(ui: Ui, id: int32, s: string, x: float32, y: float32, w: float32, size: float32, color: Color, align: float32): void {
 	let at: int32 = -1 as int32;
 	for (let i: int32 = 0; i < ui.labelIds.length; i += 1) {
 		if (ui.labelIds[i] === id) { at = i; }
 	}
 	if (at < 0) {
-		const n = label(s, size, color);
+		const n: NodeRef = ui.sc.label(s, size, color);
 		if (ui.overlay) { ui.textsTop.addChild(n); } else { ui.texts.addChild(n); }
 		ui.labelIds.push(id);
 		ui.labelNodes.push(n);
 		ui.labelUsed.push(true);
 		at = (ui.labelNodes.length - 1) as int32;
 	}
-	const n = ui.labelNodes[at];
-	n.text = s;
-	n.size = size;
-	n.color = color;
-	n.align = align;
-	n.maxWidth = w;
-	n.x = x + w * align;
-	n.y = y;
+	const n: NodeRef = ui.labelNodes[at];
+	n.setText(s);
+	n.setTextStyle({ ...n.textStyle(), size: size, align: alignOf(align), maxWidth: w });
+	n.setColor(color);
+	n.setPosition(x, y);
 	ui.labelUsed[at] = true;
 }
 

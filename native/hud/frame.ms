@@ -56,7 +56,7 @@ export function loadPixels(path: string): Result<Pixels, PixelsError> {
 	if (!file.ok) {
 		return Result.err(PixelsError.Unreadable);
 	}
-	const bytes: uint8[] = file.value.asBytes();
+	const bytes: uint8[] = [...file.value.asBytes()];
 	if ((bytes.length as int32) < 8) {
 		return Result.err(PixelsError.Truncated);
 	}
@@ -158,8 +158,8 @@ function rimScores(image: Pixels, alongX: boolean): float32[] {
 			const far: uint32 = alongX
 				? pixelAt(image, position, image.height - 1 - depth)
 				: pixelAt(image, image.width - 1 - depth, position);
-			sum += alpha(near) > 0 ? luminance(near) : 0.0;
-			sum += alpha(far) > 0 ? luminance(far) : 0.0;
+			sum += alpha(near) > 0 ? luminance(near) : (0.0 as float32);
+			sum += alpha(far) > 0 ? luminance(far) : (0.0 as float32);
 			count += 2;
 		}
 		scores.push(sum / (count as float32));

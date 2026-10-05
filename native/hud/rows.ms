@@ -61,7 +61,7 @@ export function listRow(ui: Ui, kit: Kit, id: int32, x: float32, y: float32, wid
 	const textX: float32 = glyph != "" ? x + 32.0 : x + 8.0;
 	const textY: float32 = centredY(kit, label, 8.0, y, height);
 	say(ui, kit, id, label, textX, textY, width * 0.6, 8.0, rowInk(kind), 0.0);
-	const right: float32 = x + width - (chevron || locked ? 22.0 : 8.0);
+	const right: float32 = x + width - (chevron || locked ? (22.0 as float32) : (8.0 as float32));
 	if (value != "") {
 		say(ui, kit, subId(id, 0), value, x + width * 0.4, textY, right - x - width * 0.4, 8.0, selected ? ASH_DEEP : valueColor, 1.0);
 	}

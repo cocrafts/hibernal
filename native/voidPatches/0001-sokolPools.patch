@@ -1,0 +1,29 @@
+From 71110e2db5886dadfa702d9442001ba563de1fee Mon Sep 17 00:00:00 2001
+From: Son Le <fluctlight-kayaba@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 03:57:25 +0700
+Subject: [PATCH 1/2] feat(sokol): larger buffer, image and view pools on
+ Android
+
+---
+ src/sokol/bridgeAndroid.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/sokol/bridgeAndroid.c b/src/sokol/bridgeAndroid.c
+index 82a8210..624d266 100644
+--- a/src/sokol/bridgeAndroid.c
++++ b/src/sokol/bridgeAndroid.c
+@@ -57,6 +57,11 @@ static void sokolSetup(void) {
+ 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
+ 	d.environment.defaults.sample_count = 1;
+ 	d.logger.func = slog_func;
++	// hibernal's 64 glTF meshes (two buffers each) and its UI kit's per-look textures
++	// overflowed sokol's default pools of 128 on device.
++	d.buffer_pool_size = 1024;
++	d.image_pool_size = 1024;
++	d.view_pool_size = 1024;
+ 	sg_setup(&d);
+ 	if (!sg_isvalid()) voidFail("sg_setup on the EGL context failed");
+ }
+-- 
+2.53.0
+

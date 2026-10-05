@@ -247,7 +247,7 @@ function nodeSheet(context: ScreenContext): void {
 	const ui: Ui = context.ui;
 	const kit: Kit = context.kit;
 	const chosen: boolean = view.selected != NO_NODE;
-	view.sheetOpen = view.sheetOpen + ((chosen ? 1.0 : 0.0) - view.sheetOpen) * SHEET_EASE;
+	view.sheetOpen = view.sheetOpen + ((chosen ? (1.0 as float32) : (0.0 as float32)) - view.sheetOpen) * SHEET_EASE;
 	if (view.sheetOpen < 0.01 && !chosen) {
 		return;
 	}
