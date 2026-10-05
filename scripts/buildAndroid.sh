@@ -17,7 +17,7 @@ DEST="android/app/src/main/jniLibs/arm64-v8a"
 [ -x "$CC" ] || { echo "buildAndroid.sh: no NDK clang at $CC (set ANDROID_NDK or ANDROID_HOME)" >&2; exit 1; }
 mkdir -p "$DEST"
 
-msc build native/androidEntry.ms --os=android --app=lib --cc="$CC" --output="$DEST/libVoidAndroid.so"
+msc build native/androidEntry.ms --release --os=android --app=lib --cc="$CC" --output="$DEST/libVoidAndroid.so"
 "$CC" -shared -fPIC android/app/src/main/jni/voidJni.c -L"$DEST" -lVoidAndroid -landroid -llog -o "$DEST/libVoidJni.so"
 # libVoidAndroid.so links libc++_shared.so, which is not on the device: ship the NDK's copy.
 "$TOOLCHAIN/bin/llvm-strip" --strip-unneeded -o "$DEST/libc++_shared.so" "$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"

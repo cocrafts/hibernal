@@ -2,16 +2,20 @@ package app.hibernal
 
 import android.os.Handler
 import android.os.HandlerThread
+import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.view.Choreographer
 import android.view.Surface
 import java.util.concurrent.CountDownLatch
 
 object VoidRenderer : Choreographer.FrameCallback {
-    private const val MIN_FRAME_NANOS = 30_000_000L
+    // Under the 16.7 ms and 33.3 ms frame periods, so vsync jitter does not drop a frame that
+    // arrives a little early: 60 fps in the app, 30 for the always-on wallpaper.
+    private const val APP_MIN_FRAME_NANOS = 15_000_000L
+    private const val WALLPAPER_MIN_FRAME_NANOS = 30_000_000L
     private const val TAG = "VoidRender"
 
-    private class Target(val surface: Surface, val width: Int, val height: Int)
+    private class Target(val surface: Surface, val width: Int, val height: Int, val minFrameNanos: Long)
 
     private val thread = HandlerThread(TAG).apply { start() }
     private val handler = Handler(thread.looper)
@@ -26,7 +30,8 @@ object VoidRenderer : Choreographer.FrameCallback {
     fun show(owner: Any, surface: Surface, width: Int, height: Int) {
         handler.post {
             targets.remove(owner)
-            targets[owner] = Target(surface, width, height)
+            val minFrameNanos = if (owner is WallpaperService.Engine) WALLPAPER_MIN_FRAME_NANOS else APP_MIN_FRAME_NANOS
+            targets[owner] = Target(surface, width, height, minFrameNanos)
             bindLatest()
         }
     }
@@ -71,11 +76,12 @@ object VoidRenderer : Choreographer.FrameCallback {
     }
 
     override fun doFrame(frameTimeNanos: Long) {
-        if (activeTarget == null) {
+        val target = activeTarget
+        if (target == null) {
             ticking = false
             return
         }
-        if (frameTimeNanos - lastFrameNanos >= MIN_FRAME_NANOS) {
+        if (frameTimeNanos - lastFrameNanos >= target.minFrameNanos) {
             lastFrameNanos = frameTimeNanos
             VoidNative.frame()
             framesSinceLog++
