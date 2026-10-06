@@ -367,8 +367,10 @@ Social rules must land in `rules/` before steps 1–2, because sim S1 is the tra
 |---|---|---|
 | Feed | food paid by the owner | + |
 | Buy a skin, growth, insurance | SKR | ++ |
-| Talk (the in-app chat with the pet) | nothing | small +, capped per day |
+| Engage (opening the app counts as one) | nothing | +3, at most one a round (4 a day) and 3 a day |
 | Neglect | — | decays toward 0, then below |
+
+Engage measured (2026-10-06, `playEpisode(20, 120)`, seeds 7 and 11, teacher, living pets on day 120; before is talk at 2 a day on the visit only, after is engage on the visit and on every app open): devoted owners' pets average bonding 63 → 89 and 63 → 92, pets at or above the gift line 22 → 28 and 16 → 23; casual owners' pets 22 → 9 and 1 → 17 average bonding, gifting pets 0 → 1 and 1 → 7, food refusals 9 → 0 and 6 → 0; absent owners unchanged (−46/−54 → −45/−52). Deaths 205 → 205 and median wallet 29,859 → 30,841 HBRN in the 200-pet `sim/episode.ms`.
 
 - **Effects**:
   - high bonding: the pet sometimes gifts `$HBRN` to the owner; amount is a share of its burrow scaled by bonding, capped per epoch;
@@ -376,8 +378,8 @@ Social rules must land in `rules/` before steps 1–2, because sim S1 is the tra
   - bonding is an input to every policy (§13), so a devoted pet and a resentful one play differently.
 - **Why it matters for the economy**: the owner's only way to extract `$HBRN` is the pet's goodwill, so outflow to wallets is throttled by bonding and by the pet's own needs, not by claim timing. Tokens spent by the pet stay in play (food, items, gifts) or burn.
 - **Holes to close**:
-  1. **Farming bonding for free**: talk costs nothing, so it is capped per day and gives less than paid actions; bots spamming talk hit the cap.
-  2. **Chat cannot be verified on chain**: the program only sees an owner-signed `talk` instruction, not what was said; the LLM chat stays cosmetic apart from that capped signal.
+  1. **Farming bonding for free**: engaging costs nothing, so it is gated to one a round, capped at 3 a day and gives less than paid actions; reopening the app in the same round is refused (`EngagedThisRound`).
+  2. **What the owner did in the app cannot be verified on chain**: the program only sees an `engage` signed by the owner or the owner's session key; anything shown in the app stays cosmetic apart from that capped signal.
   3. **Draining the pet**: gifts are capped per epoch and never take the pet below what it needs for food, so a devoted pet cannot starve itself for its owner.
   4. **Sybils**: each pet only gifts from its own earnings, so many pets mean many small gifts, bounded by the reward curve (§9).
 - **Chain**: gifts are a token transfer from the program vault to the owner's wallet, which happens on L1 while the pet is delegated to the ER. Either the gift is queued in the ER and paid out at the next commit, or the pet must undelegate (Unknown, `SOLANA.md` §7).
@@ -416,7 +418,7 @@ Applied on 2026-09-14 as `BRIEF.md` rev 4 (D6, D13, D18, D19, D21, D25, D26 rewr
 | ROADMAP S1 | earlier: it is the training environment; must model talent, lineage, convex weight, wild pets | §12, now |
 | BRIEF §3.1, §3.10 | relationship bytes in `Block`, social actions and their effects, specialist policies | §13 decided |
 | BRIEF §3.4, §4 | remove the `$HBRN` level fee; items as the sink (mint, buyback, market, wear) | §6, §11 |
-| BRIEF D6, D18, §3.1, §3.5 | pet-owned `$HBRN`, bonding field, `talk` instruction, gifts to the owner, food refusal | §14 |
+| BRIEF D6, D18, §3.1, §3.5 | pet-owned `$HBRN`, bonding field, `engage` instruction, gifts to the owner, food refusal | §14 |
 | ROADMAP P0 | says 26 tests, now 36 | now |
 
 ## 17. Open decisions
