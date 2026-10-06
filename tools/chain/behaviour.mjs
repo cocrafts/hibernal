@@ -377,16 +377,29 @@ async function run(owners, config) {
 	const kinds = owners.reduce((count, entry) => ({ ...count, [entry.kind]: (count[entry.kind] ?? 0) + 1 }), {});
 	status.owners = kinds;
 	const byBlock = new Map();
-	await inParallel(owners, async (entry) => {
-		const pet = await petState(entry);
-		if (!pet || pet.blockId === 0xffffffff) return;
-		if (!byBlock.has(pet.blockId)) byBlock.set(pet.blockId, []);
-		byBlock.get(pet.blockId).push(entry);
-	}, BLOCK_PARALLEL);
-	console.log(`owners ${owners.length}: ${json(kinds)}; day ${config.secondsPerDay} s`);
+	const placeInto = async (candidates) => {
+		const unplaced = [];
+		await inParallel(candidates, async (entry) => {
+			const pet = await petState(entry);
+			if (!pet || pet.blockId === 0xffffffff) {
+				unplaced.push(entry);
+				return;
+			}
+			if (!byBlock.has(pet.blockId)) byBlock.set(pet.blockId, []);
+			byBlock.get(pet.blockId).push(entry);
+		}, BLOCK_PARALLEL);
+		return unplaced;
+	};
+	let unplaced = await placeInto(owners);
+	console.log(`owners ${owners.length}: ${json(kinds)}; day ${config.secondsPerDay} s; ${unplaced.length} pets not in a block yet`);
 	status.handled ??= {};
 	const until = Date.now() + MINUTES * 60_000;
 	while (Date.now() < until) {
+		if (unplaced.length > 0) {
+			const waiting = unplaced.length;
+			unplaced = await placeInto(unplaced);
+			if (unplaced.length < waiting) console.log(`${new Date().toISOString()} ${waiting - unplaced.length} pets found in blocks, ${unplaced.length} still waiting`);
+		}
 		await inParallel([...byBlock], async ([id, entries]) => {
 			const block = await blockState(id);
 			if (!block || block.phase !== 0) return;
