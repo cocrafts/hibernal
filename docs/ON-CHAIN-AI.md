@@ -452,6 +452,21 @@ Measured on engine `3052634712731184861`, tree `5281e361189eac9ae2b36ba777bf734a
 - 400-day teacher world, seed 7 (old rules → halving without release → final): deaths 756 → 993 → 751, median wallet 46,592 → 1,126 → 48,978 `$HBRN`, median level 20 → 15 → 20; all six keystones held (Tycoon, Berserker and Bulwark were never taken before).
 - Persona recall stays under the user's 0.8, as in package 5f; reported, not gated.
 
+### Package 8: engage instead of talk — Measured
+
+Rules change of 2026-10-06 (person: an app open is one engagement, once a round, three a day; `rules/owner.ms` `engagedAt`) moved the world digest, so the engine is `15072111084034916937` and the `p30s*` brains are refused (`WrongEngine`). Retrained with the Package 7 commands on the shared Mac at load ~6: `bc31`, then `p31s5`–`p31s7` (26 minutes for the three in parallel), `evaluate.py --worlds 16` and `health.py --worlds 8` (seed 9001, fixed blocks, wilds on):
+
+| | Teacher | Clone | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with money for a meal (health) | 0 | 1 | 0 / 0 / 0 |
+| Starved, any, per 8 worlds (health) | 83 | 67 | 78 / 39 / 82 |
+| Early deaths per 100 lives (health) | 3.38 | 4.67 | 3.33 / 1.75 / 2.90 |
+| Own-world wealth, `$HBRN` per pet; deaths | 33,213; 175 | 32,563; 202 | 38,188 / 38,335 / 39,367; 206 / 101 / 166 |
+| Mixed world against the teacher | −1.6% (seat noise) | +2.4% | +31.5 / +35.4 / +48.2% |
+
+- With `p31s6` in `out/actProbe/policy.txt`, `program/test/day.ms` replays days 36–120 of a block on the program and in the sim byte for byte (361 fights, 10 deaths, 8 heirs, 17 sales), and `tools/chain/dayLiteSvm.mjs` replays the relay day with 0 bytes differing; worst act with a fight 979,178 CU. Program 471,496 bytes (+3,184 for the session-key check in `engage`).
+
 ### Package 6: the policy on SBF — Measured (inference), observation open
 
 `tools/policyProbe.ms` (`--os=solana`) runs `rules/policy.ms` unchanged over a policy blob that stays in account data (`Ptr<PolicyBlob>` over the account, never copied onto the 4 KB stack), on fixed synthetic inputs: `checkPolicy`, one economy pass, the attack head for 9 targets and the tree head for 6 candidate nodes. `tools/chain/policyLiteSvm.mjs` runs it in LiteSVM 1.4.1 under a 1.4M limit (`npm ci` in `tools/chain` first) and writes the blob for `tools/policyHost.ms`, which runs the same inference natively. Measured 2026-09-26 on msc 0.2.55, engine `16948401298924711931`, checkpoint `p29s5` (step29), compute-unit log cost subtracted:
