@@ -1,20 +1,9 @@
-import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked } from "std/solana";
+import { MAGIC_PROGRAM_ID, MAGIC_CONTEXT_ID } from "std/solana/magicblock";
+import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
-import { delegationProgram, magicContext, magicProgram } from "std/solana/magicblock";
+
 import { BlockSlot, EMISSION_CAP, GlobalConfig, Pet, Region, born } from "../../rules/index";
-import {
-	Config,
-	HibernalError,
-	Paid,
-	PetAccount,
-	VrfPayer,
-	configSeeds,
-	hibernalError,
-	mintSeeds,
-	paidSeeds,
-	petSeeds,
-	vrfPayerSeeds,
-} from "../layout";
+import { Config, HibernalError, Paid, PetAccount, VrfPayer, hibernalError } from "../layout";
 import { entry } from "../main";
 
 function keyOf(seed: uint8): Pubkey {
@@ -85,24 +74,24 @@ struct Address {
 }
 
 function petAddress(): Address {
-	const found = petSeeds(admission).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["pet", admission]);
 	if (!found.ok) { return { key: Pubkey.zero(), bump: 0 }; }
 	return { key: found.value.key, bump: found.value.bump };
 }
 
 function mintAddress(): Address {
-	const found = mintSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["mint"]);
 	if (!found.ok) { return { key: Pubkey.zero(), bump: 0 }; }
 	return { key: found.value.key, bump: found.value.bump };
 }
 
 function paidAddress(): Pubkey {
-	const found = paidSeeds(admission).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["paid", admission]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function configAddress(): Pubkey {
-	const found = configSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["config"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
@@ -170,7 +159,7 @@ function mintHolder(key: Pubkey): HostAccount {
 	data.push(6);
 	data.push(1);
 	zeros(data, 36);
-	return holderOf(key, Pubkey.tokenProgram(), data);
+	return holderOf(key, TOKEN_PROGRAM_ID, data);
 }
 
 function tokenHolder(key: Pubkey, wallet: Pubkey, mint: Pubkey): HostAccount {
@@ -181,7 +170,7 @@ function tokenHolder(key: Pubkey, wallet: Pubkey, mint: Pubkey): HostAccount {
 	zeros(data, 36);
 	data.push(1);
 	zeros(data, 56);
-	return holderOf(key, Pubkey.tokenProgram(), data);
+	return holderOf(key, TOKEN_PROGRAM_ID, data);
 }
 
 function executable(key: Pubkey): HostAccount {
@@ -189,11 +178,11 @@ function executable(key: Pubkey): HostAccount {
 }
 
 function wallet(key: Pubkey): HostAccount {
-	return { ...holderOf(key, Pubkey.systemProgram(), []), signer: true, lamports: 10000000000 };
+	return { ...holderOf(key, SYSTEM_PROGRAM_ID, []), signer: true, lamports: 10000000000 };
 }
 
 function blank(key: Pubkey): HostAccount {
-	return { ...holderOf(key, Pubkey.systemProgram(), []), lamports: 0 };
+	return { ...holderOf(key, SYSTEM_PROGRAM_ID, []), lamports: 0 };
 }
 
 function claimAccounts(gifted: uint64, petOwner: Pubkey): HostAccount[] {
@@ -205,8 +194,8 @@ function claimAccounts(gifted: uint64, petOwner: Pubkey): HostAccount[] {
 		blank(paidAddress()),
 		mintHolder(mint),
 		tokenHolder(keyOf(20), owner, mint),
-		executable(Pubkey.tokenProgram()),
-		executable(Pubkey.systemProgram()),
+		executable(TOKEN_PROGRAM_ID),
+		executable(SYSTEM_PROGRAM_ID),
 	];
 }
 
@@ -256,7 +245,7 @@ test "a pet's gift mints HBRN to its owner and opens the ledger" {
 
 test "a delegated pet's committed gift mints HBRN the same way" {
 	dayClock(20000);
-	const accounts = claimAccounts(1_000, Pubkey.delegationProgram());
+	const accounts = claimAccounts(1_000, DELEGATION_PROGRAM_ID);
 	assert run(programKey(), accounts, claim, entry).result == 0;
 	assert u64At(accounts[5].data, 64) == 1_000;
 	assert ledgerOf(accounts[3]).total == 1_000;
@@ -313,13 +302,13 @@ test "a claim is refused for a stranger, a foreign mint, another owner's wallet 
 	const moved = claimAccounts(1_000, programKey());
 	moved[2] = { ...moved[2], key: keyOf(40) };
 	assert run(programKey(), moved, claim, entry).result == ProgramError.constraintSeeds().code;
-	const movedDelegated = claimAccounts(1_000, Pubkey.delegationProgram());
+	const movedDelegated = claimAccounts(1_000, DELEGATION_PROGRAM_ID);
 	movedDelegated[2] = { ...movedDelegated[2], key: keyOf(40) };
 	assert run(programKey(), movedDelegated, claim, entry).result == ProgramError.constraintSeeds().code;
 }
 
 function payerHolder(): HostAccount {
-	const found = vrfPayerSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["vrf-payer"]);
 	const data = blankData(VrfPayer.discriminator(), sizeof(VrfPayer) as uint64);
 	data[8] = found.ok ? found.value.bump : 0;
 	return holderOf(found.ok ? found.value.key : Pubkey.zero(), programKey(), data);
@@ -332,18 +321,18 @@ test "the owner commits a pet through the magic program and the game's payer PDA
 		wallet(owner),
 		petHolder(0, programKey()),
 		payer,
-		holderOf(Pubkey.magicContext(), programKey(), []),
+		holderOf(MAGIC_CONTEXT_ID, programKey(), []),
 		holderOf(feeVault, programKey(), []),
-		executable(Pubkey.magicProgram()),
+		executable(MAGIC_PROGRAM_ID),
 	];
 	const commit = instructionData("CommitPet");
 	assert run(programKey(), accounts, commit, entry).result == 0;
 	const sent = invocations();
 	const last = sent[sent.length - 1];
-	assert last.program == Pubkey.magicProgram() && last.signers == 1;
+	assert last.program == MAGIC_PROGRAM_ID && last.signers == 1;
 	assert last.data.length == 4 && last.data[0] == 1 && last.data[1] == 0;
 	assert last.accounts[0].key == payer.key && last.accounts[0].signer && last.accounts[0].writable;
-	assert last.accounts[1].key == Pubkey.magicContext() && last.accounts[1].writable;
+	assert last.accounts[1].key == MAGIC_CONTEXT_ID && last.accounts[1].writable;
 	assert last.accounts[2].key == feeVault && last.accounts[2].writable;
 	assert last.accounts[3].key == petAddress().key && last.accounts[3].writable;
 	const strangers = [wallet(stranger), accounts[1], accounts[2], accounts[3], accounts[4], accounts[5]];

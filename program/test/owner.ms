@@ -1,10 +1,9 @@
-import { Discriminator, ProgramError, Pubkey, Seeds, accountDiscriminator, instructionDiscriminator, unchecked } from "std/solana";
+import { Discriminator, ProgramError, Pubkey, accountDiscriminator, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, findProgramAddressOf } from "std/solana";
 import { HostAccount, run, setClock } from "std/solana/host";
 import { BlockSlot, GlobalConfig, Pet, Region, born } from "../../rules/index";
-import { HibernalError, PetAccount, World, hibernalError, petSeeds } from "../layout";
+import { HibernalError, PetAccount, World, hibernalError } from "../layout";
 import { entry } from "../main";
 import { sessionKeysProgram } from "../owner";
-
 
 function keyOf(seed: uint8): Pubkey {
 	let key = Pubkey.zero();
@@ -75,12 +74,12 @@ function petRecordOf(data: uint8[]): PetAccount {
 }
 
 function petKey(): Pubkey {
-	const found = petSeeds(mint).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["pet", mint]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function petBump(): uint8 {
-	const found = petSeeds(mint).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["pet", mint]);
 	return found.ok ? found.value.bump : 0;
 }
 
@@ -141,7 +140,7 @@ function realDay(): HostAccount {
 function signerOf(key: Pubkey): HostAccount {
 	return {
 		key: key,
-		owner: Pubkey.systemProgram(),
+		owner: SYSTEM_PROGRAM_ID,
 		lamports: 1000000000,
 		data: [],
 		signer: true,
@@ -173,12 +172,7 @@ const sessionSigner = keyOf(4);
 const ROUND_SECONDS: int64 = 21_600;
 
 function sessionKey(signer: Pubkey, authority: Pubkey): Pubkey {
-	const found = Seeds.empty(4)
-		.addText("session_token_v2")
-		.addPubkey(programKey())
-		.addPubkey(signer)
-		.addPubkey(authority)
-		.findProgramAddress(Pubkey.sessionKeysProgram());
+	const found = findProgramAddressOf(Pubkey.sessionKeysProgram(), ["session_token_v2", programKey(), signer, authority]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 

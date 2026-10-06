@@ -1,21 +1,8 @@
-import { Discriminator, ProgramError, Pubkey, Seeds, instructionDiscriminator, unchecked } from "std/solana";
+import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf, ProgramAddress } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
 import { BlockSlot, GlobalConfig, Insurance, OwnerItem, Pet, Region, born, ownerSlots } from "../../rules/index";
-import {
-	Config,
-	HibernalError,
-	Ledger,
-	PetAccount,
-	ShopItem,
-	World,
-	configSeeds,
-	hibernalError,
-	ledgerSeeds,
-	petSeeds,
-	revenueSeeds,
-	worldSeeds,
-} from "../layout";
-import { delegationProgram } from "std/solana/magicblock";
+import { Config, HibernalError, Ledger, PetAccount, ShopItem, World, hibernalError } from "../layout";
+
 import { entry } from "../main";
 
 function keyOf(seed: uint8): Pubkey {
@@ -112,17 +99,15 @@ function ledgerOf(data: uint8[]): Ledger {
 	return seenLedgers[seenLedgers.length - 1];
 }
 
-function address(seeds: Seeds): Pubkey {
-	const found = seeds.findProgramAddress(programKey());
+function address(found: Result<ProgramAddress, ProgramError>): Pubkey {
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
-function bumpOf(seeds: Seeds): uint8 {
-	const found = seeds.findProgramAddress(programKey());
+function bumpOf(found: Result<ProgramAddress, ProgramError>): uint8 {
 	return found.ok ? found.value.bump : 0;
 }
 
-function petKey(): Pubkey { return address(petSeeds(mint)); }
+function petKey(): Pubkey { return address(findProgramAddressOf(programKey(), ["pet", mint])); }
 
 function account(key: Pubkey, programOwner: Pubkey, data: uint8[], lamports: uint64): HostAccount {
 	return { key: key, owner: programOwner, lamports: lamports, data: data, signer: false, writable: true, executable: false };
@@ -133,11 +118,11 @@ function executable(key: Pubkey): HostAccount {
 }
 
 function signerOf(key: Pubkey): HostAccount {
-	return { ...account(key, Pubkey.systemProgram(), [], 10_000_000_000), signer: true };
+	return { ...account(key, SYSTEM_PROGRAM_ID, [], 10_000_000_000), signer: true };
 }
 
 function blank(key: Pubkey): HostAccount {
-	return account(key, Pubkey.systemProgram(), [], 0);
+	return account(key, SYSTEM_PROGRAM_ID, [], 0);
 }
 
 function newborn(): Pet {
@@ -150,7 +135,7 @@ function petRecord(pet: Pet): PetAccount {
 		mint: mint,
 		ordinal: 0,
 		persona: 0,
-		bump: bumpOf(petSeeds(mint)),
+		bump: bumpOf(findProgramAddressOf(programKey(), ["pet", mint])),
 		pad: 0,
 		claimedEpoch: 1,
 		diedEpoch: 0,
@@ -173,7 +158,7 @@ function configHolder(): HostAccount {
 		claimCapPerDay: 0,
 		blocks: 1,
 		pets: 1,
-		bump: bumpOf(configSeeds()),
+		bump: bumpOf(findProgramAddressOf(programKey(), ["config"])),
 		mintBump: 0,
 		policyBump: 0,
 		worldBump: 0,
@@ -188,7 +173,7 @@ function configHolder(): HostAccount {
 		turnGapSlots: 100,
 	});
 	const data = staged(Config.discriminator(), sizeof(Config) as uint64, stageConfigEntry);
-	return { ...account(address(configSeeds()), programKey(), data, 1_000_000), writable: false };
+	return { ...account(address(findProgramAddressOf(programKey(), ["config"])), programKey(), data, 1_000_000), writable: false };
 }
 
 function worldHolder(): HostAccount {
@@ -198,7 +183,7 @@ function worldHolder(): HostAccount {
 		resortEvery: 0,
 		rotation: 0,
 		resortedEpoch: 0,
-		bump: bumpOf(worldSeeds()),
+		bump: bumpOf(findProgramAddressOf(programKey(), ["world"])),
 		resorting: 0,
 		pad: 0,
 		unplaced: 0,
@@ -207,7 +192,7 @@ function worldHolder(): HostAccount {
 		secondsPerDay: 86_400,
 	});
 	const data = staged(World.discriminator(), sizeof(World) as uint64, stageWorldEntry);
-	return { ...account(address(worldSeeds()), programKey(), data, 1_000_000), writable: false };
+	return { ...account(address(findProgramAddressOf(programKey(), ["world"])), programKey(), data, 1_000_000), writable: false };
 }
 
 function pushU64(bytes: uint8[], value: uint64): void {
@@ -229,7 +214,7 @@ function mintHolder(): HostAccount {
 	data.push(6);
 	data.push(1);
 	zeros(data, 36);
-	return account(skrMint, Pubkey.tokenProgram(), data, 1_461_600);
+	return account(skrMint, TOKEN_PROGRAM_ID, data, 1_461_600);
 }
 
 function tokenHolder(key: Pubkey, wallet: Pubkey, amount: uint64): HostAccount {
@@ -240,7 +225,7 @@ function tokenHolder(key: Pubkey, wallet: Pubkey, amount: uint64): HostAccount {
 	zeros(data, 36);
 	data.push(1);
 	zeros(data, 56);
-	return account(key, Pubkey.tokenProgram(), data, 2_039_280);
+	return account(key, TOKEN_PROGRAM_ID, data, 2_039_280);
 }
 
 function amountOf(holder: HostAccount): uint64 {
@@ -263,19 +248,19 @@ function buyData(item: ShopItem, tier: uint8): uint8[] {
 	return bytes;
 }
 
-function ledgerKey(): Pubkey { return address(ledgerSeeds(mint)); }
+function ledgerKey(): Pubkey { return address(findProgramAddressOf(programKey(), ["ledger", mint])); }
 
 function buyAccounts(buyer: Pubkey, skr: uint64): HostAccount[] {
 	return [
 		signerOf(buyer),
 		configHolder(),
-		petHolder(newborn(), Pubkey.delegationProgram()),
+		petHolder(newborn(), DELEGATION_PROGRAM_ID),
 		blank(ledgerKey()),
 		{ ...mintHolder(), writable: false },
 		tokenHolder(source, buyer, skr),
 		tokenHolder(treasury, keyOf(12), 0),
-		executable(Pubkey.tokenProgram()),
-		executable(Pubkey.systemProgram()),
+		executable(TOKEN_PROGRAM_ID),
+		executable(SYSTEM_PROGRAM_ID),
 	];
 }
 
@@ -284,10 +269,10 @@ function ledgerHolder(bought: uint32[], skin: uint8, ledgerMint: Pubkey): HostAc
 		mint: ledgerMint,
 		bought: [bought[0], bought[1], bought[2], bought[3], bought[4], bought[5], bought[6]],
 		skin: skin,
-		bump: bumpOf(ledgerSeeds(ledgerMint)),
+		bump: bumpOf(findProgramAddressOf(programKey(), ["ledger", ledgerMint])),
 		pad: 0,
 	});
-	const key = address(ledgerSeeds(ledgerMint));
+	const key = address(findProgramAddressOf(programKey(), ["ledger", ledgerMint]));
 	const data = staged(Ledger.discriminator(), sizeof(Ledger) as uint64, stageLedgerEntry);
 	return { ...account(key, programKey(), data, 1_000_000), writable: false };
 }
@@ -372,26 +357,26 @@ function withdrawData(amount: uint64): uint8[] {
 }
 
 function withdrawAccounts(signer: Pubkey, vaultOwner: Pubkey): HostAccount[] {
-	const revenue = address(revenueSeeds());
+	const revenue = address(findProgramAddressOf(programKey(), ["revenue"]));
 	return [
 		signerOf(signer),
 		{ ...configHolder(), writable: true },
-		account(revenue, Pubkey.systemProgram(), [], 0),
+		account(revenue, SYSTEM_PROGRAM_ID, [], 0),
 		tokenHolder(treasury, vaultOwner, 50_000_000),
 		{ ...mintHolder(), writable: false },
 		tokenHolder(keyOf(12), keyOf(9), 0),
-		executable(Pubkey.tokenProgram()),
+		executable(TOKEN_PROGRAM_ID),
 	];
 }
 
 test "only the authority withdraws SKR revenue, and only out of the program's vault" {
-	const accounts = withdrawAccounts(keyOf(9), address(revenueSeeds()));
+	const accounts = withdrawAccounts(keyOf(9), address(findProgramAddressOf(programKey(), ["revenue"])));
 	assert run(programKey(), accounts, withdrawData(20_000_000), entry).result == 0;
 	assert amountOf(accounts[3]) == 30_000_000 && amountOf(accounts[5]) == 20_000_000;
-	const strangers = withdrawAccounts(stranger, address(revenueSeeds()));
+	const strangers = withdrawAccounts(stranger, address(findProgramAddressOf(programKey(), ["revenue"])));
 	assert run(programKey(), strangers, withdrawData(1), entry).result == code(HibernalError.NotAuthority);
-	const elsewhere = withdrawAccounts(keyOf(9), address(revenueSeeds()));
-	elsewhere[3] = tokenHolder(keyOf(13), address(revenueSeeds()), 50_000_000);
+	const elsewhere = withdrawAccounts(keyOf(9), address(findProgramAddressOf(programKey(), ["revenue"])));
+	elsewhere[3] = tokenHolder(keyOf(13), address(findProgramAddressOf(programKey(), ["revenue"])), 50_000_000);
 	assert run(programKey(), elsewhere, withdrawData(1), entry).result == code(HibernalError.WrongTreasury);
 	assert amountOf(elsewhere[3]) == 50_000_000;
 }

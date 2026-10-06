@@ -1,8 +1,9 @@
+import { VRF_PROGRAM_ID } from "std/solana/vrf";
+import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import { ACTS_PER_EPOCH, BLOCK_SLOTS, Pet, checkPolicy } from "../../rules/index";
 import { HostAccount, HostRun, invocations, run, setClock } from "std/solana/host";
-import { Pubkey } from "std/solana";
-import { vrfProgram } from "std/solana/vrf";
-import { magicProgram } from "std/solana/magicblock";
+import { Pubkey, SYSTEM_PROGRAM_ID } from "std/solana";
+
 import { actorAt, beginEpoch, endEpoch, inRound } from "../../sim/world";
 import { GRUDGE_EPOCHS as SIM_GRUDGE_EPOCHS } from "../../sim/world";
 import { engineVersion } from "../../sim/digests";
@@ -11,38 +12,7 @@ import { Block, HibernalError, Phase, PetAccount, World as WorldAccount, hiberna
 import { GRUDGE_EPOCHS, SEED_RETRY_SECONDS, seededDiscriminator } from "../day";
 import { hydraProgram, magicVault } from "../hydra";
 import { entry } from "../main";
-import {
-	FIRST_DUE_SLOT,
-	PET_OFFSET,
-	TEST_DAY,
-	TEST_DAYS,
-	WORLD_SEED,
-	at,
-	blockOf,
-	bytesAt,
-	crankKey,
-	currentSeq,
-	dueClock,
-	executable,
-	globalOf,
-	keyOf,
-	owned,
-	petsOf,
-	plain,
-	policyAct,
-	policyBytes,
-	programKey,
-	returned,
-	roundStartAccounts,
-	roundStartReturned,
-	seededAccounts,
-	seededData,
-	stepData,
-	turnAccounts,
-	withDiscriminator,
-	withNextCrank,
-	worldBeforeDay,
-} from "./dayWorld";
+import { FIRST_DUE_SLOT, PET_OFFSET, TEST_DAY, TEST_DAYS, WORLD_SEED, at, blockOf, bytesAt, crankKey, currentSeq, dueClock, executable, globalOf, keyOf, owned, petsOf, plain, policyAct, policyBytes, programKey, returned, roundStartAccounts, roundStartReturned, seededAccounts, seededData, stepData, turnAccounts, withDiscriminator, withNextCrank, worldBeforeDay } from "./dayWorld";
 
 const CANCEL: uint8 = 2;
 
@@ -113,7 +83,7 @@ function startAccounts(step: HostAccount[], signer: Pubkey): HostAccount[] {
 		step[0],
 		plain(crankKey(block.id, block.crankSeq), true, false),
 		plain(Pubkey.magicVault(), true, false),
-		executable(Pubkey.magicProgram()),
+		executable(MAGIC_PROGRAM_ID),
 		executable(Pubkey.hydraProgram()),
 	];
 }
@@ -260,7 +230,7 @@ test "the VRF request and the next crank are paid and signed by the program's pa
 	assert passed(roundStarted(step, TEST_DAY));
 	const calls = invocations();
 	const request = calls[calls.length - 2];
-	assert request.program == Pubkey.vrfProgram();
+	assert request.program == VRF_PROGRAM_ID;
 	assert request.accounts[0].key == step[0].key && request.accounts[0].signer && request.accounts[0].writable;
 	assert request.signers == 2;
 	const created = calls[calls.length - 1];
@@ -306,12 +276,12 @@ test "sweep cancels only spent cranks whose authority is the payer PDA" {
 	const swept: HostAccount[] = [
 		step[0],
 		plain(Pubkey.magicVault(), true, false),
-		executable(Pubkey.magicProgram()),
+		executable(MAGIC_PROGRAM_ID),
 		executable(Pubkey.hydraProgram()),
 		crankHolder(spent, Pubkey.hydraProgram(), crankData(payer, 0)),
 		crankHolder(live, Pubkey.hydraProgram(), crankData(payer, 1)),
 		crankHolder(foreign, Pubkey.hydraProgram(), crankData(keyOf(9), 0)),
-		crankHolder(orphan, Pubkey.systemProgram(), crankData(payer, 0)),
+		crankHolder(orphan, SYSTEM_PROGRAM_ID, crankData(payer, 0)),
 	];
 	assert passed(run(programKey(), swept, stepData("Sweep", 0), entry));
 	assert cancelsOf(spent) == 1 && cancelsOf(live) == 0 && cancelsOf(foreign) == 0 && cancelsOf(orphan) == 0;

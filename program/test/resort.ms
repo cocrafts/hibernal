@@ -1,19 +1,6 @@
-import { Pubkey, failWith, instructionData, instructionDiscriminator, mutable, readU8, readU16, readU32, unchecked } from "std/solana";
+import { Pubkey, failWith, instructionData, instructionDiscriminator, mutable, readU8, readU16, readU32, unchecked, SYSTEM_PROGRAM_ID } from "std/solana";
 import { HostAccount, run } from "std/solana/host";
-import {
-	BlockSlot,
-	GlobalConfig,
-	Item,
-	ItemSkill,
-	Pet,
-	Region,
-	TalentGrade,
-	TalentKind,
-	born,
-	genesis,
-	minted,
-	sellPrice,
-} from "../../rules/index";
+import { BlockSlot, GlobalConfig, Item, ItemSkill, Pet, Region, TalentGrade, TalentKind, born, genesis, minted, sellPrice } from "../../rules/index";
 import { Block, Config, HibernalError, MAX_PETS, PetAccount, RESORT_BITMAP_BYTES, Resort, World, hibernalError } from "../layout";
 import { resortAssign, resortBegin, resortClear, resortFinish } from "../resort";
 
@@ -64,7 +51,7 @@ function holder(key: Pubkey, size: int32): HostAccount {
 function authority(): HostAccount {
 	return {
 		key: authorityKey(),
-		owner: Pubkey.systemProgram(),
+		owner: SYSTEM_PROGRAM_ID,
 		lamports: 1000000000,
 		data: [],
 		signer: true,
@@ -168,7 +155,6 @@ function worldHolder(placedPets: uint32, treasury: uint64): HostAccount {
 	pushU64(data, treasury);
 	return staged([blank], data, stageWorldEntry);
 }
-
 
 function peekBlockEntry(): void {
 	const target = unchecked(0);

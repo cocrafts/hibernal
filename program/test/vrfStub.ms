@@ -1,4 +1,4 @@
-import { Instruction, ProgramError, Seeds, account, accountCount, failWith, instructionData, programId } from "std/solana";
+import { InstructionAccount, ProgramError, account, accountCount, failWith, findProgramAddressOf, instructionData, invokeList, programId, putBytes, signed } from "std/solana";
 
 const CALLBACK: uint8 = 0xaa;
 const REQUEST: uint8 = 10;
@@ -7,16 +7,18 @@ function calledBack(): Result<uint64, ProgramError> {
 	const data = instructionData();
 	const identity = try account(0);
 	const target = try account(1);
-	const found = try Seeds.empty(2).addText("identity").addPubkey(target.key()).findProgramAddress(programId());
+	const found = try findProgramAddressOf(programId(), ["identity", target.key()]);
 	const count = accountCount();
-	const instruction = Instruction.forProgram(target.key(), (count - 1) as uint64, data.length);
-	instruction.addReadonlySigner(identity);
+	let accounts: InstructionAccount[64] = [];
+	accounts[0] = InstructionAccount.readonlySigner(identity);
 	for (let index = 2; index < count; index++) {
 		const held = try account(index);
-		instruction.addAccount(held, held.isWritable(), false);
+		accounts[index - 1] = held.isWritable() ? InstructionAccount.writable(held) : InstructionAccount.readonly(held);
 	}
-	instruction.appendBytes(try data.range(1, data.length - 1));
-	return instruction.invokeSigned(Seeds.empty(3).addText("identity").addPubkey(target.key()).addU8(found.bump));
+	let storage: uint8[1024] = [];
+	const length = putBytes(storage, 0, try data.range(1, data.length - 1));
+	const targetKey = target.key();
+	return signed(invokeList(targetKey, accounts[0..(count - 1)], storage, length), ["identity", targetKey, [found.bump]]);
 }
 
 function requested(): Result<uint64, ProgramError> {

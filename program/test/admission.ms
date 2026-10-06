@@ -1,26 +1,9 @@
-import { ProgramError, Pubkey, Seeds, failWith, instructionDiscriminator, selectInstruction } from "std/solana";
+import { ProgramError, Pubkey, failWith, instructionDiscriminator, selectInstruction, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf, leBytes } from "std/solana";
 import { instruction } from "std/solana/macro";
 import { HostAccount, HostInvocation, invocations, run, setClock } from "std/solana/host";
-import { delegationProgram } from "std/solana/magicblock";
+
 import { EPOCH_SECONDS, POLICY_FORMAT, POLICY_MAGIC } from "../../rules/index";
-import {
-	HibernalError,
-	MAX_PETS,
-	NO_BLOCK,
-	NO_SEAT,
-	Op,
-	POLICY_BYTES,
-	SEATS,
-	blockSeeds,
-	configSeeds,
-	hibernalError,
-	mintSeeds,
-	paidSeeds,
-	petSeeds,
-	policySeeds,
-	revenueSeeds,
-	worldSeeds,
-} from "../layout";
+import { HibernalError, MAX_PETS, NO_BLOCK, NO_SEAT, Op, POLICY_BYTES, SEATS, hibernalError } from "../layout";
 import { associatedTokenAddress } from "std/solana/token";
 import { createBlock, initialize, writePolicy } from "../admin";
 import { appearanceOf, claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "../admission";
@@ -127,7 +110,7 @@ function account(key: Pubkey, owner: Pubkey, data: uint8[], lamports: uint64): H
 }
 
 function wallet(key: Pubkey): HostAccount {
-	return { ...account(key, Pubkey.systemProgram(), [], 10_000_000_000), signer: true };
+	return { ...account(key, SYSTEM_PROGRAM_ID, [], 10_000_000_000), signer: true };
 }
 
 function executable(key: Pubkey): HostAccount {
@@ -135,7 +118,7 @@ function executable(key: Pubkey): HostAccount {
 }
 
 function blank(key: Pubkey): HostAccount {
-	return account(key, Pubkey.systemProgram(), [], 0);
+	return account(key, SYSTEM_PROGRAM_ID, [], 0);
 }
 
 function readonly(holder: HostAccount): HostAccount {
@@ -143,49 +126,49 @@ function readonly(holder: HostAccount): HostAccount {
 }
 
 function configKey(): Pubkey {
-	const found = configSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["config"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function treasuryKey(): Pubkey {
-	const revenue = revenueSeeds().findProgramAddress(programKey());
+	const revenue = findProgramAddressOf(programKey(), ["revenue"]);
 	if (!revenue.ok) { return Pubkey.zero(); }
-	const vault = associatedTokenAddress(revenue.value.key, keyOf(7, 0), Pubkey.tokenProgram());
+	const vault = associatedTokenAddress(revenue.value.key, keyOf(7, 0), TOKEN_PROGRAM_ID);
 	return vault.ok ? vault.value.key : Pubkey.zero();
 }
 
 function policyKey(): Pubkey {
-	const found = policySeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["policy"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function worldKey(): Pubkey {
-	const found = worldSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["world"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function mintKey(): Pubkey {
-	const found = mintSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["mint"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function blockKey(id: uint32): Pubkey {
-	const found = blockSeeds(id).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["block", leBytes((id) as uint64)]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function petKey(mint: Pubkey): Pubkey {
-	const found = petSeeds(mint).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["pet", mint]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function paidKey(mint: Pubkey): Pubkey {
-	const found = paidSeeds(mint).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["paid", mint]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function bufferKey(delegated: Pubkey): Pubkey {
-	const found = Seeds.empty(2).addText("buffer").addPubkey(delegated).findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["buffer", delegated]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
@@ -269,7 +252,7 @@ function admissionMint(key: Pubkey, inGroup: Pubkey): HostAccount {
 	pushKey(data, key);
 	pushKey(data, inGroup);
 	pushU64(data, 42);
-	return account(key, Pubkey.token2022Program(), data, 4_000_000);
+	return account(key, TOKEN_2022_PROGRAM_ID, data, 4_000_000);
 }
 
 function heldAccount(key: Pubkey, mint: Pubkey, holder: Pubkey, amount: uint64): HostAccount {
@@ -282,7 +265,7 @@ function heldAccount(key: Pubkey, mint: Pubkey, holder: Pubkey, amount: uint64):
 	zeros(data, 12);
 	pushU64(data, 0);
 	zeros(data, 36);
-	return account(key, Pubkey.token2022Program(), data, 2_039_280);
+	return account(key, TOKEN_2022_PROGRAM_ID, data, 2_039_280);
 }
 
 function claimAccounts(made: HostAccount[], claimer: Pubkey, mint: HostAccount, held: HostAccount): HostAccount[] {
@@ -293,12 +276,11 @@ function claimAccounts(made: HostAccount[], claimer: Pubkey, mint: HostAccount, 
 		readonly(held),
 		blank(petKey(mint.key)),
 		blank(paidKey(mint.key)),
-		executable(Pubkey.systemProgram()),
+		executable(SYSTEM_PROGRAM_ID),
 	];
 }
 
 function admissionMintKey(index: uint8): Pubkey { return keyOf(100 + index, 7); }
-
 
 function initialized(): HostAccount[] {
 	const made = [
@@ -307,8 +289,8 @@ function initialized(): HostAccount[] {
 		blank(policyKey()),
 		blank(worldKey()),
 		blank(mintKey()),
-		executable(Pubkey.tokenProgram()),
-		executable(Pubkey.systemProgram()),
+		executable(TOKEN_PROGRAM_ID),
+		executable(SYSTEM_PROGRAM_ID),
 	];
 	const _ran = run(programKey(), made, initializeData(ENGINE), entry);
 	return made;
@@ -323,7 +305,7 @@ function written(made: HostAccount[], signer: Pubkey, data: uint8[]): uint64 {
 }
 
 function blockCreated(made: HostAccount[], signer: Pubkey, id: uint32, target: Pubkey): HostAccount[] {
-	const accounts = [wallet(signer), made[1], blank(target), executable(Pubkey.systemProgram())];
+	const accounts = [wallet(signer), made[1], blank(target), executable(SYSTEM_PROGRAM_ID)];
 	const result = run(programKey(), accounts, blockData(id), entry).result;
 	made[1] = accounts[1];
 	return [accounts[2], { ...accounts[2], lamports: result }];
@@ -384,10 +366,10 @@ test "initialize creates config, policy, world and the HBRN mint it signs for" {
 	assert keyAt(made[1].data, 8 + 168) == keyOf(7, 0) && keyAt(made[1].data, 8 + 200) == treasuryKey();
 	assert made[2].owner == programKey() && made[3].owner == programKey();
 	assert u64At(made[3].data, 8) == GENESIS;
-	assert made[4].owner == Pubkey.tokenProgram() && made[4].data.length == 82;
+	assert made[4].owner == TOKEN_PROGRAM_ID && made[4].data.length == 82;
 	let mintInitialized = false;
 	for (const call of invocations()) {
-		if (call.program == Pubkey.tokenProgram() && call.data[0] == 20 && call.data[1] == 6) {
+		if (call.program == TOKEN_PROGRAM_ID && call.data[0] == 20 && call.data[1] == 6) {
 			mintInitialized = keyAt(call.data, 2) == mintKey();
 		}
 	}
@@ -402,8 +384,8 @@ test "initialize refuses an SKR treasury the program does not hold" {
 		blank(policyKey()),
 		blank(worldKey()),
 		blank(mintKey()),
-		executable(Pubkey.tokenProgram()),
-		executable(Pubkey.systemProgram()),
+		executable(TOKEN_PROGRAM_ID),
+		executable(SYSTEM_PROGRAM_ID),
 	];
 	const outcome = run(programKey(), made, initializeDataWith(ENGINE, keyOf(8, 0)), entry);
 	assert outcome.result == hibernalError(HibernalError.WrongTreasury).code;
@@ -493,7 +475,7 @@ test "claim admits a group member once and refuses mints outside the group" {
 	assert claimRan(made, notHeld) == ProgramError.constraintTokenOwner().code;
 	const empty = claimAccounts(made, owner, lent, heldAccount(keyOf(152, 7), lent.key, owner, 0));
 	assert claimRan(made, empty) == hibernalError(HibernalError.NotAdmitted).code;
-	const legacy: HostAccount = { ...admissionMint(admissionMintKey(4), group), owner: Pubkey.tokenProgram() };
+	const legacy: HostAccount = { ...admissionMint(admissionMintKey(4), group), owner: TOKEN_PROGRAM_ID };
 	const wrongProgram = claimAccounts(made, owner, legacy, heldAccount(keyOf(154, 7), legacy.key, owner, 1));
 	assert claimRan(made, wrongProgram) != 0;
 	assert u32At(made[1].data, CONFIG_PETS) == 2;
@@ -523,14 +505,14 @@ function delegation(payer: Pubkey, made: HostAccount[], delegated: HostAccount):
 		blank(bufferKey(delegated.key)),
 		blank(keyOf(60, 1)),
 		blank(keyOf(61, 1)),
-		executable(Pubkey.delegationProgram()),
-		executable(Pubkey.systemProgram()),
+		executable(DELEGATION_PROGRAM_ID),
+		executable(SYSTEM_PROGRAM_ID),
 	];
 }
 
 function delegationRequest(): HostInvocation | null {
 	for (const call of invocations()) {
-		if (call.program == Pubkey.delegationProgram()) { return call; }
+		if (call.program == DELEGATION_PROGRAM_ID) { return call; }
 	}
 	return null;
 }
@@ -544,7 +526,7 @@ test "delegatePet hands the pet to the delegation program for its owner and refu
 		hibernalError(HibernalError.NotTheOwner).code;
 	const delegated = delegation(owner, made, accounts[4]);
 	assert run(programKey(), delegated, instructionBytes("DelegatePet"), entry).result == 0;
-	assert delegated[2].owner == Pubkey.delegationProgram();
+	assert delegated[2].owner == DELEGATION_PROGRAM_ID;
 	const request = delegationRequest();
 	assert request !== null;
 	if (request !== null) {
@@ -563,10 +545,10 @@ test "delegateBlock and delegateWorld are the authority's" {
 		hibernalError(HibernalError.NotAuthority).code;
 	const blockDelegated = delegation(authority, made, block);
 	assert run(programKey(), blockDelegated, instructionBytes("DelegateBlock"), entry).result == 0;
-	assert blockDelegated[2].owner == Pubkey.delegationProgram();
+	assert blockDelegated[2].owner == DELEGATION_PROGRAM_ID;
 	const worldDelegated = delegation(authority, made, made[3]);
 	assert run(programKey(), worldDelegated, instructionBytes("DelegateWorld"), entry).result == 0;
-	assert worldDelegated[2].owner == Pubkey.delegationProgram();
+	assert worldDelegated[2].owner == DELEGATION_PROGRAM_ID;
 	const wrongKind = delegation(authority, made, made[2]);
 	assert run(programKey(), wrongKind, instructionBytes("DelegateWorld"), entry).result ==
 		ProgramError.accountDiscriminatorMismatch().code;
@@ -576,7 +558,7 @@ test "processUndelegation answers the delegation program's fixed discriminator" 
 	const discriminator = instructionDiscriminator("ProcessUndelegation");
 	const expected: uint8[] = [196, 28, 41, 206, 48, 37, 51, 167];
 	for (let i = 0; i < 8; i++) { assert discriminator.bytes[i] == expected[i]; }
-	const forged = [blank(keyOf(70, 1)), wallet(stranger), wallet(stranger), executable(Pubkey.systemProgram())];
+	const forged = [blank(keyOf(70, 1)), wallet(stranger), wallet(stranger), executable(SYSTEM_PROGRAM_ID)];
 	const data = instructionBytes("ProcessUndelegation");
 	pushU32(data, 1);
 	pushU32(data, 5);

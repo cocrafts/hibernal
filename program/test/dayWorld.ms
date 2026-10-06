@@ -1,34 +1,18 @@
+import { VRF_PROGRAM_ID, VRF_EPHEMERAL_QUEUE_ID } from "std/solana/vrf";
+import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import { readLines } from "std/fs";
-import { Clock, Discriminator, Pubkey, Seeds, instructionDiscriminator } from "std/solana";
+import { Clock, Discriminator, Pubkey, instructionDiscriminator, SYSTEM_PROGRAM_ID, SLOTHASHES_ID, findProgramAddressOf } from "std/solana";
 import { HostAccount } from "std/solana/host";
-import { vrfEphemeralQueue, vrfProgram } from "std/solana/vrf";
-import { magicProgram } from "std/solana/magicblock";
-import {
-	ACTS_PER_EPOCH,
-	BLOCK_SLOTS,
-	EPOCH_SECONDS,
-	EconomyAction,
-	GlobalConfig,
-	Pet,
-} from "../../rules/index";
-import {
-	World,
-	actorAt,
-	applyAttack,
-	applyEconomy,
-	applyNode,
-	beginEpoch,
-	endEpoch,
-	inRound,
-	staggered,
-} from "../../sim/world";
+
+import { ACTS_PER_EPOCH, BLOCK_SLOTS, EPOCH_SECONDS, EconomyAction, GlobalConfig, Pet } from "../../rules/index";
+import { World, actorAt, applyAttack, applyEconomy, applyNode, beginEpoch, endEpoch, inRound, staggered } from "../../sim/world";
 import { OwnerKind } from "../../sim/owner";
 import { act } from "../../sim/teacher";
 import { Head, actionCount, largestActionCount, legalInto, observationSize, observeInto, zeros } from "../../sim/env/observe";
 import { Scratch, bestLegal, create, logitsInto } from "../../sim/env/actor";
 import { engineVersion } from "../../sim/digests";
 import { ALLOCATE_HOLD, ATTACK_HOLD } from "../../rules/index";
-import { Block, Config, Phase, PetAccount, Policy, VrfPayer, World as WorldAccount, policySeeds, vrfPayerSeeds } from "../layout";
+import { Block, Config, Phase, PetAccount, Policy, VrfPayer, World as WorldAccount } from "../layout";
 import { hydraProgram, magicVault } from "../hydra";
 
 export const WORLD_SEED: uint64 = 9001;
@@ -68,7 +52,7 @@ export function owned(key: Pubkey, data: uint8[]): HostAccount {
 }
 
 export function plain(key: Pubkey, writable: boolean, signer: boolean): HostAccount {
-	return { key: key, owner: Pubkey.systemProgram(), lamports: 1000000000, data: [], signer: signer, writable: writable, executable: false };
+	return { key: key, owner: SYSTEM_PROGRAM_ID, lamports: 1000000000, data: [], signer: signer, writable: writable, executable: false };
 }
 
 export function executable(key: Pubkey): HostAccount {
@@ -132,12 +116,12 @@ export function policyAct(this world: World, index: int32, policy: uint8[]): Wor
 }
 
 export function policyAddress(): Pubkey {
-	const found = policySeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["policy"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 function policyBump(): uint8 {
-	const found = policySeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["policy"]);
 	return found.ok ? found.value.bump : 0;
 }
 
@@ -159,7 +143,7 @@ export function configData(): uint8[] {
 		validator: Pubkey.zero(),
 		skrMint: Pubkey.zero(),
 		treasury: Pubkey.zero(),
-		vrfQueue: Pubkey.vrfEphemeralQueue(),
+		vrfQueue: VRF_EPHEMERAL_QUEUE_ID,
 		secondsPerDay: EPOCH_SECONDS,
 		staggerSeconds: 0,
 		slotMillis: 10,
@@ -234,17 +218,17 @@ export function petData(world: World, seat: int32): uint8[] {
 }
 
 export function vrfIdentity(): Pubkey {
-	const found = Seeds.empty(2).addText("identity").addPubkey(programKey()).findProgramAddress(Pubkey.vrfProgram());
+	const found = findProgramAddressOf(VRF_PROGRAM_ID, ["identity", programKey()]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 export function programIdentity(): Pubkey {
-	const found = Seeds.empty(1).addText("identity").findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["identity"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
 export function vrfPayerAccount(): HostAccount {
-	const found = vrfPayerSeeds().findProgramAddress(programKey());
+	const found = findProgramAddressOf(programKey(), ["vrf-payer"]);
 	const payers: VrfPayer[] = [{ bump: found.ok ? found.value.bump : 0, pad: [] }];
 	const key = found.ok ? found.value.key : Pubkey.zero();
 	return owned(key, withDiscriminator(VrfPayer.discriminator(), bytesAt(payers[0] as Ptr<void>, sizeof VrfPayer as int32)));
@@ -260,7 +244,7 @@ export function crankKey(blockId: uint32, seq: uint64): Pubkey {
 		seed.bytes[8 + index] = ((seq >> shift) & 0xff) as uint8;
 	}
 	for (let index = 0; index < 16; index++) { seed.bytes[16 + index] = program.bytes[index]; }
-	const found = Seeds.empty(2).addText("crank").addPubkey(seed).findProgramAddress(Pubkey.hydraProgram());
+	const found = findProgramAddressOf(Pubkey.hydraProgram(), ["crank", seed]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
@@ -272,13 +256,13 @@ export function turnAccounts(world: World, day: uint64, policy: uint8[]): HostAc
 		owned(keyOf(7), blockData(world, day)),
 		{ ...owned(policyAddress(), policyData(policy)), writable: false },
 		plain(programIdentity(), false, false),
-		plain(Pubkey.vrfEphemeralQueue(), true, false),
-		plain(Pubkey.slotHashesSysvar(), false, false),
-		executable(Pubkey.systemProgram()),
-		executable(Pubkey.vrfProgram()),
+		plain(VRF_EPHEMERAL_QUEUE_ID, true, false),
+		plain(SLOTHASHES_ID, false, false),
+		executable(SYSTEM_PROGRAM_ID),
+		executable(VRF_PROGRAM_ID),
 		plain(crankKey(0, 1), true, false),
 		plain(Pubkey.magicVault(), true, false),
-		executable(Pubkey.magicProgram()),
+		executable(MAGIC_PROGRAM_ID),
 		executable(Pubkey.hydraProgram()),
 	];
 	for (let seat = 0; seat < BLOCK_SLOTS; seat++) {
