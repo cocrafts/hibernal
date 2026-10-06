@@ -11,7 +11,9 @@ import {
 	getBase64EncodedWireTransaction,
 	getProgramDerivedAddress,
 	getSignatureFromTransaction,
+	isSolanaError,
 	pipe,
+	SOLANA_ERROR__JSON_RPC__SERVER_ERROR_TRANSACTION_SIGNATURE_VERIFICATION_FAILURE,
 	setTransactionMessageFeePayerSigner,
 	setTransactionMessageLifetimeUsingBlockhash,
 	signTransactionMessageWithSigners,
@@ -33,6 +35,7 @@ export const HYDRA_PROGRAM = address("eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7m
 export const MAGIC_VAULT = address("MagicVau1t999999999999999999999999999999999");
 export const SESSION_KEYS_PROGRAM = address("KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5");
 export const COMPUTE_UNIT_LIMIT = 1_400_000;
+export const CLONE_ATTEMPTS = 5;
 
 export const encoder = getAddressEncoder();
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -98,12 +101,12 @@ export function computeLimit(units) {
 	return { programAddress: COMPUTE_BUDGET_PROGRAM, accounts: [], data: joined(u8(2), u32(units)) };
 }
 
-export async function patiently(call) {
+export async function patiently(call, final = () => false) {
 	for (let attempt = 1; ; attempt++) {
 		try {
 			return await call();
 		} catch (error) {
-			if (attempt >= 10) throw error;
+			if (attempt >= 10 || final(error)) throw error;
 			await sleep(2000 * attempt);
 		}
 	}
@@ -127,7 +130,20 @@ async function fetchTransaction(rpc, signature) {
 	return null;
 }
 
+export const cloneRejected = (error) => isSolanaError(error, SOLANA_ERROR__JSON_RPC__SERVER_ERROR_TRANSACTION_SIGNATURE_VERIFICATION_FAILURE);
+export const cloneCancelled = (statusError) => statusError === "CommitCancelled";
+
 export async function send(rpc, readRpc, step, instructions, feePayer, units = COMPUTE_UNIT_LIMIT, details = true) {
+	for (let attempt = 1; ; attempt++) {
+		const sent = await sendOnce(rpc, readRpc, step, instructions, feePayer, units, details);
+		if (!sent.cloneFailed) return sent;
+		if (attempt >= CLONE_ATTEMPTS) throw new Error(`${step}: ER clone failed ${attempt} times, last ${sent.signature}`);
+		console.log(`${step}: ER clone failed (${sent.cloneFailed}), signing again`);
+		await sleep(1000 * attempt);
+	}
+}
+
+async function sendOnce(rpc, readRpc, step, instructions, feePayer, units, details) {
 	const { value: blockhash } = await patiently(() => rpc.getLatestBlockhash().send());
 	const message = pipe(
 		createTransactionMessage({ version: 0 }),
@@ -138,11 +154,17 @@ export async function send(rpc, readRpc, step, instructions, feePayer, units = C
 	const transaction = await signTransactionMessageWithSigners(message);
 	const signature = getSignatureFromTransaction(transaction);
 	const started = Date.now();
-	await patiently(() => rpc.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send());
+	try {
+		await patiently(() => rpc.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send(), cloneRejected);
+	} catch (error) {
+		if (cloneRejected(error)) return { cloneFailed: "rejected at send", signature };
+		throw error;
+	}
 	for (let attempt = 0; attempt < 240; attempt++) {
 		const { value } = await patiently(() => rpc.getSignatureStatuses([signature]).send());
 		const status = value[0];
 		if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
+			if (cloneCancelled(status.err)) return { cloneFailed: "CommitCancelled", signature };
 			const elapsed = Date.now() - started;
 			const found = details || status.err ? await fetchTransaction(readRpc, signature) : null;
 			const logs = found?.meta?.logMessages ?? [];

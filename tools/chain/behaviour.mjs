@@ -15,9 +15,12 @@ import {
 } from "@solana/kit";
 import {
 	ASSOCIATED_TOKEN_PROGRAM,
+	CLONE_ATTEMPTS,
 	SYSTEM_PROGRAM,
 	TOKEN_PROGRAM,
 	accountOffsets,
+	cloneCancelled,
+	cloneRejected,
 	cluster,
 	computeLimit,
 	encoder,
@@ -166,6 +169,14 @@ function decodedError(error) {
 }
 
 async function submit(rpc, instructions, feePayer, units = 400_000) {
+	for (let attempt = 1; ; attempt++) {
+		const outcome = await submitOnce(rpc, instructions, feePayer, units);
+		if (!outcome.cloneFailed || attempt >= CLONE_ATTEMPTS) return { ...outcome, retries: attempt - 1 };
+		await sleep(1000 * attempt);
+	}
+}
+
+async function submitOnce(rpc, instructions, feePayer, units) {
 	const { value: blockhash } = await rpc.getLatestBlockhash().send();
 	const message = pipe(
 		createTransactionMessage({ version: 0 }),
@@ -178,13 +189,13 @@ async function submit(rpc, instructions, feePayer, units = 400_000) {
 	try {
 		await rpc.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send();
 	} catch (error) {
-		return { ok: false, error: `send: ${error.message}`, signature };
+		return { ok: false, error: `send: ${error.message}`, signature, cloneFailed: cloneRejected(error) };
 	}
 	for (let attempt = 0; attempt < 120; attempt++) {
 		const { value } = await rpc.getSignatureStatuses([signature]).send();
 		const status = value[0];
 		if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
-			return status.err ? { ok: false, error: decodedError(status.err), signature } : { ok: true, signature };
+			return status.err ? { ok: false, error: decodedError(status.err), signature, cloneFailed: cloneCancelled(status.err) } : { ok: true, signature };
 		}
 		await sleep(250);
 	}
@@ -200,7 +211,7 @@ async function inParallel(items, work, parallel = PARALLEL) {
 
 const status = existsSync(STATUS_PATH) ? JSON.parse(readFileSync(STATUS_PATH, "utf8")) : { days: {}, failures: [] };
 status.program = programArgument;
-const dayOf = (epoch) => (status.days[epoch] ??= { visits: 0, opens: 0, actions: {}, skrSpent: 0, hbrnClaimed: "0" });
+const dayOf = (epoch) => (status.days[epoch] ??= { visits: 0, opens: 0, actions: {}, skrSpent: 0, hbrnClaimed: "0", cloneRetries: 0 });
 const save = () => {
 	const temporary = `${STATUS_PATH}.${process.pid}.tmp`;
 	writeFileSync(temporary, json(status));
@@ -210,6 +221,7 @@ const save = () => {
 function recorded(epoch, kind, outcome) {
 	const day = dayOf(epoch);
 	const entry = (day.actions[kind] ??= { ok: 0, refused: {} });
+	day.cloneRetries = (day.cloneRetries ?? 0) + (outcome.retries ?? 0);
 	if (outcome.ok) entry.ok += 1;
 	else {
 		entry.refused[outcome.error] = (entry.refused[outcome.error] ?? 0) + 1;
