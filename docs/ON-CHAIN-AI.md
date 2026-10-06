@@ -465,7 +465,7 @@ Rules change of 2026-10-06 (person: an app open is one engagement, once a round,
 | Own-world wealth, `$HBRN` per pet; deaths | 33,213; 175 | 32,563; 202 | 38,188 / 38,335 / 39,367; 206 / 101 / 166 |
 | Mixed world against the teacher | −1.6% (seat noise) | +2.4% | +31.5 / +35.4 / +48.2% |
 
-- With `p31s6` in `out/actProbe/policy.txt`, `program/test/day.ms` replays days 36–120 of a block on the program and in the sim byte for byte (361 fights, 10 deaths, 8 heirs, 17 sales), and `tools/chain/dayLiteSvm.mjs` replays the relay day with 0 bytes differing; worst act with a fight 979,178 CU. Program 471,496 bytes (+3,184 for the session-key check in `engage`).
+- The person chose `p31s5` on 2026-10-06 for play, not survival: persona told from one log with revenge 0.72 (s6 0.65, s7 0.66, teacher 0.80), 51.9 fights a pet (s6 45.9), vengeful pets avenge 7.4% (s6 2.4%), deaths 206 against the teacher's 175. With it in `out/actProbe/policy.txt`, `program/test/day.ms` replays days 36–120 of a block on the program and in the sim byte for byte (366 fights, 10 deaths, 8 heirs, 19 sales), and `tools/chain/dayLiteSvm.mjs` replays the relay day with 0 bytes differing; worst act with a fight 979,194 CU (`p31s6`: 361 fights, 979,178 CU). Program 471,496 bytes (+3,184 for the session-key check in `engage`).
 
 ### Package 6: the policy on SBF — Measured (inference), observation open
 
