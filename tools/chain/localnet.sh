@@ -72,7 +72,7 @@ er() {
 
 	[accountsdb]
 	database-size = 3_221_225_472
-	index-size = 134_217_728
+	index-size = 2_147_483_648
 	max-snapshots = 2
 	reset = true
 
