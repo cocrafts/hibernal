@@ -18,6 +18,7 @@ programs=(
 	hydra:eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf
 	noop:noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV
 	token2022:TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+	programMetadata:ProgM6JCCvbYkfKqJYHePx4xxSUSqJp7rh8Lyv7nk7S
 )
 
 accounts=(
