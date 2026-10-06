@@ -12,6 +12,7 @@ import {
 	Pubkey,
 	Seeds,
 	Signer,
+	Writable,
 	account,
 	accountCount,
 	clock,
@@ -132,12 +133,12 @@ export struct RoundStartAccounts {
 	world: Owned<World>;
 	block: Mutable<Block>;
 	programIdentity: Account;
-	oracleQueue: Account;
+	oracleQueue: Writable;
 	slotHashes: Account;
 	systemProgram: Account;
 	vrfProgram: Account;
-	nextCrank: Account;
-	magicVault: Account;
+	nextCrank: Writable;
+	magicVault: Writable;
 	magicProgram: Account;
 	hydraProgram: Account;
 }
@@ -149,12 +150,12 @@ export struct TurnAccounts {
 	block: Mutable<Block>;
 	policy: Owned<Policy>;
 	programIdentity: Account;
-	oracleQueue: Account;
+	oracleQueue: Writable;
 	slotHashes: Account;
 	systemProgram: Account;
 	vrfProgram: Account;
-	nextCrank: Account;
-	magicVault: Account;
+	nextCrank: Writable;
+	magicVault: Writable;
 	magicProgram: Account;
 	hydraProgram: Account;
 }
@@ -170,15 +171,15 @@ export struct StartBlockAccounts {
 	world: Owned<World>;
 	block: Mutable<Block>;
 	payer: Mutable<VrfPayer>;
-	crank: Account;
-	magicVault: Account;
+	crank: Writable;
+	magicVault: Writable;
 	magicProgram: Account;
 	hydraProgram: Account;
 }
 
 export struct SweepAccounts {
 	payer: Mutable<VrfPayer>;
-	magicVault: Account;
+	magicVault: Writable;
 	magicProgram: Account;
 	hydraProgram: Account;
 }
@@ -740,8 +741,8 @@ export function roundStart(): Result<uint64, ProgramError> {
 		policyKey: try policyKey(config),
 		cranks: {
 			sponsor: x.payer as Account,
-			crank: x.nextCrank,
-			magicVault: x.magicVault,
+			crank: x.nextCrank as Account,
+			magicVault: x.magicVault as Account,
 			magicProgram: x.magicProgram,
 			hydraProgram: x.hydraProgram,
 		},
@@ -755,7 +756,7 @@ export function roundStart(): Result<uint64, ProgramError> {
 		config: config,
 		block: x.block as Account,
 		programIdentity: x.programIdentity,
-		oracleQueue: x.oracleQueue,
+		oracleQueue: x.oracleQueue as Account,
 		slotHashes: x.slotHashes,
 		systemProgram: x.systemProgram,
 	};
@@ -826,8 +827,8 @@ export function turn(): Result<uint64, ProgramError> {
 		policyKey: (x.policy as Account).key(),
 		cranks: {
 			sponsor: x.payer as Account,
-			crank: x.nextCrank,
-			magicVault: x.magicVault,
+			crank: x.nextCrank as Account,
+			magicVault: x.magicVault as Account,
 			magicProgram: x.magicProgram,
 			hydraProgram: x.hydraProgram,
 		},
@@ -839,7 +840,7 @@ export function turn(): Result<uint64, ProgramError> {
 				config: config,
 				block: x.block as Account,
 				programIdentity: x.programIdentity,
-				oracleQueue: x.oracleQueue,
+				oracleQueue: x.oracleQueue as Account,
 				slotHashes: x.slotHashes,
 				systemProgram: x.systemProgram,
 			};
@@ -909,8 +910,8 @@ export function startBlock(): Result<uint64, ProgramError> {
 		policyKey: try policyKey(config),
 		cranks: {
 			sponsor: x.payer as Account,
-			crank: x.crank,
-			magicVault: x.magicVault,
+			crank: x.crank as Account,
+			magicVault: x.magicVault as Account,
 			magicProgram: x.magicProgram,
 			hydraProgram: x.hydraProgram,
 		},
@@ -931,7 +932,7 @@ export function sweep(): Result<uint64, ProgramError> {
 		const crank = try account(index);
 		const spent = try spentCrankOf(crank, sponsor.key());
 		if (!spent) { continue; }
-		const _cancelled = try cancelCrank(sponsor, vrfPayerSeeds().withBump(bump), crank, x.magicVault, x.magicProgram);
+		const _cancelled = try cancelCrank(sponsor, vrfPayerSeeds().withBump(bump), crank, x.magicVault as Account, x.magicProgram);
 		cancelled = cancelled + 1;
 	}
 	return Result.ok(cancelled);
