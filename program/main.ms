@@ -4,7 +4,7 @@ import { Op } from "./layout";
 import { createBlock, delegateVrfPayer, initialize, withdrawRevenue, writePolicy } from "./admin";
 import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "./admission";
 import { roundStart, seeded, startBlock, sweep, turn } from "./day";
-import { bank, talk } from "./owner";
+import { bank, engage } from "./owner";
 import { buy, load } from "./shop";
 import { delegateResort, resortAssign, resortBegin, resortClear, resortFinish } from "./resort";
 import { claimReward, commitPet } from "./payout";
@@ -21,7 +21,7 @@ export function dispatch(): Result<uint64, ProgramError> {
 		Op.ProcessUndelegation => processUndelegation(),
 		Op.Place => place(),
 		Op.Seeded => seeded(),
-		Op.Talk => talk(),
+		Op.Engage => engage(),
 		Op.Bank => bank(),
 		Op.Buy => buy(),
 		Op.Load => load(),

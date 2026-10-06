@@ -1,9 +1,16 @@
 import {
+	Account,
+	Discriminator,
 	Mutable,
 	Owned,
 	ProgramError,
+	Pubkey,
+	Seeds,
 	Signer,
+	accountDiscriminator,
 	clock,
+	programId,
+	pubkeyOf,
 	expectHasOne,
 	pdaWithBump,
 	readArgs,
@@ -12,8 +19,8 @@ import {
 import { accounts } from "std/solana/macro";
 import {
 	OwnerError,
+	engagedAt,
 	ownerBanked,
-	talkedTo,
 } from "../rules/index";
 import {
 	HibernalError,
@@ -24,17 +31,39 @@ import {
 	petSeeds,
 } from "./layout";
 
+export const SESSION_TOKEN_SIZE: uint64 = 144;
+export const SESSION_AUTHORITY: uint64 = 8;
+export const SESSION_TARGET_PROGRAM: uint64 = 40;
+export const SESSION_SIGNER: uint64 = 72;
+export const SESSION_VALID_UNTIL: uint64 = 136;
+
 export struct OwnerAccounts {
 	owner: Signer;
 	pet: Mutable<PetAccount>;
 	world: Owned<World>;
 }
 
+export struct EngageAccounts {
+	signer: Signer;
+	pet: Mutable<PetAccount>;
+	world: Owned<World>;
+	session: Account;
+}
+
+export function sessionKeysProgram(this typeof Pubkey): Pubkey {
+	return @comptime { return pubkeyOf("KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5"); };
+}
+
+function sessionTokenKind(): Discriminator {
+	return @comptime { return accountDiscriminator("SessionTokenV2"); };
+}
+
 export function ownerFailure(error: OwnerError): ProgramError {
 	const mapped: HibernalError = match (error) {
 		OwnerError.Dead => HibernalError.Dead,
 		OwnerError.Refused => HibernalError.Refused,
-		OwnerError.TalkedOut => HibernalError.TalkedOut,
+		OwnerError.EngagedOut => HibernalError.EngagedOut,
+		OwnerError.EngagedThisRound => HibernalError.EngagedThisRound,
 		OwnerError.NoSuchTier => HibernalError.Illegal,
 		OwnerError.EmptyHarvest => HibernalError.EmptyHarvest,
 		OwnerError.CoolingDown => HibernalError.CoolingDown,
@@ -50,12 +79,43 @@ function ownedPet(owner: Signer, pet: Mutable<PetAccount>): Result<Ptr<PetAccoun
 	return Result.ok(record);
 }
 
-export function talk(): Result<uint64, ProgramError> {
-	const x = try accounts<OwnerAccounts>();
-	const record = try ownedPet(x.owner, x.pet);
-	const talked = record.pet.talkedTo();
-	if (!talked.ok) { return Result.err(ownerFailure(talked.error)); }
-	record.pet = talked.value;
+function sessionOf(session: Account, signer: Pubkey, owner: Pubkey, now: int64): Result<uint64, ProgramError> {
+	if (!session.isOwnedBy(Pubkey.sessionKeysProgram()) || session.dataLength() < SESSION_TOKEN_SIZE) {
+		return Result.err(hibernalError(HibernalError.NotTheOwner));
+	}
+	const data = session.data();
+	const kind = try data.readU64(0);
+	const authority = try data.readPubkey(SESSION_AUTHORITY);
+	const target = try data.readPubkey(SESSION_TARGET_PROGRAM);
+	const sessionSigner = try data.readPubkey(SESSION_SIGNER);
+	const validUntil = try data.readU64(SESSION_VALID_UNTIL);
+	if (kind != sessionTokenKind().word() || authority != owner || target != programId() || sessionSigner != signer) {
+		return Result.err(hibernalError(HibernalError.NotTheOwner));
+	}
+	if (now >= validUntil as int64) { return Result.err(hibernalError(HibernalError.SessionExpired)); }
+	const found = try Seeds.empty(4)
+		.addText("session_token_v2")
+		.addPubkey(programId())
+		.addPubkey(signer)
+		.addPubkey(owner)
+		.findProgramAddress(Pubkey.sessionKeysProgram());
+	if (found.key != session.key()) { return Result.err(hibernalError(HibernalError.NotTheOwner)); }
+	return Result.ok(0);
+}
+
+export function engage(): Result<uint64, ProgramError> {
+	const x = try accounts<EngageAccounts>();
+	const record = x.pet.data();
+	const _seeds = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
+	const unix = clock().unixTimestamp;
+	if (x.signer.key() != record.owner) {
+		const _session = try sessionOf(x.session, x.signer.key(), record.owner, unix);
+	}
+	const world = x.world.data();
+	const now = gameSecondsAt(world.global.genesisTimestamp, world.secondsPerDay, unix);
+	const engaged = record.pet.engagedAt(now);
+	if (!engaged.ok) { return Result.err(ownerFailure(engaged.error)); }
+	record.pet = engaged.value;
 	return Result.ok(0);
 }
 

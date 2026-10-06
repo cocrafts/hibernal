@@ -23,7 +23,7 @@ export enum Op {
 	ProcessUndelegation,
 	Place,
 	Seeded,
-	Talk,
+	Engage,
 	Bank,
 	Buy,
 	Load,
@@ -234,7 +234,7 @@ export enum HibernalError {
 	Refused,
 	Full,
 	FedToday,
-	TalkedOut,
+	EngagedOut,
 	Insured,
 	EmptyHarvest,
 	CoolingDown,
@@ -250,6 +250,8 @@ export enum HibernalError {
 	SupplyCap,
 	WrongTreasury,
 	SlotsFull,
+	EngagedThisRound,
+	SessionExpired,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {

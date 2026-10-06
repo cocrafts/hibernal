@@ -1,8 +1,9 @@
-import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked } from "std/solana";
+import { Discriminator, ProgramError, Pubkey, Seeds, accountDiscriminator, instructionDiscriminator, unchecked } from "std/solana";
 import { HostAccount, run, setClock } from "std/solana/host";
 import { BlockSlot, GlobalConfig, Pet, Region, born } from "../../rules/index";
 import { HibernalError, PetAccount, World, hibernalError, petSeeds } from "../layout";
 import { entry } from "../main";
+import { sessionKeysProgram } from "../owner";
 
 
 function keyOf(seed: uint8): Pubkey {
@@ -168,20 +169,87 @@ function noon(seconds: int64): void {
 	setClock({ slot: 1, epochStartTimestamp: 0, epoch: 1, leaderScheduleEpoch: 1, unixTimestamp: seconds });
 }
 
-test "only the pet's owner can act on it" {
-	const accounts = [signerOf(stranger), petHolder({ ...newborn(), hearts: 1 }), realDay()];
-	assert run(programKey(), accounts, instructionData("Talk"), entry).result == ProgramError.constraintHasOne().code;
-	const unsigned: HostAccount[] = [{ ...signerOf(owner), signer: false }, petHolder(newborn()), realDay()];
-	assert run(programKey(), unsigned, instructionData("Talk"), entry).result ==
-		ProgramError.accountNotSigner().code;
+const sessionSigner = keyOf(4);
+const ROUND_SECONDS: int64 = 21_600;
+
+function sessionKey(signer: Pubkey, authority: Pubkey): Pubkey {
+	const found = Seeds.empty(4)
+		.addText("session_token_v2")
+		.addPubkey(programKey())
+		.addPubkey(signer)
+		.addPubkey(authority)
+		.findProgramAddress(Pubkey.sessionKeysProgram());
+	return found.ok ? found.value.key : Pubkey.zero();
 }
 
-test "talking bonds twice a day" {
-	const accounts = [signerOf(owner), petHolder(newborn()), realDay()];
-	assert run(programKey(), accounts, instructionData("Talk"), entry).result == 0;
-	assert run(programKey(), accounts, instructionData("Talk"), entry).result == 0;
-	assert petOf(accounts[1]).talksToday == 2;
-	assert run(programKey(), accounts, instructionData("Talk"), entry).result == code(HibernalError.TalkedOut);
+function sessionHolder(target: Pubkey, signer: Pubkey, validUntil: uint64): HostAccount {
+	const kind = accountDiscriminator("SessionTokenV2");
+	const bytes: uint8[] = [];
+	for (let i = 0; i < 8; i++) { bytes.push(kind.bytes[i]); }
+	for (let i = 0; i < 32; i++) { bytes.push(owner.bytes[i]); }
+	for (let i = 0; i < 32; i++) { bytes.push(target.bytes[i]); }
+	for (let i = 0; i < 32; i++) { bytes.push(signer.bytes[i]); }
+	for (let i = 0; i < 32; i++) { bytes.push(owner.bytes[i]); }
+	for (let i = 0; i < 8; i++) { bytes.push(((validUntil >> ((i * 8) as uint64)) & 0xff) as uint8); }
+	return {
+		key: sessionKey(signer, owner),
+		owner: Pubkey.sessionKeysProgram(),
+		lamports: 1000000,
+		data: bytes,
+		signer: false,
+		writable: false,
+		executable: false,
+	};
+}
+
+function noSession(): HostAccount {
+	return { ...signerOf(programKey()), signer: false };
+}
+
+test "only the pet's owner or its session key can engage" {
+	noon(10);
+	const accounts = [signerOf(stranger), petHolder({ ...newborn(), hearts: 1 }), realDay(), noSession()];
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == code(HibernalError.NotTheOwner);
+	const unsigned: HostAccount[] = [{ ...signerOf(owner), signer: false }, petHolder(newborn()), realDay(), noSession()];
+	assert run(programKey(), unsigned, instructionData("Engage"), entry).result ==
+		ProgramError.accountNotSigner().code;
+	const banking = [signerOf(stranger), petHolder({ ...newborn(), harvest: 1000 }), realDay()];
+	assert run(programKey(), banking, instructionData("Bank"), entry).result == ProgramError.constraintHasOne().code;
+}
+
+test "engaging bonds once a round, three times a day" {
+	const accounts = [signerOf(owner), petHolder(newborn()), realDay(), noSession()];
+	noon(10);
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == 0;
+	noon(ROUND_SECONDS - 1);
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == code(HibernalError.EngagedThisRound);
+	noon(ROUND_SECONDS);
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == 0;
+	noon(3 * ROUND_SECONDS);
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == 0;
+	const engaged = petOf(accounts[1]);
+	assert engaged.engagedToday == 3 && engaged.engagedRound == 3;
+	noon(4 * ROUND_SECONDS - 1);
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == code(HibernalError.EngagedOut);
+}
+
+test "a session key engages without the owner's wallet until it expires" {
+	noon(1_000);
+	const live = [signerOf(sessionSigner), petHolder(newborn()), realDay(), sessionHolder(programKey(), sessionSigner, 2_000)];
+	assert run(programKey(), live, instructionData("Engage"), entry).result == 0;
+	assert petOf(live[1]).engagedToday == 1;
+	const expired = [signerOf(sessionSigner), petHolder(newborn()), realDay(), sessionHolder(programKey(), sessionSigner, 1_000)];
+	assert run(programKey(), expired, instructionData("Engage"), entry).result == code(HibernalError.SessionExpired);
+	const otherProgram = [signerOf(sessionSigner), petHolder(newborn()), realDay(), sessionHolder(keyOf(9), sessionSigner, 2_000)];
+	assert run(programKey(), otherProgram, instructionData("Engage"), entry).result == code(HibernalError.NotTheOwner);
+	const borrowed = [signerOf(stranger), petHolder(newborn()), realDay(), sessionHolder(programKey(), sessionSigner, 2_000)];
+	assert run(programKey(), borrowed, instructionData("Engage"), entry).result == code(HibernalError.NotTheOwner);
+	const forged: HostAccount = { ...sessionHolder(programKey(), sessionSigner, 2_000), owner: programKey() };
+	const unowned = [signerOf(sessionSigner), petHolder(newborn()), realDay(), forged];
+	assert run(programKey(), unowned, instructionData("Engage"), entry).result == code(HibernalError.NotTheOwner);
+	const misplaced: HostAccount = { ...sessionHolder(programKey(), sessionSigner, 2_000), key: keyOf(61) };
+	const elsewhere = [signerOf(sessionSigner), petHolder(newborn()), realDay(), misplaced];
+	assert run(programKey(), elsewhere, instructionData("Engage"), entry).result == code(HibernalError.NotTheOwner);
 }
 
 test "banking moves half the harvest to the burrow, then cools down" {
@@ -196,9 +264,9 @@ test "banking moves half the harvest to the burrow, then cools down" {
 	assert run(programKey(), empty, instructionData("Bank"), entry).result == code(HibernalError.EmptyHarvest);
 }
 
-test "a dead pet cannot be talked to" {
-	const accounts = [signerOf(owner), petHolder({ ...newborn(), alive: false, hearts: 0 }), realDay()];
-	assert run(programKey(), accounts, instructionData("Talk"), entry).result == code(HibernalError.Dead);
+test "a dead pet cannot be engaged" {
+	const accounts = [signerOf(owner), petHolder({ ...newborn(), alive: false, hearts: 0 }), realDay(), noSession()];
+	assert run(programKey(), accounts, instructionData("Engage"), entry).result == code(HibernalError.Dead);
 }
 
 test "on a compressed day the bank cooldown runs in game time: 8 game hours are 400 wall seconds at 1,200 s a day" {
