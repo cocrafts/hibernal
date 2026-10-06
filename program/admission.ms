@@ -5,17 +5,18 @@ import {
 	Owned,
 	Program,
 	ProgramError,
+	DELEGATION_PROGRAM_ID,
 	Pubkey,
-	Seeds,
 	System,
 	Writable,
 	WritableSigner,
 	clock,
 	createPda,
 	instructionData,
+	leBytes,
 	pdaWithBump,
+	programAddress,
 	programId,
-	readArgs,
 	unchecked,
 } from "std/solana";
 import { accounts } from "std/solana/macro";
@@ -23,7 +24,6 @@ import {
 	DelegationAccounts,
 	DelegationConfig,
 	delegate,
-	delegationProgram,
 	isUndelegateCallback,
 	onValidator,
 	undelegate,
@@ -49,13 +49,8 @@ import {
 	PetAccount,
 	SEATS,
 	World,
-	blockSeeds,
-	configSeeds,
 	dayOf,
 	hibernalError,
-	paidSeeds,
-	petSeeds,
-	worldSeeds,
 } from "./layout";
 
 const REGIONS: uint8 = 3;
@@ -134,13 +129,13 @@ export function appearanceOf(mint: Pubkey): uint32 {
 
 function configIn(config: Owned<Config>): Result<Readonly<Ptr<Config>>, ProgramError> {
 	const stored = config.data();
-	const derived = configSeeds().withBump(stored.bump).createProgramAddress(programId());
+	const derived = programAddress(["config", [stored.bump]]);
 	if (!derived.ok || derived.value != config.key()) { return Result.err(ProgramError.constraintSeeds()); }
 	return Result.ok(stored);
 }
 
 function admitted(mint: External<Mint>, group: Pubkey): Result<uint64, ProgramError> {
-	const mintAccount = mint as Account;
+	const mintAccount = mint.asAccount();
 	const pointer = mintAccount.groupMemberPointer();
 	const member = mintAccount.tokenGroupMember();
 	if (!pointer.ok || !member.ok) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
@@ -155,7 +150,7 @@ function admitted(mint: External<Mint>, group: Pubkey): Result<uint64, ProgramEr
 export function claim(): Result<uint64, ProgramError> {
 	const x = try accounts<ClaimAccounts>();
 	const config = x.config.data();
-	const _config = try pdaWithBump(x.config, configSeeds(), config.bump);
+	const _config = try pdaWithBump(x.config, ["config"], config.bump);
 	const mintKey = x.mint.key();
 	const _member = try admitted(x.mint, config.admissionGroup);
 	const held = try x.held.read();
@@ -163,8 +158,8 @@ export function claim(): Result<uint64, ProgramError> {
 	const _heldBy = try expectTokenOwner(held, x.owner.key());
 	if (held.amount != 1) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
 	if (config.pets >= (MAX_PETS as uint32)) { return Result.err(hibernalError(HibernalError.PetCap)); }
-	const madePet = try createPda<PetAccount>(x.owner, x.pet, petSeeds(mintKey));
-	const madePaid = try createPda<Paid>(x.owner, x.paid, paidSeeds(mintKey));
+	const madePet = try createPda<PetAccount>(x.owner, x.pet, ["pet", mintKey]);
+	const madePaid = try createPda<Paid>(x.owner, x.paid, ["paid", mintKey]);
 	const epoch = dayOf(config, clock().unixTimestamp);
 	const region = (mintKey.bytes[0] % REGIONS) as int32;
 	const hatched = Pet.born(NO_BLOCK, BlockSlot.First, region as Region, epoch, GlobalConfig.genesis(config.genesisTimestamp));
@@ -185,19 +180,20 @@ export function claim(): Result<uint64, ProgramError> {
 }
 
 
-export function delegated(
-	request: DelegationAccounts,
-	delegationProgram: Account,
-	seeds: Seeds,
-	bump: uint8,
-	config: Readonly<Ptr<Config>>,
-): Result<uint64, ProgramError> {
+export function delegationPrograms(request: DelegationAccounts, delegationProgram: Account): Result<uint64, ProgramError> {
 	if (request.ownerProgram.key() != programId()) { return Result.err(ProgramError.invalidProgramId()); }
-	if (delegationProgram.key() != Pubkey.delegationProgram()) { return Result.err(ProgramError.invalidProgramId()); }
-	const derived = seeds.withBump(bump).createProgramAddress(programId());
+	if (delegationProgram.key() != DELEGATION_PROGRAM_ID) { return Result.err(ProgramError.invalidProgramId()); }
+	return Result.ok(0);
+}
+
+export function delegatedAt(request: DelegationAccounts, derived: Result<Pubkey, ProgramError>): Result<uint64, ProgramError> {
 	if (!derived.ok || derived.value != request.delegated.key()) { return Result.err(ProgramError.constraintSeeds()); }
+	return Result.ok(0);
+}
+
+export function validatorOf(config: Readonly<Ptr<Config>>): Result<DelegationConfig, ProgramError> {
 	if (config.validator.isZero()) { return Result.err(ProgramError.invalidArgument()); }
-	return delegate(request, seeds, bump, DelegationConfig.onValidator(config.validator));
+	return Result.ok(DelegationConfig.onValidator(config.validator));
 }
 
 export function delegatePet(): Result<uint64, ProgramError> {
@@ -208,15 +204,17 @@ export function delegatePet(): Result<uint64, ProgramError> {
 		return Result.err(hibernalError(HibernalError.NotTheOwner));
 	}
 	const request: DelegationAccounts = {
-		payer: x.payer as Account,
-		delegated: x.delegated as Account,
+		payer: x.payer.asAccount(),
+		delegated: x.delegated.asAccount(),
 		ownerProgram: x.ownerProgram,
-		buffer: x.buffer as Account,
-		delegationRecord: x.delegationRecord as Account,
-		delegationMetadata: x.delegationMetadata as Account,
-		systemProgram: x.systemProgram as Account,
+		buffer: x.buffer.asAccount(),
+		delegationRecord: x.delegationRecord.asAccount(),
+		delegationMetadata: x.delegationMetadata.asAccount(),
+		systemProgram: x.systemProgram.asAccount(),
 	};
-	return delegated(request, x.delegationProgram, petSeeds(record.mint), record.bump, config);
+	const _programs = try delegationPrograms(request, x.delegationProgram);
+	const _address = try delegatedAt(request, programAddress(["pet", record.mint, [record.bump]]));
+	return delegate(request, ["pet", record.mint], record.bump, try validatorOf(config));
 }
 
 export function delegateBlock(): Result<uint64, ProgramError> {
@@ -225,15 +223,18 @@ export function delegateBlock(): Result<uint64, ProgramError> {
 	if (x.payer.key() != config.authority) { return Result.err(hibernalError(HibernalError.NotAuthority)); }
 	const block = x.delegated.data();
 	const request: DelegationAccounts = {
-		payer: x.payer as Account,
-		delegated: x.delegated as Account,
+		payer: x.payer.asAccount(),
+		delegated: x.delegated.asAccount(),
 		ownerProgram: x.ownerProgram,
-		buffer: x.buffer as Account,
-		delegationRecord: x.delegationRecord as Account,
-		delegationMetadata: x.delegationMetadata as Account,
-		systemProgram: x.systemProgram as Account,
+		buffer: x.buffer.asAccount(),
+		delegationRecord: x.delegationRecord.asAccount(),
+		delegationMetadata: x.delegationMetadata.asAccount(),
+		systemProgram: x.systemProgram.asAccount(),
 	};
-	return delegated(request, x.delegationProgram, blockSeeds(block.id), block.bump, config);
+	const _programs = try delegationPrograms(request, x.delegationProgram);
+	const id = leBytes(block.id as uint64);
+	const _address = try delegatedAt(request, programAddress(["block", id, [block.bump]]));
+	return delegate(request, ["block", id], block.bump, try validatorOf(config));
 }
 
 export function delegateWorld(): Result<uint64, ProgramError> {
@@ -242,22 +243,24 @@ export function delegateWorld(): Result<uint64, ProgramError> {
 	if (x.payer.key() != config.authority) { return Result.err(hibernalError(HibernalError.NotAuthority)); }
 	const world = x.delegated.data();
 	const request: DelegationAccounts = {
-		payer: x.payer as Account,
-		delegated: x.delegated as Account,
+		payer: x.payer.asAccount(),
+		delegated: x.delegated.asAccount(),
 		ownerProgram: x.ownerProgram,
-		buffer: x.buffer as Account,
-		delegationRecord: x.delegationRecord as Account,
-		delegationMetadata: x.delegationMetadata as Account,
-		systemProgram: x.systemProgram as Account,
+		buffer: x.buffer.asAccount(),
+		delegationRecord: x.delegationRecord.asAccount(),
+		delegationMetadata: x.delegationMetadata.asAccount(),
+		systemProgram: x.systemProgram.asAccount(),
 	};
-	return delegated(request, x.delegationProgram, worldSeeds(), world.bump, config);
+	const _programs = try delegationPrograms(request, x.delegationProgram);
+	const _address = try delegatedAt(request, programAddress(["world", [world.bump]]));
+	return delegate(request, ["world"], world.bump, try validatorOf(config));
 }
 
 export function processUndelegation(): Result<uint64, ProgramError> {
 	const data = instructionData();
 	if (!isUndelegateCallback(data)) { return Result.err(ProgramError.instructionFallbackNotFound()); }
 	const x = try accounts<UndelegationAccounts>();
-	return undelegate(x.delegated as Account, x.buffer, x.payer as Account, programId(), data);
+	return undelegate(x.delegated.asAccount(), x.buffer, x.payer.asAccount(), programId(), data);
 }
 
 export function place(): Result<uint64, ProgramError> {
@@ -265,11 +268,11 @@ export function place(): Result<uint64, ProgramError> {
 	const config = try configIn(x.config);
 	if (x.authority.key() != config.authority) { return Result.err(hibernalError(HibernalError.NotAuthority)); }
 	const world = x.world.data();
-	const _world = try pdaWithBump(x.world, worldSeeds(), world.bump);
+	const _world = try pdaWithBump(x.world, ["world"], world.bump);
 	const block = x.block.data();
-	const _block = try pdaWithBump(x.block, blockSeeds(block.id), block.bump);
+	const _block = try pdaWithBump(x.block, ["block", leBytes(block.id as uint64)], block.bump);
 	const record = x.pet.data();
-	const _pet = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
+	const _pet = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	if (record.pet.blockId != NO_BLOCK) { return Result.err(hibernalError(HibernalError.AlreadyPlaced)); }
 	if (world.resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
 	let seat = -1;

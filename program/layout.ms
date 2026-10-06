@@ -1,4 +1,4 @@
-import { Discriminator, ProgramError, Pubkey, Seeds, accountDiscriminator } from "std/solana";
+import { Discriminator, ProgramError, Pubkey, accountDiscriminator } from "std/solana";
 import { EPOCH_SECONDS, FightRecord, GlobalConfig, Listing, Pet } from "../rules/index";
 
 export const SEATS: int32 = 10;
@@ -258,42 +258,6 @@ export converter hibernalError(error: HibernalError): ProgramError {
 	return ProgramError.userError(error as uint32);
 }
 
-export function configSeeds(): Seeds {
-	return Seeds.empty(1).addText("config");
-}
-
-export function policySeeds(): Seeds {
-	return Seeds.empty(1).addText("policy");
-}
-
-export function worldSeeds(): Seeds {
-	return Seeds.empty(1).addText("world");
-}
-
-export function mintSeeds(): Seeds {
-	return Seeds.empty(1).addText("mint");
-}
-
-export function revenueSeeds(): Seeds {
-	return Seeds.empty(1).addText("revenue");
-}
-
-export function resortSeeds(): Seeds {
-	return Seeds.empty(1).addText("resort");
-}
-
-export function vrfPayerSeeds(): Seeds {
-	return Seeds.empty(1).addText("vrf-payer");
-}
-
-export function blockSeeds(id: uint32): Seeds {
-	return Seeds.empty(2).addText("block").addU64(id as uint64);
-}
-
-export function petSeeds(mint: Pubkey): Seeds {
-	return Seeds.empty(2).addText("pet").addPubkey(mint);
-}
-
 export enum ShopItem {
 	Food,
 	Growth,
@@ -313,14 +277,6 @@ export struct Ledger {
 
 export function discriminator(this typeof Ledger): Discriminator {
 	return @comptime { return accountDiscriminator("Ledger"); };
-}
-
-export function ledgerSeeds(mint: Pubkey): Seeds {
-	return Seeds.empty(2).addText("ledger").addPubkey(mint);
-}
-
-export function paidSeeds(mint: Pubkey): Seeds {
-	return Seeds.empty(2).addText("paid").addPubkey(mint);
 }
 
 export struct WithdrawRevenueArgs {

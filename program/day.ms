@@ -1,31 +1,31 @@
 @include("runtime/solana/solana.h");
 import {
 	Account,
-	AccountMeta,
 	Bytes,
 	Clock,
-	borshBuffer,
 	Discriminator,
 	Mutable,
 	Owned,
 	ProgramError,
 	Pubkey,
-	Seeds,
+	SLOTHASHES_ID,
+	SYSTEM_PROGRAM_ID,
 	Signer,
 	Writable,
 	account,
 	accountCount,
 	clock,
+	findProgramAddress,
 	instructionDiscriminator,
 	mutable,
 	pdaWithBump,
-	programId,
-	readArgs,
-	selectInstruction,
+	programAddress,
+	putU64,
+	signed,
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
-import { RandomnessRequest, requestRandomness, verifyVrfCallback, vrfProgram } from "std/solana/vrf";
-import { magicProgram } from "std/solana/magicblock";
+import { RandomnessRequest, VRF_PROGRAM_ID, requestRandomness, verifyVrfCallback } from "std/solana/vrf";
+import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import {
 	ACTS_PER_EPOCH,
 	ALLOCATE_HOLD,
@@ -88,8 +88,6 @@ import {
 	World,
 	dayOf,
 	hibernalError,
-	policySeeds,
-	vrfPayerSeeds,
 } from "./layout";
 import {
 	CrankAccounts,
@@ -603,22 +601,18 @@ function seedRequested(source: SeedSource, block: Ptr<Block>, now: Clock): Resul
 	block.pendingRequest = block.requests;
 	block.requestedAt = now.unixTimestamp;
 	block.phase = Phase.Seeding as uint8;
-	const callbackAccounts: AccountMeta[1] = [AccountMeta.writableKey(source.block.key())];
-	const argumentBytes = try borshBuffer(8).u64(block.pendingRequest).written();
+	let argumentBytes: uint8[8] = [];
+	const _written = putU64(argumentBytes, 0, block.pendingRequest);
 	const request: RandomnessRequest = {
-		payer: source.payer as Account,
+		payer: source.payer.asAccount(),
 		programIdentity: source.programIdentity,
 		oracleQueue: source.oracleQueue,
 		systemProgram: source.systemProgram,
 		slotHashes: source.slotHashes,
 	};
-	return requestRandomness(
-		request,
-		callerSeedOf(block),
-		seededDiscriminator(),
-		callbackAccounts,
-		argumentBytes,
-		vrfPayerSeeds().withBump(bump),
+	return signed(
+		requestRandomness(request, callerSeedOf(block), seededDiscriminator(), source.block, argumentBytes),
+		["vrf-payer", [bump]],
 	);
 }
 
@@ -654,11 +648,11 @@ struct Schedule {
 }
 
 function policyKey(config: Readonly<Ptr<Config>>): Result<Pubkey, ProgramError> {
-	return policySeeds().withBump(config.policyBump).createProgramAddress(programId());
+	return programAddress(["policy", [config.policyBump]]);
 }
 
 function identityKey(): Result<Pubkey, ProgramError> {
-	const found = try Seeds.empty(1).addText("identity").findProgramAddress(programId());
+	const found = try findProgramAddress(["identity"]);
 	return Result.ok(found.key);
 }
 
@@ -668,7 +662,7 @@ function scheduled(schedule: Schedule, block: Ptr<Block>, kind: StepKind, dueSlo
 	const _checked = try checkedCrankAccounts(schedule.cranks, expected);
 	const after = try crankAddress(block.id, seq + 1);
 	const identity = try identityKey();
-	const signer = vrfPayerSeeds().withBump(schedule.payer.data().bump);
+	const bump = schedule.payer.data().bump;
 	const seed = crankSeed(block.id, seq);
 	block.crankSeq = seq + 1;
 	block.dueSlot = dueSlot;
@@ -680,14 +674,17 @@ function scheduled(schedule: Schedule, block: Ptr<Block>, kind: StepKind, dueSlo
 		metas[3] = { key: schedule.blockKey, writable: true };
 		metas[4] = { key: identity, writable: false };
 		metas[5] = { key: schedule.config.vrfQueue, writable: true };
-		metas[6] = { key: Pubkey.slotHashesSysvar(), writable: false };
-		metas[7] = { key: Pubkey.systemProgram(), writable: false };
-		metas[8] = { key: Pubkey.vrfProgram(), writable: false };
+		metas[6] = { key: SLOTHASHES_ID, writable: false };
+		metas[7] = { key: SYSTEM_PROGRAM_ID, writable: false };
+		metas[8] = { key: VRF_PROGRAM_ID, writable: false };
 		metas[9] = { key: after, writable: true };
 		metas[10] = { key: Pubkey.magicVault(), writable: true };
-		metas[11] = { key: Pubkey.magicProgram(), writable: false };
+		metas[11] = { key: MAGIC_PROGRAM_ID, writable: false };
 		metas[12] = { key: Pubkey.hydraProgram(), writable: false };
-		return createCrank(schedule.cranks, signer, seed, dueSlot, metas, roundStartInstruction().word(), seq);
+		return signed(
+			createCrank(schedule.cranks, seed, dueSlot, metas, roundStartInstruction().word(), seq),
+			["vrf-payer", [bump]],
+		);
 	}
 	let metas: ScheduledMeta[24] = [];
 	metas[0] = { key: schedule.cranks.sponsor.key(), writable: true };
@@ -697,20 +694,23 @@ function scheduled(schedule: Schedule, block: Ptr<Block>, kind: StepKind, dueSlo
 	metas[4] = { key: schedule.policyKey, writable: false };
 	metas[5] = { key: identity, writable: false };
 	metas[6] = { key: schedule.config.vrfQueue, writable: true };
-	metas[7] = { key: Pubkey.slotHashesSysvar(), writable: false };
-	metas[8] = { key: Pubkey.systemProgram(), writable: false };
-	metas[9] = { key: Pubkey.vrfProgram(), writable: false };
+	metas[7] = { key: SLOTHASHES_ID, writable: false };
+	metas[8] = { key: SYSTEM_PROGRAM_ID, writable: false };
+	metas[9] = { key: VRF_PROGRAM_ID, writable: false };
 	metas[10] = { key: after, writable: true };
 	metas[11] = { key: Pubkey.magicVault(), writable: true };
-	metas[12] = { key: Pubkey.magicProgram(), writable: false };
+	metas[12] = { key: MAGIC_PROGRAM_ID, writable: false };
 	metas[13] = { key: Pubkey.hydraProgram(), writable: false };
 	for (let seat = 0; seat < SEATS; seat++) {
 		const member = block.members[seat];
 		metas[TURN_PET_ACCOUNT + seat] = emptySeat(member)
-			? { key: Pubkey.systemProgram(), writable: false }
+			? { key: SYSTEM_PROGRAM_ID, writable: false }
 			: { key: member, writable: true };
 	}
-	return createCrank(schedule.cranks, signer, seed, dueSlot, metas, turnInstruction().word(), seq);
+	return signed(
+		createCrank(schedule.cranks, seed, dueSlot, metas, turnInstruction().word(), seq),
+		["vrf-payer", [bump]],
+	);
 }
 
 function roundStartScheduled(schedule: Schedule, block: Ptr<Block>, now: Clock): Result<uint64, ProgramError> {
@@ -727,7 +727,7 @@ function freshStep(block: Ptr<Block>, seq: uint64, now: Clock): Result<uint64, P
 export function roundStart(): Result<uint64, ProgramError> {
 	const x = try accounts<RoundStartAccounts>();
 	const a = try args<StepArgs>();
-	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	const _payer = try pdaWithBump(x.payer, ["vrf-payer"], x.payer.data().bump);
 	const block = x.block.data();
 	const now = clock();
 	const _fresh = try freshStep(block, a.seq, now);
@@ -735,14 +735,14 @@ export function roundStart(): Result<uint64, ProgramError> {
 	const schedule: Schedule = {
 		payer: x.payer,
 		config: config,
-		configKey: (x.config as Account).key(),
-		worldKey: (x.world as Account).key(),
-		blockKey: (x.block as Account).key(),
+		configKey: x.config.key(),
+		worldKey: x.world.key(),
+		blockKey: x.block.key(),
 		policyKey: try policyKey(config),
 		cranks: {
-			sponsor: x.payer as Account,
-			crank: x.nextCrank as Account,
-			magicVault: x.magicVault as Account,
+			sponsor: x.payer.asAccount(),
+			crank: x.nextCrank.asAccount(),
+			magicVault: x.magicVault.asAccount(),
 			magicProgram: x.magicProgram,
 			hydraProgram: x.hydraProgram,
 		},
@@ -754,9 +754,9 @@ export function roundStart(): Result<uint64, ProgramError> {
 	const source: SeedSource = {
 		payer: x.payer,
 		config: config,
-		block: x.block as Account,
+		block: x.block.asAccount(),
 		programIdentity: x.programIdentity,
-		oracleQueue: x.oracleQueue as Account,
+		oracleQueue: x.oracleQueue.asAccount(),
 		slotHashes: x.slotHashes,
 		systemProgram: x.systemProgram,
 	};
@@ -813,7 +813,7 @@ function actingTurn(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): R
 export function turn(): Result<uint64, ProgramError> {
 	const x = try accounts<TurnAccounts>();
 	const a = try args<StepArgs>();
-	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	const _payer = try pdaWithBump(x.payer, ["vrf-payer"], x.payer.data().bump);
 	const block = x.block.data();
 	const now = clock();
 	const _fresh = try freshStep(block, a.seq, now);
@@ -821,14 +821,14 @@ export function turn(): Result<uint64, ProgramError> {
 	const schedule: Schedule = {
 		payer: x.payer,
 		config: config,
-		configKey: (x.config as Account).key(),
-		worldKey: (x.world as Account).key(),
-		blockKey: (x.block as Account).key(),
-		policyKey: (x.policy as Account).key(),
+		configKey: x.config.key(),
+		worldKey: x.world.key(),
+		blockKey: x.block.key(),
+		policyKey: x.policy.key(),
 		cranks: {
-			sponsor: x.payer as Account,
-			crank: x.nextCrank as Account,
-			magicVault: x.magicVault as Account,
+			sponsor: x.payer.asAccount(),
+			crank: x.nextCrank.asAccount(),
+			magicVault: x.magicVault.asAccount(),
 			magicProgram: x.magicProgram,
 			hydraProgram: x.hydraProgram,
 		},
@@ -838,9 +838,9 @@ export function turn(): Result<uint64, ProgramError> {
 			const source: SeedSource = {
 				payer: x.payer,
 				config: config,
-				block: x.block as Account,
+				block: x.block.asAccount(),
 				programIdentity: x.programIdentity,
-				oracleQueue: x.oracleQueue as Account,
+				oracleQueue: x.oracleQueue.asAccount(),
 				slotHashes: x.slotHashes,
 				systemProgram: x.systemProgram,
 			};
@@ -894,7 +894,7 @@ export function startBlock(): Result<uint64, ProgramError> {
 	const x = try accounts<StartBlockAccounts>();
 	const config = x.config.data();
 	if (x.authority.key() != config.authority) { return Result.err(hibernalError(HibernalError.NotAuthority)); }
-	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
+	const _payer = try pdaWithBump(x.payer, ["vrf-payer"], x.payer.data().bump);
 	const block = x.block.data();
 	const now = clock();
 	if (block.started != 0 && now.slot <= block.dueSlot + RESUME_GRACE_SLOTS) {
@@ -904,14 +904,14 @@ export function startBlock(): Result<uint64, ProgramError> {
 	const schedule: Schedule = {
 		payer: x.payer,
 		config: config,
-		configKey: (x.config as Account).key(),
-		worldKey: (x.world as Account).key(),
-		blockKey: (x.block as Account).key(),
+		configKey: x.config.key(),
+		worldKey: x.world.key(),
+		blockKey: x.block.key(),
 		policyKey: try policyKey(config),
 		cranks: {
-			sponsor: x.payer as Account,
-			crank: x.crank as Account,
-			magicVault: x.magicVault as Account,
+			sponsor: x.payer.asAccount(),
+			crank: x.crank.asAccount(),
+			magicVault: x.magicVault.asAccount(),
 			magicProgram: x.magicProgram,
 			hydraProgram: x.hydraProgram,
 		},
@@ -925,14 +925,14 @@ export function startBlock(): Result<uint64, ProgramError> {
 export function sweep(): Result<uint64, ProgramError> {
 	const x = try accounts<SweepAccounts>();
 	const bump = x.payer.data().bump;
-	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), bump);
-	const sponsor = x.payer as Account;
+	const _payer = try pdaWithBump(x.payer, ["vrf-payer"], bump);
+	const sponsor = x.payer.asAccount();
 	let cancelled: uint64 = 0;
 	for (let index = SWEEP_CRANK_ACCOUNT; index < accountCount(); index++) {
 		const crank = try account(index);
 		const spent = try spentCrankOf(crank, sponsor.key());
 		if (!spent) { continue; }
-		const _cancelled = try cancelCrank(sponsor, vrfPayerSeeds().withBump(bump), crank, x.magicVault as Account, x.magicProgram);
+		const _cancelled = try signed(cancelCrank(sponsor, crank, x.magicVault.asAccount(), x.magicProgram), ["vrf-payer", [bump]]);
 		cancelled = cancelled + 1;
 	}
 	return Result.ok(cancelled);

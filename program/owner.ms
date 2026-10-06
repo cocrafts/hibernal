@@ -5,16 +5,14 @@ import {
 	Owned,
 	ProgramError,
 	Pubkey,
-	Seeds,
 	Signer,
 	accountDiscriminator,
 	clock,
 	programId,
 	pubkeyOf,
 	expectHasOne,
+	findProgramAddressOf,
 	pdaWithBump,
-	readArgs,
-	selectInstruction,
 } from "std/solana";
 import { accounts } from "std/solana/macro";
 import {
@@ -28,7 +26,6 @@ import {
 	World,
 	gameSecondsAt,
 	hibernalError,
-	petSeeds,
 } from "./layout";
 
 export const SESSION_TOKEN_SIZE: uint64 = 144;
@@ -75,7 +72,7 @@ export function ownerFailure(error: OwnerError): ProgramError {
 function ownedPet(owner: Signer, pet: Mutable<PetAccount>): Result<Ptr<PetAccount>, ProgramError> {
 	const record = pet.data();
 	const _owner = try expectHasOne(record.owner, owner.key());
-	const _seeds = try pdaWithBump(pet, petSeeds(record.mint), record.bump);
+	const _seeds = try pdaWithBump(pet, ["pet", record.mint], record.bump);
 	return Result.ok(record);
 }
 
@@ -93,12 +90,8 @@ function sessionOf(session: Account, signer: Pubkey, owner: Pubkey, now: int64):
 		return Result.err(hibernalError(HibernalError.NotTheOwner));
 	}
 	if (now >= validUntil as int64) { return Result.err(hibernalError(HibernalError.SessionExpired)); }
-	const found = try Seeds.empty(4)
-		.addText("session_token_v2")
-		.addPubkey(programId())
-		.addPubkey(signer)
-		.addPubkey(owner)
-		.findProgramAddress(Pubkey.sessionKeysProgram());
+	const program = programId();
+	const found = try findProgramAddressOf(Pubkey.sessionKeysProgram(), ["session_token_v2", program, signer, owner]);
 	if (found.key != session.key()) { return Result.err(hibernalError(HibernalError.NotTheOwner)); }
 	return Result.ok(0);
 }
@@ -106,7 +99,7 @@ function sessionOf(session: Account, signer: Pubkey, owner: Pubkey, now: int64):
 export function engage(): Result<uint64, ProgramError> {
 	const x = try accounts<EngageAccounts>();
 	const record = x.pet.data();
-	const _seeds = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
+	const _seeds = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	const unix = clock().unixTimestamp;
 	if (x.signer.key() != record.owner) {
 		const _session = try sessionOf(x.session, x.signer.key(), record.owner, unix);

@@ -8,6 +8,7 @@ import {
 	Program,
 	ProgramError,
 	Pubkey,
+	SYSTEM_PROGRAM_ID,
 	System,
 	Writable,
 	WritableSigner,
@@ -16,9 +17,7 @@ import {
 	expectHasOne,
 	mutable,
 	pdaWithBump,
-	programId,
-	readArgs,
-	selectInstruction,
+	programAddress,
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
 import { Mint, TokenAccount, transferTokens } from "std/solana/token";
@@ -31,10 +30,7 @@ import {
 	OWNER_ITEM_KINDS,
 	PetAccount,
 	ShopItem,
-	configSeeds,
 	hibernalError,
-	ledgerSeeds,
-	petSeeds,
 } from "./layout";
 
 export const FOOD_PRICE_SKR: uint64[3] = [1, 2, 3];
@@ -113,7 +109,7 @@ function wholePrice(item: ShopItem, tier: uint8): Result<uint64, ProgramError> {
 function baseUnits(whole: uint64, decimals: uint8): Result<uint64, ProgramError> {
 	let amount = whole;
 	for (let step: uint8 = 0; step < decimals; step++) {
-		if (amount > 0xffffffffffffffff / 10) { return Result.err(ProgramError.arithmeticOverflow()); }
+		if (amount > (0xffffffffffffffff as uint64) / 10) { return Result.err(ProgramError.arithmeticOverflow()); }
 		amount = amount * 10;
 	}
 	return Result.ok(amount);
@@ -121,21 +117,21 @@ function baseUnits(whole: uint64, decimals: uint8): Result<uint64, ProgramError>
 
 function configIn(config: Owned<Config>): Result<Readonly<Ptr<Config>>, ProgramError> {
 	const stored = config.data();
-	const derived = configSeeds().withBump(stored.bump).createProgramAddress(programId());
+	const derived = programAddress(["config", [stored.bump]]);
 	if (!derived.ok || derived.value != config.key()) { return Result.err(ProgramError.constraintSeeds()); }
 	return Result.ok(stored);
 }
 
 function ledgerOf(x: BuyAccounts, mint: Pubkey): Result<Ptr<Ledger>, ProgramError> {
-	if ((x.ledger as Account).owner() == Pubkey.systemProgram()) {
-		const made = try createPda<Ledger>(x.owner, x.ledger, ledgerSeeds(mint));
+	if (x.ledger.asAccount().owner() == SYSTEM_PROGRAM_ID) {
+		const made = try createPda<Ledger>(x.owner, x.ledger, ["ledger", mint]);
 		const created = made.account.data();
 		created.mint = mint;
 		created.bump = made.bump;
 		return Result.ok(created);
 	}
 	const ledger = try mutable<Ledger>(LEDGER_INDEX);
-	const _seeds = try pdaWithBump(ledger, ledgerSeeds(mint), ledger.data().bump);
+	const _seeds = try pdaWithBump(ledger, ["ledger", mint], ledger.data().bump);
 	const _mint = try expectAddress(ledger.data().mint, mint);
 	return Result.ok(ledger.data());
 }
@@ -148,14 +144,14 @@ export function buy(): Result<uint64, ProgramError> {
 	const x = try accounts<BuyAccounts>();
 	const config = try configIn(x.config);
 	const record = x.pet.data();
-	const _petAddress = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
+	const _petAddress = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	const _owner = try expectHasOne(record.owner, x.owner.key());
 	const _skrMint = try expectAddress(x.skrMint.key(), config.skrMint);
 	const _treasury = try expectAddress(x.treasury.key(), config.treasury);
 	const ledger = try ledgerOf(x, record.mint);
 	const decimals = (try x.skrMint.read()).decimals;
 	const price = try baseUnits(whole, decimals);
-	const _paid = try transferTokens(x.source, x.treasury, x.skrMint, x.owner.asSigner(), price);
+	const _paid = try transferTokens(x.source, x.treasury, x.skrMint, x.owner.asAccount(), price);
 	if (item == ShopItem.Skin) {
 		ledger.skin = a.tier + 1;
 		return Result.ok(price);
@@ -180,9 +176,9 @@ function loadedKind(record: Ptr<PetAccount>, ledger: Readonly<Ptr<Ledger>>, inde
 export function load(): Result<uint64, ProgramError> {
 	const x = try accounts<LoadAccounts>();
 	const record = x.pet.data();
-	const _petAddress = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
+	const _petAddress = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	const ledger = x.ledger.data();
-	const derived = ledgerSeeds(record.mint).withBump(ledger.bump).createProgramAddress(programId());
+	const derived = programAddress(["ledger", record.mint, [ledger.bump]]);
 	if (!derived.ok || derived.value != x.ledger.key()) { return Result.err(ProgramError.constraintSeeds()); }
 	let moved = loadedKind(record, ledger, INSURANCE_KIND);
 	for (let index = 0; index < INSURANCE_KIND; index++) {

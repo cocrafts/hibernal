@@ -1,14 +1,20 @@
 import {
 	Account,
 	Clock,
-	Instruction,
+	InstructionAccount,
 	ProgramError,
 	Pubkey,
-	Seeds,
+	findProgramAddressOf,
+	invokeSigned,
 	programId,
 	pubkeyOf,
+	putPubkey,
+	putU32,
+	putU64,
+	putU8,
 } from "std/solana";
-import { magicProgram } from "std/solana/magicblock";
+import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
+import { SignerSeeds } from "std/solana/seed";
 
 const HYDRA_CREATE: uint8 = 0;
 const HYDRA_CANCEL: uint8 = 2;
@@ -56,10 +62,8 @@ export function crankSeed(blockId: uint32, seq: uint64): Pubkey {
 }
 
 export function crankAddress(blockId: uint32, seq: uint64): Result<Pubkey, ProgramError> {
-	const found = try Seeds.empty(2)
-		.addText("crank")
-		.addPubkey(crankSeed(blockId, seq))
-		.findProgramAddress(Pubkey.hydraProgram());
+	const seed = crankSeed(blockId, seq);
+	const found = try findProgramAddressOf(Pubkey.hydraProgram(), ["crank", seed]);
 	return Result.ok(found.key);
 }
 
@@ -71,7 +75,7 @@ export function dueSlotFor(now: Clock, targetUnix: int64, slotMillis: uint64): u
 
 export function checkedCrankAccounts(accounts: CrankAccounts, expected: Pubkey): Result<uint64, ProgramError> {
 	if (accounts.hydraProgram.key() != Pubkey.hydraProgram()) { return Result.err(ProgramError.incorrectProgramId()); }
-	if (accounts.magicProgram.key() != Pubkey.magicProgram()) { return Result.err(ProgramError.incorrectProgramId()); }
+	if (accounts.magicProgram.key() != MAGIC_PROGRAM_ID) { return Result.err(ProgramError.incorrectProgramId()); }
 	if (accounts.magicVault.key() != Pubkey.magicVault()) { return Result.err(ProgramError.invalidArgument()); }
 	if (accounts.crank.key() != expected) { return Result.err(ProgramError.invalidSeeds()); }
 	return Result.ok(0);
@@ -79,42 +83,47 @@ export function checkedCrankAccounts(accounts: CrankAccounts, expected: Pubkey):
 
 export function createCrank(
 	accounts: CrankAccounts,
-	sponsorSigner: Seeds,
 	seed: Pubkey,
 	dueSlot: uint64,
 	metas: Span<ScheduledMeta>,
 	discriminator: uint64,
 	seq: uint64,
+	signers: Readonly<Span<SignerSeeds>> = [],
 ): Result<uint64, ProgramError> {
-	const metaCount = metas.length as uint64;
-	const create = Instruction.forProgram(
-		Pubkey.hydraProgram(),
-		4,
-		CREATE_HEADER_BYTES + ROLE_AND_KEY_BYTES * metaCount + 16,
-	);
-	create.addWritableSigner(accounts.sponsor);
-	create.addWritable(accounts.crank);
-	create.addWritable(accounts.magicVault);
-	create.addReadonly(accounts.magicProgram);
-	create.appendU8(HYDRA_CREATE);
-	create.appendPubkey(seed);
-	create.appendPubkey(accounts.sponsor.key());
-	create.appendU64(dueSlot);
-	create.appendU64(ONE_SHOT_INTERVAL_SLOTS);
-	create.appendU64(1);
-	create.appendU64(0);
-	create.appendU32(CRANK_COMPUTE_UNITS);
-	create.appendU8(metaCount as uint8);
-	create.appendU8(16);
-	create.appendU8(0);
-	create.appendPubkey(programId());
-	for (const meta of metas) {
-		create.appendU8(meta.writable ? WRITABLE_ROLE : READONLY_ROLE);
-		create.appendPubkey(meta.key);
+	let storage: uint8[944] = [];
+	if (CREATE_HEADER_BYTES + ROLE_AND_KEY_BYTES * (metas.length as uint64) + 16 > storage.length as uint64) {
+		return Result.err(ProgramError.invalidArgument());
 	}
-	create.appendU64(discriminator);
-	create.appendU64(seq);
-	return create.invokeSigned(sponsorSigner);
+	let at = putU8(storage, 0, HYDRA_CREATE);
+	at = putPubkey(storage, at, seed);
+	at = putPubkey(storage, at, accounts.sponsor.key());
+	at = putU64(storage, at, dueSlot);
+	at = putU64(storage, at, ONE_SHOT_INTERVAL_SLOTS);
+	at = putU64(storage, at, 1);
+	at = putU64(storage, at, 0);
+	at = putU32(storage, at, CRANK_COMPUTE_UNITS);
+	at = putU8(storage, at, metas.length as uint8);
+	at = putU8(storage, at, 16);
+	at = putU8(storage, at, 0);
+	at = putPubkey(storage, at, programId());
+	for (const meta of metas) {
+		at = putU8(storage, at, meta.writable ? WRITABLE_ROLE : READONLY_ROLE);
+		at = putPubkey(storage, at, meta.key);
+	}
+	at = putU64(storage, at, discriminator);
+	at = putU64(storage, at, seq);
+	return invokeSigned(
+		Pubkey.hydraProgram(),
+		[
+			InstructionAccount.writableSigner(accounts.sponsor),
+			InstructionAccount.writable(accounts.crank),
+			InstructionAccount.writable(accounts.magicVault),
+			InstructionAccount.readonly(accounts.magicProgram),
+		],
+		storage,
+		at,
+		signers,
+	);
 }
 
 export function spentCrankOf(crank: Account, sponsor: Pubkey): Result<boolean, ProgramError> {
@@ -127,17 +136,24 @@ export function spentCrankOf(crank: Account, sponsor: Pubkey): Result<boolean, P
 
 export function cancelCrank(
 	sponsor: Account,
-	sponsorSigner: Seeds,
 	crank: Account,
 	magicVault: Account,
 	magicProgram: Account,
+	signers: Readonly<Span<SignerSeeds>> = [],
 ): Result<uint64, ProgramError> {
-	const cancel = Instruction.forProgram(Pubkey.hydraProgram(), 5, 1);
-	cancel.addWritableSigner(sponsor);
-	cancel.addWritable(crank);
-	cancel.addWritable(sponsor);
-	cancel.addWritable(magicVault);
-	cancel.addReadonly(magicProgram);
-	cancel.appendU8(HYDRA_CANCEL);
-	return cancel.invokeSigned(sponsorSigner);
+	let storage: uint8[1] = [];
+	const length = putU8(storage, 0, HYDRA_CANCEL);
+	return invokeSigned(
+		Pubkey.hydraProgram(),
+		[
+			InstructionAccount.writableSigner(sponsor),
+			InstructionAccount.writable(crank),
+			InstructionAccount.writable(sponsor),
+			InstructionAccount.writable(magicVault),
+			InstructionAccount.readonly(magicProgram),
+		],
+		storage,
+		length,
+		signers,
+	);
 }

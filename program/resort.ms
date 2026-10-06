@@ -3,20 +3,20 @@ import {
 	Mutable,
 	Owned,
 	Program,
+	DELEGATION_PROGRAM_ID,
 	ProgramError,
-	Pubkey,
 	Signer,
 	System,
 	Writable,
 	WritableSigner,
 	accountCount,
 	createPda,
+	findProgramAddress,
 	mutable,
 	programId,
-	readArgs,
 } from "std/solana";
 import { accounts, args } from "std/solana/macro";
-import { DelegationAccounts, DelegationConfig, delegate, delegationProgram } from "std/solana/magicblock";
+import { DelegationAccounts, DelegationConfig, delegate } from "std/solana/magicblock";
 import { BlockSlot, Pet, StrengthMeasure, boughtBack, movedTo, strengthOf } from "../rules/index";
 import {
 	Block,
@@ -32,7 +32,6 @@ import {
 	SEATS,
 	World,
 	hibernalError,
-	resortSeeds,
 } from "./layout";
 
 const CLEARED_MEMBERS_FROM: int32 = 5;
@@ -224,28 +223,28 @@ export function delegateResort(): Result<uint64, ProgramError> {
 	const x = try accounts<DelegateResortAccounts>();
 	if (x.config.data().authority != x.authority.key()) { return failed(HibernalError.NotAuthority); }
 	if (x.ownerProgram.key() != programId()) { return Result.err(ProgramError.incorrectProgramId()); }
-	if (x.delegationProgram.key() != Pubkey.delegationProgram()) { return Result.err(ProgramError.incorrectProgramId()); }
-	const holder = x.resort as Account;
+	if (x.delegationProgram.key() != DELEGATION_PROGRAM_ID) { return Result.err(ProgramError.incorrectProgramId()); }
+	const holder = x.resort.asAccount();
 	let bump: uint8 = 0;
 	if (holder.lamports() == 0) {
-		const made = try createPda<Resort>(x.authority, x.resort, resortSeeds());
+		const made = try createPda<Resort>(x.authority, x.resort, ["resort"]);
 		made.account.data().bump = made.bump;
 		bump = made.bump;
 	} else {
-		const found = try resortSeeds().findProgramAddress(programId());
+		const found = try findProgramAddress(["resort"]);
 		if (found.key != holder.key()) { return Result.err(ProgramError.constraintSeeds()); }
 		bump = found.bump;
 	}
 	const validator = x.config.data().validator;
 	const config = validator.isZero() ? DelegationConfig.anyValidator() : DelegationConfig.onValidator(validator);
 	const delegation: DelegationAccounts = {
-		payer: x.authority as Account,
+		payer: x.authority.asAccount(),
 		delegated: holder,
 		ownerProgram: x.ownerProgram,
-		buffer: x.buffer as Account,
-		delegationRecord: x.delegationRecord as Account,
-		delegationMetadata: x.delegationMetadata as Account,
-		systemProgram: x.systemProgram as Account,
+		buffer: x.buffer.asAccount(),
+		delegationRecord: x.delegationRecord.asAccount(),
+		delegationMetadata: x.delegationMetadata.asAccount(),
+		systemProgram: x.systemProgram.asAccount(),
 	};
-	return delegate(delegation, resortSeeds(), bump, config);
+	return delegate(delegation, ["resort"], bump, config);
 }

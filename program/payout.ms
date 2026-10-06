@@ -1,13 +1,15 @@
 import {
 	Account,
 	Delegated,
+	DELEGATION_PROGRAM_ID,
 	ExternalMutable,
-	Instruction,
+	InstructionAccount,
 	Mutable,
 	Owned,
 	Program,
 	ProgramError,
 	Pubkey,
+	SYSTEM_PROGRAM_ID,
 	Signer,
 	System,
 	Writable,
@@ -17,15 +19,16 @@ import {
 	delegated,
 	expectAddress,
 	expectHasOne,
+	invoke,
 	mutable,
 	owned,
 	pdaWithBump,
-	programId,
-	readArgs,
-	selectInstruction,
+	programAddress,
+	putU32,
+	signed,
 } from "std/solana";
 import { accounts } from "std/solana/macro";
-import { delegationProgram, magicContext, magicProgram } from "std/solana/magicblock";
+import { MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import { Mint, TokenAccount, expectTokenMint, expectTokenOwner, mintTokens } from "std/solana/token";
 import {
 	Config,
@@ -35,10 +38,6 @@ import {
 	VrfPayer,
 	dayOf,
 	hibernalError,
-	mintSeeds,
-	paidSeeds,
-	petSeeds,
-	vrfPayerSeeds,
 } from "./layout";
 import { EMISSION_CAP } from "../rules/index";
 
@@ -57,13 +56,23 @@ export struct CommitPetAccounts {
 const SCHEDULE_COMMIT: uint32 = 1;
 
 function paidCommit(payer: Mutable<VrfPayer>, committed: Account, context: Account, feeVault: Account): Result<uint64, ProgramError> {
-	const instruction = Instruction.forProgram(Pubkey.magicProgram(), 4, 4);
-	instruction.addWritableSigner(payer as Account);
-	instruction.addWritable(context);
-	instruction.addWritable(feeVault);
-	instruction.addAccount(committed, committed.isWritable(), false);
-	instruction.appendU32(SCHEDULE_COMMIT);
-	return instruction.invokeSigned(vrfPayerSeeds().withBump(payer.data().bump));
+	let storage: uint8[4] = [];
+	const length = putU32(storage, 0, SCHEDULE_COMMIT);
+	const committedAccount = committed.isWritable() ? InstructionAccount.writable(committed) : InstructionAccount.readonly(committed);
+	return signed(
+		invoke(
+			MAGIC_PROGRAM_ID,
+			[
+				InstructionAccount.writableSigner(payer.asAccount()),
+				InstructionAccount.writable(context),
+				InstructionAccount.writable(feeVault),
+				committedAccount,
+			],
+			storage,
+			length,
+		),
+		["vrf-payer", [payer.data().bump]],
+	);
 }
 
 export struct ClaimRewardAccounts {
@@ -81,11 +90,11 @@ export function commitPet(): Result<uint64, ProgramError> {
 	const x = try accounts<CommitPetAccounts>();
 	const record = x.pet.data();
 	const _owner = try expectHasOne(record.owner, x.owner.key());
-	const _seeds = try pdaWithBump(x.pet, petSeeds(record.mint), record.bump);
-	const _context = try expectAddress((x.magicContext as Account).key(), Pubkey.magicContext());
-	const _program = try expectAddress(x.magicProgram.key(), Pubkey.magicProgram());
-	const _payer = try pdaWithBump(x.payer, vrfPayerSeeds(), x.payer.data().bump);
-	return paidCommit(x.payer, x.pet as Account, x.magicContext as Account, x.magicFeeVault as Account);
+	const _seeds = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
+	const _context = try expectAddress(x.magicContext.key(), MAGIC_CONTEXT_ID);
+	const _program = try expectAddress(x.magicProgram.key(), MAGIC_PROGRAM_ID);
+	const _payer = try pdaWithBump(x.payer, ["vrf-payer"], x.payer.data().bump);
+	return paidCommit(x.payer, x.pet.asAccount(), x.magicContext.asAccount(), x.magicFeeVault.asAccount());
 }
 
 struct Claimant {
@@ -99,29 +108,29 @@ function claimantOf(record: Readonly<Ptr<PetAccount>>): Claimant {
 }
 
 function claimant(holder: Account): Result<Claimant, ProgramError> {
-	if (holder.owner() == Pubkey.delegationProgram()) {
+	if (holder.owner() == DELEGATION_PROGRAM_ID) {
 		const pet = try delegated<PetAccount>(PET_INDEX);
 		const record = pet.data();
-		const _seeds = try pdaWithBump(pet, petSeeds(record.mint), record.bump);
+		const _seeds = try pdaWithBump(pet, ["pet", record.mint], record.bump);
 		return Result.ok(claimantOf(record));
 	}
 	const pet = try owned<PetAccount>(PET_INDEX);
 	const record = pet.data();
-	const derived = try petSeeds(record.mint).withBump(record.bump).createProgramAddress(programId());
+	const derived = try programAddress(["pet", record.mint, [record.bump]]);
 	if (derived != pet.key()) { return Result.err(ProgramError.constraintSeeds()); }
 	return Result.ok(claimantOf(record));
 }
 
 function paidLedger(x: ClaimRewardAccounts, mint: Pubkey): Result<Ptr<Paid>, ProgramError> {
-	if ((x.paid as Account).owner() == Pubkey.systemProgram()) {
-		const made = try createPda<Paid>(x.owner, x.paid, paidSeeds(mint));
+	if (x.paid.asAccount().owner() == SYSTEM_PROGRAM_ID) {
+		const made = try createPda<Paid>(x.owner, x.paid, ["paid", mint]);
 		const created = made.account.data();
 		created.mint = mint;
 		created.bump = made.bump;
 		return Result.ok(created);
 	}
 	const ledger = try mutable<Paid>(PAID_INDEX);
-	const _seeds = try pdaWithBump(ledger, paidSeeds(mint), ledger.data().bump);
+	const _seeds = try pdaWithBump(ledger, ["paid", mint], ledger.data().bump);
 	const _mint = try expectAddress(ledger.data().mint, mint);
 	return Result.ok(ledger.data());
 }
@@ -149,12 +158,9 @@ export function claimReward(): Result<uint64, ProgramError> {
 	if (supply > EMISSION_CAP || amount > EMISSION_CAP - supply) {
 		return Result.err(hibernalError(HibernalError.SupplyCap));
 	}
-	const _minted = try mintTokens(
-		x.mint,
-		x.destination,
-		x.mint as Account,
-		amount,
-		mintSeeds().withBump(config.mintBump),
+	const _minted = try signed(
+		mintTokens(x.mint, x.destination, x.mint.asAccount(), amount),
+		["mint", [config.mintBump]],
 	);
 	ledger.total = ledger.total + amount;
 	ledger.day = today;
