@@ -5,7 +5,8 @@
 
 import { Ui, pressable, beginOverlay, endOverlay } from "../ui/ui";
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Kit, PieceLayer, TextSize, piece, pieceWidth, pieceHeight, say, measure, subId, beginKitOverlay, endKitOverlay } from "./kit";
+import { Kit, PieceLayer, TextSize, INK_BRIGHT, piece, pieceWidth, pieceHeight, say, measure, subId, beginKitOverlay,
+	endKitOverlay } from "./kit";
 
 // Canvas pixels of cutHud.py's SHOP_CANVAS (shopMockup.jpg's own pixels from the panel's
 // top-left) to design units: the panel's outline, canvas x 11 to 1023, is as wide as the
@@ -43,7 +44,6 @@ const CLOSE_WIDTH: float32 = 64.0 * SCALE;
 const CLOSE_HEIGHT: float32 = 62.0 * SCALE;
 const PRICE_SIZE: float32 = 8.0;
 const LABEL_SIZE: float32 = 8.0;
-const INK_BRIGHT: Color = rgba(0.92, 0.96, 1.0, 1.0);
 const INK_DIM: Color = rgba(0.62, 0.72, 0.84, 1.0);
 
 export struct ShopItem {

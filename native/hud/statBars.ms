@@ -55,6 +55,10 @@ function statBar(kit: Kit, id: int32, x: float32, y: float32, stat: Stat): void 
 		y + ICON_CENTRE_Y - pieceHeight(kit, stat.icon) * 0.5);
 }
 
+export function statBarsHeight(rows: int32): float32 {
+	return ROW_STEP * (rows as float32);
+}
+
 // `right` and `top` place the stack's top-right corner; one id per row from `id` on.
 export function statBars(kit: Kit, id: int32, right: float32, top: float32, stats: Stat[]): void {
 	for (let row: int32 = 0; row < stats.length; row += 1) {

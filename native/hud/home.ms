@@ -4,7 +4,7 @@
 import { rgba } from "@metascript/void/src/void2d/types";
 import { Ui, createUi, beginUi, endUi, box, pressable, DESIGN_W, DESIGN_H } from "../ui/ui";
 import { Kit, createKit, beginKit, endKit, frame, badgeFrame, icon, say, INK, INK_MUTED, EMBER, EMBER_HOT, ALERT_RED,
-	SCREEN_HEIGHT } from "./kit";
+	SCREEN_HEIGHT, INK_BRIGHT, HOLO_BLUE, HOLO_GREEN, STACKED_ROW_HEIGHT } from "./kit";
 import { FrameLook } from "./frame";
 import { SignState, ChipKind, textLink, signButton, chip, badge } from "./buttons";
 import { heartPips, bar, bondingBar, balance } from "./meters";
@@ -18,7 +18,13 @@ import { Nav, ScreenContext, openOverlay, closeOverlay } from "./screenChrome";
 import { screenFrame } from "./screens";
 import { HOTBAR_HEIGHT, EMPTY_SLOT, HotbarTap, HotbarTapKind, hotbar, hotbarXpLeft, hotbarPanelTop } from "./hotbar";
 import { SHOP_HEIGHT, SHOP_GAP, SHOP_OUTLINE_LEFT, ShopItem, ShopTap, ShopTapKind, shopPopup, selectedCount } from "./shopPopup";
-import { StatColour, statBars } from "./statBars";
+import { StatColour, statBars, statBarsHeight } from "./statBars";
+import { textAction } from "./textAction";
+import { banners, bannersHeight } from "./banners";
+import { Character, characterStats, skillRing } from "./character";
+import { toggleRow } from "./toggles";
+import { TalentKind } from "../../rules/talent";
+import { requestWallpaperPicker } from "../host/host";
 
 const MAX_HEARTS: int32 = 10;
 const MAX_TALKS: int32 = 5;
@@ -91,6 +97,7 @@ interface Home {
 	// a screen's own sheet or modal, as of the last frame
 	screenOverlayOpen: boolean;
 	shopOpen: boolean;
+	treeShown: boolean;
 	shopSelected: boolean[];
 	inventory: string[];
 	skrBalance: int32;
@@ -126,6 +133,7 @@ export function initHudHome(): void {
 		sheetOpen: 0.0,
 		screenOverlayOpen: false,
 		shopOpen: false,
+		treeShown: false,
 		shopSelected: [false, false, false, false, false, false, false, false, false],
 		inventory: ["sword", "pistol", "shotgun", "core", "rifle", EMPTY_SLOT],
 		skrBalance: STAND_IN_SKR_BALANCE,
@@ -402,6 +410,25 @@ const TOASTS_Y: float32 = 330.0;
 const STAT_BARS_ID: int32 = 310;
 const STAT_BARS_TOP: float32 = 46.0;
 const STAT_BARS_RIGHT_PADDING: float32 = 8.0;
+const STAT_ROWS: int32 = 3;
+const WALLPAPER_ACTION_ID: int32 = 340;
+const BANNERS_ID: int32 = 350;
+const BANNERS_LEFT_PADDING: float32 = 8.0;
+const STAND_IN_HARVEST_PER_DAY: int32 = 200;
+const CHARACTER_ID: int32 = 360;
+const TREE_TOGGLE_ID: int32 = 370;
+const SKILL_RING_ID: int32 = 380;
+// The SKILL TREE box's bottom to the talent factor's top, as SET AS WALLPAPER's text to the box.
+const CHARACTER_STATS_GAP: float32 = 11.0;
+const TREE_LABEL: string = "SKILL TREE";
+// A level-14 Worker on its forage clusters with a work talent.
+const STAND_IN_CHARACTER: Character = {
+	level: 14,
+	tree: { bits: 0x3ff9 as uint64 },
+	talent: { kind: TalentKind.Forage, multiplierBps: 13400 },
+};
+const WALLPAPER_ACTION_GAP: float32 = 10.0;
+const WALLPAPER_LABEL: string = "SET AS WALLPAPER";
 const BONDING_MIN: float32 = -127.0;
 const BONDING_SPAN: float32 = 254.0;
 const STAND_IN_GROWTH_SHARE: float32 = 0.5;
@@ -417,6 +444,20 @@ function freeSlots(home: Home): int32 {
 function closeShop(home: Home): void {
 	home.shopOpen = false;
 	for (let i: int32 = 0; i < home.shopSelected.length; i += 1) { home.shopSelected[i] = false; }
+}
+
+const WEALTH_ROWS: int32 = 2;
+
+// Left: at the top in the app, centred on the screen's height on the wallpaper and lock screen.
+function wealth(home: Home, top: float32): void {
+	banners(home.ui, home.kit, BANNERS_ID, BANNERS_LEFT_PADDING, top, [
+		{ words: [
+			{ text: "HARVEST", colour: HOLO_BLUE },
+			{ text: grouped(home.harvest), colour: INK_BRIGHT },
+			{ text: "+" + grouped(STAND_IN_HARVEST_PER_DAY), colour: HOLO_GREEN },
+		] },
+		{ words: [{ text: "BURROW", colour: HOLO_BLUE }, { text: grouped(home.burrow), colour: INK_BRIGHT }] },
+	]);
 }
 
 function homeFrame(home: Home): void {
@@ -449,6 +490,23 @@ function homeFrame(home: Home): void {
 		{ colour: StatColour.Blue, icon: "statGift", share: ((home.bonding as float32) - BONDING_MIN) / BONDING_SPAN },
 		{ colour: StatColour.Green, icon: "statGrowth", share: STAND_IN_GROWTH_SHARE },
 	]);
+	const wallpaperTop: float32 = STAT_BARS_TOP + statBarsHeight(STAT_ROWS) + WALLPAPER_ACTION_GAP;
+	// One action for both: the system picker asks for the home screen, the lock screen or both.
+	if (textAction(home.ui, home.kit, WALLPAPER_ACTION_ID, DESIGN_W - STAT_BARS_RIGHT_PADDING, wallpaperTop, STACKED_ROW_HEIGHT,
+		WALLPAPER_LABEL, "wallpaperGlyph")) {
+		requestWallpaperPicker();
+	}
+	if (home.treeShown) {
+		skillRing(home.ui, home.kit, SKILL_RING_ID, DESIGN_W * 0.5, DESIGN_H * 0.5, STAND_IN_CHARACTER);
+	}
+	const treeToggleTop: float32 = wallpaperTop + STACKED_ROW_HEIGHT;
+	if (toggleRow(home.ui, home.kit, TREE_TOGGLE_ID, DESIGN_W - STAT_BARS_RIGHT_PADDING, treeToggleTop, STACKED_ROW_HEIGHT, TREE_LABEL,
+		home.treeShown, true)) {
+		home.treeShown = !home.treeShown;
+	}
+	characterStats(home.ui, home.kit, CHARACTER_ID, DESIGN_W - STAT_BARS_RIGHT_PADDING, treeToggleTop + STACKED_ROW_HEIGHT
+		+ CHARACTER_STATS_GAP, STAND_IN_CHARACTER);
+	wealth(home, STAT_BARS_TOP);
 	drawToasts(home.ui, home.kit, 60, home.toasts, 16.0, TOASTS_Y, 328.0);
 }
 
@@ -483,6 +541,19 @@ function screenOfHome(home: Home): void {
 			home.screen = context.navigate;
 		},
 	};
+}
+
+// The wallpaper and the lock screen: the scene and the harvest and burrow, nothing to tap.
+export function frameHudWallpaper(): void {
+	if ((homes.length as int32) == 0) {
+		return;
+	}
+	const home: Home = homes[0];
+	beginUi(home.ui);
+	beginKit(home.kit);
+	wealth(home, (DESIGN_H - bannersHeight(home.kit, WEALTH_ROWS)) * 0.5);
+	endKit(home.kit);
+	endUi(home.ui);
 }
 
 export function frameHudHome(): void {

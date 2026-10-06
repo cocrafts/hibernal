@@ -1,5 +1,6 @@
-"""Cut hotbarSheet.png, statBarsSheet.png and shopSheet.png into the pieces native/hud/hotbar.ms,
-statBars.ms and shopPopup.ms draw.
+"""Cut hotbarSheet.png, statBarsSheet.png, shopSheet.png, toggleSheet.png and buttonSheet.png into
+the pieces native/hud/hotbar.ms, statBars.ms, shopPopup.ms, toggles.ms, actionButton.ms and
+banners.ms draw.
 
 Every piece is resized to the design size those files give it, at the Seeker's 1200 / 360 pixels
 per design unit, so it draws 1:1 there. Run from the repo root: python3 art/hud/cutHud.py
@@ -122,16 +123,20 @@ def statPieces(sheet):
         scaledBy(fill.crop((middle, 0, middle + 8, fill.height)), scale).save(OUT / ("statFill" + colour + "Body.png"))
 
 
-# The kit's pixel-art icons as white glyphs, as in statBarsMockup.png.
+# A kit pixel-art icon as a white glyph, as in statBarsMockup.png.
+def whiteGlyph(name, size):
+    icon = Image.open(ICONS / (name + ".png")).convert("RGBA")
+    white = Image.new("RGBA", icon.size, (255, 255, 255, 255))
+    white.putalpha(icon.getchannel("A"))
+    target = round(size * DENSITY)
+    step = max(1, -(-target // max(icon.width, icon.height)))
+    large = white.resize((icon.width * step, icon.height * step), Image.NEAREST)
+    return fitted(large, (size, size))
+
+
 def statIcons():
     for name, size in STAT_ICONS.items():
-        icon = Image.open(ICONS / (name + ".png")).convert("RGBA")
-        white = Image.new("RGBA", icon.size, (255, 255, 255, 255))
-        white.putalpha(icon.getchannel("A"))
-        target = round(size * DENSITY)
-        step = max(1, -(-target // max(icon.width, icon.height)))
-        large = white.resize((icon.width * step, icon.height * step), Image.NEAREST)
-        fitted(large, (size, size)).save(OUT / ("stat" + name[0].upper() + name[1:] + ".png"))
+        whiteGlyph(name, size).save(OUT / ("stat" + name[0].upper() + name[1:] + ".png"))
 
 
 # The shop over the hotbar, assembled from shopSheet.png's slices into shopMockup.jpg's layout,
@@ -340,6 +345,77 @@ def shopPieces(sheet):
             fitted(icon, HOTBAR_ITEM_SIZE).save(OUT / (name[0].lower() + name[1:] + ".png"))
 
 
+# The toggle's four looks, one square crop round each box's centre so they share a footprint
+# (the held one's glow reaches furthest).
+TOGGLE_SHEET = Path("art/hud/toggleSheet.png")
+TOGGLE_CROP = 360
+TOGGLE_SIZE = (15.0, 15.0)
+TOGGLE_CENTRES = {
+    "toggleOff": (406, 387),
+    "toggleOn": (848, 387),
+    "toggleHeld": (406, 866),
+    "toggleDisabled": (849, 868),
+}
+
+
+def togglePieces(sheet):
+    half = TOGGLE_CROP // 2
+    for name, (x, y) in TOGGLE_CENTRES.items():
+        sheet.crop((x - half, y - half, x + half, y + half)).resize(pixels(TOGGLE_SIZE), Image.LANCZOS).save(OUT / (name + ".png"))
+
+
+# SET AS WALLPAPER: the sheet's blue button and its glowing look (held), cropped round the same
+# centre with room for the glow and stretched to the label's width with both ends kept. The yellow
+# row's glow starts right under the blue's, so the crop stops above it and the halo fades out.
+BUTTON_SHEET = Path("art/hud/buttonSheet.png")
+WALLPAPER_BUTTONS = {
+    "wallpaperButton": (7, 545, 285, 646),
+    "wallpaperButtonHeld": (283, 545, 561, 646),
+}
+WALLPAPER_BUTTON_END = 70
+WALLPAPER_BUTTON_FADE = 8
+WALLPAPER_BUTTON_SIZE = (137.0, 30.0)
+
+
+# The glyph after SET AS WALLPAPER on Home: the kit's house, as Settings' wallpaper row has.
+WALLPAPER_GLYPH = ("home", 10.0)
+
+
+# The banners on Home: the same blue button at banner height, cut into its chevron end, a strip of
+# its body that stretches to the line's width and its pointed end.
+BANNER_HEIGHT = 26.0
+BANNER_STRIP = 8
+
+
+def fadedButton(sheet, box):
+    button = sheet.crop(box)
+    alpha = button.getchannel("A")
+    values = alpha.load()
+    for row in range(WALLPAPER_BUTTON_FADE):
+        y = button.height - 1 - row
+        for x in range(button.width):
+            values[x, y] = values[x, y] * row // WALLPAPER_BUTTON_FADE
+    button.putalpha(alpha)
+    return button
+
+
+def buttonPieces(sheet):
+    for name, box in WALLPAPER_BUTTONS.items():
+        stretched(fadedButton(sheet, box), WALLPAPER_BUTTON_SIZE, WALLPAPER_BUTTON_END).save(OUT / (name + ".png"))
+
+
+def bannerPieces(sheet):
+    button = fadedButton(sheet, WALLPAPER_BUTTONS["wallpaperButton"])
+    height = round(BANNER_HEIGHT * DENSITY)
+    scale = height / button.height
+    scaled = button.resize((round(button.width * scale), height), Image.LANCZOS)
+    end = round(WALLPAPER_BUTTON_END * scale)
+    middle = scaled.width // 2
+    scaled.crop((0, 0, end, height)).save(OUT / "bannerStart.png")
+    scaled.crop((middle, 0, middle + BANNER_STRIP, height)).save(OUT / "bannerBody.png")
+    scaled.crop((scaled.width - end, 0, scaled.width, height)).save(OUT / "bannerEnd.png")
+
+
 def main():
     sheet = Image.open(SHEET).convert("RGBA")
     OUT.mkdir(parents=True, exist_ok=True)
@@ -354,6 +430,10 @@ def main():
     statPieces(Image.open(STAT_SHEET).convert("RGBA"))
     statIcons()
     shopPieces(Image.open(SHOP_SHEET).convert("RGBA"))
+    togglePieces(Image.open(TOGGLE_SHEET).convert("RGBA"))
+    buttonPieces(Image.open(BUTTON_SHEET).convert("RGBA"))
+    whiteGlyph(*WALLPAPER_GLYPH).save(OUT / "wallpaperGlyph.png")
+    bannerPieces(Image.open(BUTTON_SHEET).convert("RGBA"))
 
 
 if __name__ == "__main__":

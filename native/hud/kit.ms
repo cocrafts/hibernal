@@ -46,9 +46,17 @@ export const ALERT_RED: Color = rgba(0.784, 0.239, 0.184, 1.0);
 export const GROWTH_GREEN: Color = rgba(0.478, 0.663, 0.294, 1.0);
 export const DISABLED_INK: Color = rgba(0.45, 0.43, 0.42, 1.0);
 export const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
+export const INK_BRIGHT: Color = rgba(0.92, 0.96, 1.0, 1.0);
+export const HOLO_BLUE: Color = rgba(0.45, 0.78, 1.0, 1.0);
+export const HOLO_GREEN: Color = rgba(0.5, 1.0, 0.55, 1.0);
 export const DIMMED: Color = rgba(0.45, 0.45, 0.45, 0.8);
 export const SCREEN_WIDTH: float32 = 360.0;
 export const SCREEN_HEIGHT: float32 = 800.0;
+// Material's 48 dp minimum touch target: 44 design units on the Seeker (360 units over 1200 px
+// at 480 dpi).
+export const TOUCH_HEIGHT: float32 = 44.0;
+// Rows stacked in a column, so their tap areas meet without overlapping: 33 dp.
+export const STACKED_ROW_HEIGHT: float32 = 30.0;
 const SUB_ID_BASE: int32 = 1000000;
 const FONT_PATH: string = "assets/fonts/Silkscreen-Regular.ttf";
 const PIECE_DIRECTORY: string = "assets/hud/pieces/";
@@ -68,7 +76,8 @@ export const PIECE_NAMES: string[] = ["panel", "xpFrame", "slot", "plusSlot", "l
 	"statHeart", "statGift", "statGrowth", "medkit", "battery", "ammo", "shield", "drone", "shopFrame", "shopHologram", "shopCart", "shopCheck", "shopCell",
 	"shopCellSelected", "shopCellPlus", "shopCellDisabled", "shopTag", "shopBalance", "shopPurchase",
 	"shopCancel", "shopGem", "shopSword", "shopPistol", "shopShotgun", "shopCore", "shopMedkit", "shopBattery", "shopAmmo",
-	"shopShield", "shopDrone"];
+	"shopShield", "shopDrone", "toggleOff", "toggleOn", "toggleHeld", "toggleDisabled",
+	"wallpaperButton", "wallpaperButtonHeld", "wallpaperGlyph", "bannerStart", "bannerBody", "bannerEnd"];
 
 export interface Texture {
 	view: uint32;
