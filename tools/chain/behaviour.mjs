@@ -213,7 +213,7 @@ function recorded(epoch, kind, outcome) {
 	if (outcome.ok) entry.ok += 1;
 	else {
 		entry.refused[outcome.error] = (entry.refused[outcome.error] ?? 0) + 1;
-		if (!["Full", "FedToday", "TalkedOut", "CoolingDown", "EmptyHarvest", "Insured", "Refused", "NothingOwed", "OverCap", "Dead"].includes(outcome.error)) {
+		if (!["Full", "FedToday", "EngagedOut", "EngagedThisRound", "CoolingDown", "EmptyHarvest", "Insured", "Refused", "NothingOwed", "OverCap", "Dead"].includes(outcome.error)) {
 			status.failures.push({ at: new Date().toISOString(), epoch: String(epoch), kind, error: outcome.error, signature: outcome.signature });
 		}
 	}
@@ -331,7 +331,7 @@ async function visit(entry, config, epoch) {
 	if (!pet || !pet.alive) return;
 	dayOf(epoch).visits += 1;
 	recorded(epoch, "bank", await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner));
-	recorded(epoch, "talk", await submit(ephemeral, [await program.talk(entry.owner, entry.mint)], entry.owner));
+	recorded(epoch, "engage", await submit(ephemeral, [await program.engage(entry.owner, entry.mint)], entry.owner));
 	let slotsFree = pet.slotsFree;
 	if (slotsFree > 0 && pet.hearts * BPS < pet.maxHearts * habit.feedBelowBps) {
 		await bought(entry, config, epoch, ITEM.Food, habit.foodTier, FOOD_SKR[habit.foodTier], "food");
@@ -351,6 +351,7 @@ async function opened(entry, epoch, round) {
 	const habit = HABITS[entry.kind];
 	if (!rolled(openDraw(SEED, entry.index, epoch, round), 3n, habit.opensPercent)) return;
 	dayOf(epoch).opens += 1;
+	recorded(epoch, "open:engage", await submit(ephemeral, [await program.engage(entry.owner, entry.mint)], entry.owner));
 	recorded(epoch, "open:bank", await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner));
 }
 

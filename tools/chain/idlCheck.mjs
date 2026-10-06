@@ -22,7 +22,7 @@ const built = [
 	await program.delegateResort(),
 	await program.delegateVrfPayer(),
 	await program.place(0, mint),
-	await program.talk(owner, mint),
+	await program.engage(owner, mint),
 	await program.bank(owner, mint),
 	await program.commitPet(owner, mint),
 	await program.claimReward(owner, mint, await someKey()),

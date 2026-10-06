@@ -19,6 +19,7 @@ programs=(
 	noop:noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV
 	token2022:TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
 	programMetadata:ProgM6JCCvbYkfKqJYHePx4xxSUSqJp7rh8Lyv7nk7S
+	sessionKeys:KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5
 )
 
 accounts=(

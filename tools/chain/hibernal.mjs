@@ -31,6 +31,7 @@ export const SLOT_HASHES = address("SysvarS1otHashes111111111111111111111111111"
 export const INSTRUCTIONS_SYSVAR = address("Sysvar1nstructions1111111111111111111111111");
 export const HYDRA_PROGRAM = address("eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf");
 export const MAGIC_VAULT = address("MagicVau1t999999999999999999999999999999999");
+export const SESSION_KEYS_PROGRAM = address("KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5");
 export const COMPUTE_UNIT_LIMIT = 1_400_000;
 
 export const encoder = getAddressEncoder();
@@ -319,8 +320,32 @@ export function hibernal(programAddress, authority) {
 				writable(await address(seeds.pet(mint))),
 			]);
 		},
-		async talk(owner, mint) {
-			return call("Talk", [signer(owner), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world()))]);
+		async engage(by, mint, session = programAddress) {
+			return call("Engage", [signer(by), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world())), readonly(session)]);
+		},
+		async sessionToken(sessionSigner, owner) {
+			return await address(pda(SESSION_KEYS_PROGRAM, "session_token_v2", key(programAddress), key(sessionSigner), key(owner)));
+		},
+		async createSession(owner, sessionSigner, feePayer, validUntil, topUpLamports = 0n) {
+			const topUp = BigInt(topUpLamports) > 0n;
+			return {
+				programAddress: SESSION_KEYS_PROGRAM,
+				accounts: [
+					writable(await this.sessionToken(sessionSigner.address, owner.address)),
+					writableSigner(sessionSigner),
+					writableSigner(feePayer),
+					signer(owner),
+					readonly(programAddress),
+					readonly(SYSTEM_PROGRAM),
+				],
+				data: joined(
+					instructionDiscriminator("CreateSessionV2"),
+					topUp ? joined(u8(1), u8(1)) : u8(0),
+					u8(1),
+					u64(validUntil),
+					topUp ? joined(u8(1), u64(topUpLamports)) : u8(0),
+				),
+			};
 		},
 		async bank(owner, mint) {
 			return call("Bank", [signer(owner), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world()))]);
@@ -428,7 +453,7 @@ export function hibernal(programAddress, authority) {
 
 const PRIMITIVE_SIZES = { u8: 1, i8: 1, bool: 1, u16: 2, i16: 2, u32: 4, i32: 4, u64: 8, i64: 8, pubkey: 32 };
 
-export function idlAt(path = new URL("../../out/idl/hibernal.json", import.meta.url)) {
+export function idlAt(path = process.env.IDL ?? new URL("../../out/idl/hibernal.json", import.meta.url)) {
 	return JSON.parse(readFileSync(path, "utf8"));
 }
 
