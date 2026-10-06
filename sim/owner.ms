@@ -7,7 +7,7 @@ import {
 	OwnerError,
 	splitmix,
 	mixSeeds,
-	talkedTo,
+	engagedAt,
 	foodItem,
 	growthItem,
 	withOwnerItem,
@@ -111,8 +111,8 @@ export function visited(this pet: Pet, habit: OwnerHabit, draw: uint64, epoch: u
 		banked = secured.value.burrow - cared.burrow;
 		cared = secured.value;
 	}
-	const talked = cared.talkedTo();
-	if (talked.ok) { cared = talked.value; }
+	const engaged = cared.engagedAt(epoch * EPOCH_SECONDS);
+	if (engaged.ok) { cared = engaged.value; }
 	const feedBelow = (cared.maxHearts as int64) * (habit.feedBelowBps as int64);
 	const hungry = (cared.hearts as int64) * (BPS as int64) < feedBelow;
 	if (hungry) {

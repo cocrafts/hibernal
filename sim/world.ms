@@ -554,10 +554,15 @@ export function ownersOpened(this world: World): World {
 		if (!pet.alive || pet.wild) { continue; }
 		const draw = openDraw(world.seed, index, world.epoch, world.round);
 		if (!habitOf(world.owners[index]).opens(draw)) { continue; }
-		const banked = pet.ownerBanked(now);
-		if (!banked.ok) { continue; }
+		const engaged = pet.engagedAt(now);
+		const opened = engaged.ok ? engaged.value : pet;
+		const banked = opened.ownerBanked(now);
+		if (!banked.ok) {
+			pets[index] = opened;
+			continue;
+		}
 		const ledger = ledgers[index];
-		ledgers[index] = { ...ledger, banked: ledger.banked + banked.value.burrow - pet.burrow };
+		ledgers[index] = { ...ledger, banked: ledger.banked + banked.value.burrow - opened.burrow };
 		pets[index] = banked.value;
 	}
 	return world;
