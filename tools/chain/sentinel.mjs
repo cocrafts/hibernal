@@ -107,12 +107,14 @@ function diskCheck() {
 
 function indexCheck() {
 	if (!ER_INDEX) return null;
-	const stat = execFileSync("mdb_stat", ["-e", ER_INDEX], { encoding: "utf8" });
+	const stat = execFileSync("mdb_stat", ["-e", "-f", ER_INDEX], { encoding: "utf8" });
 	const used = Number(/Number of pages used: (\d+)/.exec(stat)?.[1]);
 	const max = Number(/Max pages: (\d+)/.exec(stat)?.[1]);
-	if (!used || !max) return { alarm: `mdb_stat on ${ER_INDEX} gave no page counts` };
-	const percent = Math.round(used * 100 / max);
-	return { usedPages: used, maxPages: max, percent, alarm: percent > ER_INDEX_PERCENT ? `ER account index ${percent}% full (${used}/${max} pages)` : null };
+	const free = Number(/Free pages: (\d+)/.exec(stat)?.[1]);
+	if (!used || !max || Number.isNaN(free)) return { alarm: `mdb_stat on ${ER_INDEX} gave no page counts` };
+	const live = used - free;
+	const percent = Math.round(live * 100 / max);
+	return { livePages: live, freePages: free, highWaterPages: used, maxPages: max, percent, alarm: percent > ER_INDEX_PERCENT ? `ER account index ${percent}% full (${live} live of ${max} pages, ${free} free)` : null };
 }
 
 async function checked(name, check) {
