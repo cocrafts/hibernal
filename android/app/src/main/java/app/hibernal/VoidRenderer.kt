@@ -47,8 +47,10 @@ object VoidRenderer : Choreographer.FrameCallback {
         done.await()
     }
 
+    // The app's surface exists only while it is in front; the wallpaper engine also reports itself
+    // visible then (on every touch, measured on the Seeker), and must not take the core from it.
     private fun bindLatest() {
-        val owner = targets.keys.lastOrNull()
+        val owner = targets.entries.lastOrNull { it.value.inApp }?.key ?: targets.keys.lastOrNull()
         val target = owner?.let { targets[it] }
         if (target == null) {
             if (activeTarget != null) {
