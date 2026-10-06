@@ -113,8 +113,8 @@ function indexCheck() {
 	const free = Number(/Free pages: (\d+)/.exec(stat)?.[1]);
 	if (!used || !max || Number.isNaN(free)) return { alarm: `mdb_stat on ${ER_INDEX} gave no page counts` };
 	const live = used - free;
-	const percent = Math.round(live * 100 / max);
-	return { livePages: live, freePages: free, highWaterPages: used, maxPages: max, percent, alarm: percent > ER_INDEX_PERCENT ? `ER account index ${percent}% full (${live} live of ${max} pages, ${free} free)` : null };
+	const percent = Math.round(used * 100 / max);
+	return { livePages: live, freePages: free, highWaterPages: used, maxPages: max, percent, alarm: percent > ER_INDEX_PERCENT ? `ER account index map ${percent}% grown (${used} of ${max} pages; ${live} live, ${free} free that the ER does not reuse)` : null };
 }
 
 async function checked(name, check) {
