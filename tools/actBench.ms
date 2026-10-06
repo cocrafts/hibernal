@@ -421,7 +421,7 @@ function absorbPet(this digest: Digest, pet: Pet): Digest {
 			((pet.scars as uint64) << 8) |
 			((pet.lineageGeneration as uint64) << 16) |
 			((((pet.bonding as int64) + 128) as uint64) << 32) |
-			((pet.talksToday as uint64) << 40) |
+			((pet.engagedToday as uint64) << 40) |
 			((pet.ownerFedToday as uint64) << 48),
 		)
 		.absorb(pet.giftOwed)

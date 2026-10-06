@@ -74,7 +74,7 @@ export struct Pet {
 	insurance: uint8;
 	scars: uint8;
 	bonding: int8;
-	talksToday: uint8;
+	engagedToday: uint8;
 	ownerFedToday: uint8;
 	gear: Gear;
 	grudgeSlot: uint8;
@@ -83,7 +83,7 @@ export struct Pet {
 	ownerSecond: uint8;
 	skin: uint8;
 	wild: boolean;
-	pad: uint8;
+	engagedRound: uint8;
 }
 
 export struct GlobalConfig {

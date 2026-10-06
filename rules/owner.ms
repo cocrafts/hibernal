@@ -1,5 +1,5 @@
 import * as arithmetic from "./arithmetic";
-import { BPS, HBRN_UNIT } from "./units";
+import { ACTS_PER_EPOCH, BPS, EPOCH_SECONDS, HBRN_UNIT } from "./units";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
 import { Pantry } from "./pantry";
@@ -10,8 +10,8 @@ import { Gear, ItemSkill, hasSkill, spentSkill } from "./items";
 
 export const BONDING_MAX: int32 = 127;
 export const BONDING_DECAY: int32 = 2;
-export const TALK_BONDING: int32 = 3;
-export const TALKS_PER_DAY: int32 = 2;
+export const ENGAGE_BONDING: int32 = 3;
+export const ENGAGES_PER_DAY: int32 = 3;
 export const FEED_BONDING: int32 = 6;
 export const PURCHASE_BONDING: int32 = 15;
 export const REFUSAL_BONDING: int32 = -40;
@@ -28,11 +28,12 @@ export const OWNER_BANK_COOLDOWN_SECONDS: uint64 = 8 * 3600;
 export enum OwnerError {
 	Dead,
 	Refused,
-	TalkedOut,
+	EngagedOut,
 	NoSuchTier,
 	EmptyHarvest,
 	CoolingDown,
 	SlotsFull,
+	EngagedThisRound,
 }
 
 export enum OwnerItem {
@@ -187,11 +188,17 @@ export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError>
 	});
 }
 
-export function talkedTo(this pet: Pet): Result<Pet, OwnerError> {
+export function roundOfDay(now: uint64): uint8 {
+	return ((now % EPOCH_SECONDS) / (EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64))) as uint8;
+}
+
+export function engagedAt(this pet: Pet, now: uint64): Result<Pet, OwnerError> {
 	if (!pet.alive) { return Result.err(OwnerError.Dead); }
-	if ((pet.talksToday as int32) >= TALKS_PER_DAY) { return Result.err(OwnerError.TalkedOut); }
-	const talked: Pet = { ...pet, talksToday: pet.talksToday + 1 };
-	return Result.ok(talked.bondedBy(TALK_BONDING));
+	if ((pet.engagedToday as int32) >= ENGAGES_PER_DAY) { return Result.err(OwnerError.EngagedOut); }
+	const round = roundOfDay(now);
+	if (pet.engagedToday > 0 && round <= pet.engagedRound) { return Result.err(OwnerError.EngagedThisRound); }
+	const engaged: Pet = { ...pet, engagedToday: pet.engagedToday + 1, engagedRound: round };
+	return Result.ok(engaged.bondedBy(ENGAGE_BONDING));
 }
 
 
@@ -243,16 +250,35 @@ test "bonding moves with owner care and stays inside its range" {
 	const pet: Pet = { ...testPet(), bonding: 120 };
 	assert pet.bondedBy(50).bonding == 127;
 	assert pet.bondedBy(-400).bonding == -127;
-	const talked = testPet().talkedTo();
-	assert talked.ok;
-	if (!talked.ok) { return; }
-	assert (talked.value.bonding as int32) == TALK_BONDING;
-	const twice = talked.value.talkedTo();
-	assert twice.ok;
-	if (!twice.ok) { return; }
-	const thrice = twice.value.talkedTo();
-	assert !thrice.ok;
-	if (!thrice.ok) { assert thrice.error == OwnerError.TalkedOut; }
+}
+
+test "an owner engages once a round, three times a day at most" {
+	const round = EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64);
+	const day: uint64 = 7 * EPOCH_SECONDS;
+	const first = testPet().engagedAt(day + 10);
+	assert first.ok;
+	if (!first.ok) { return; }
+	assert (first.value.bonding as int32) == ENGAGE_BONDING;
+	const sameRound = first.value.engagedAt(day + round - 1);
+	assert !sameRound.ok;
+	if (!sameRound.ok) { assert sameRound.error == OwnerError.EngagedThisRound; }
+	const second = first.value.engagedAt(day + 2 * round);
+	assert second.ok;
+	if (!second.ok) { return; }
+	const earlier = second.value.engagedAt(day + round);
+	assert !earlier.ok;
+	const third = second.value.engagedAt(day + 3 * round);
+	assert third.ok;
+	if (!third.ok) { return; }
+	assert (third.value.bonding as int32) == 3 * ENGAGE_BONDING;
+	assert third.value.engagedToday == 3;
+	const fourth = third.value.engagedAt(day + EPOCH_SECONDS);
+	assert !fourth.ok;
+	if (!fourth.ok) { assert fourth.error == OwnerError.EngagedOut; }
+	const deadPet: Pet = { ...testPet(), alive: false };
+	const dead = deadPet.engagedAt(day);
+	assert !dead.ok;
+	if (!dead.ok) { assert dead.error == OwnerError.Dead; }
 }
 
 test "owner items fill two slots, insurance arms at once, a resentful pet refuses" {
@@ -396,7 +422,7 @@ function testPet(): Pet {
 		scars: 0,
 		lineageGeneration: 0,
 		bonding: 0,
-		talksToday: 0,
+		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
 		ownerBankedAt: 0,

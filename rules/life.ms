@@ -232,7 +232,7 @@ export function born(
 		scars: 0,
 		lineageGeneration: 0,
 		bonding: 0,
-		talksToday: 0,
+		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
 		ownerBankedAt: 0,
@@ -442,7 +442,7 @@ export function tickTo(
 		hearts: hearts as uint8,
 		pantry: pantry,
 		foodBoughtToday: newDay ? 0 : pet.foodBoughtToday,
-		talksToday: newDay ? 0 : pet.talksToday,
+		engagedToday: newDay ? 0 : pet.engagedToday,
 		ownerFedToday: ((newDay ? 0 : pet.ownerFedToday as int32) + ownerMeals) as uint8,
 		ownerFirst: (slots.first as int32) as uint8,
 		ownerSecond: (slots.second as int32) as uint8,
@@ -815,12 +815,12 @@ test "each day bonding slips, and a devoted pet gifts what it can spare" {
 		...newborn.pet,
 		bonding: 127,
 		burrow: plenty,
-		talksToday: 2,
+		engagedToday: 2,
 		ownerFedToday: 1,
 	};
 	const next = devoted.tickedTo(newborn.global, 1);
 	assert (next.pet.bonding as int32) == 127 - BONDING_DECAY;
-	assert next.pet.talksToday == 0 && next.pet.ownerFedToday == 0;
+	assert next.pet.engagedToday == 0 && next.pet.ownerFedToday == 0;
 	assert next.pet.giftOwed > 0;
 	assert next.pet.burrow + next.pet.giftOwed == plenty;
 }
