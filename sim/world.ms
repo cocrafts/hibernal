@@ -62,10 +62,6 @@ import {
 	wildOf,
 	retiredWild,
 } from "../rules/index";
-// C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
-// (msc v0.2.55); remove with
-// ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
-import { Pantry } from "../rules/pantry";
 import { Gear, Item } from "../rules/items";
 import { OwnerKind, OwnerLedger, habitOf, ownerKindFor, visitDraw, visits, visited, openDraw, opens } from "./owner";
 
@@ -851,6 +847,27 @@ export function living(this world: World): int32 {
 	return count;
 }
 
+test "alive wilds count in global work but not owner metrics" {
+	const world = World.staggered(1, 7).wildsSpawned();
+	let weight: uint64 = 0;
+	for (let index = 0; index < world.pets.length; index++) {
+		const pet = world.pets[index];
+		assert pet.alive && pet.wild;
+		assert !world.realAt(index).alive;
+		weight += pet.stats().rewardWeight();
+	}
+	assert weight > 0;
+	assert world.global.livingPets == (BLOCK_SLOTS as uint32);
+	assert world.global.totalWorkPower == weight;
+	assert world.living() == 0;
+	assert world.sortedWealth().length == 0;
+	assert world.medianLevel() == 0;
+	const ended = world.endEpoch();
+	assert ended.stats.deaths == 0 && ended.stats.heirs == 0;
+	assert ended.global.livingPets == world.global.livingPets;
+	assert ended.global.totalWorkPower == weight;
+}
+
 test "a world starts full, alive and settled" {
 	const world = World.create(2, 1);
 	assert world.pets.length == 20;
@@ -1003,6 +1020,25 @@ test "a listed item sells to a pet that wants it, and an unsold one is bought ba
 	assert world.pets[0].burrow == listedBurrow + might.sellPrice();
 }
 
+test "a dead wild retires its wallet once and restores the absent pet" {
+	let world = World.create(1, 5).beginEpoch(1);
+	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0 };
+	world = world.endEpoch().beginEpoch(2);
+	assert world.pets[7].wild && world.pets[7].alive;
+	const absent = world.absent[7];
+	const wild: Pet = { ...world.pets[7], alive: false, hearts: 0, harvest: 40, burrow: 60 };
+	world.pets[7] = wild;
+	const expected = wild.retiredWild(world.global);
+	world = world.endEpoch();
+	assert world.pets[7] == absent;
+	assert world.global.treasury == expected.treasury;
+	assert world.global.livingPets == expected.livingPets;
+	assert world.global.totalWorkPower == expected.totalWorkPower;
+	const treasury = world.global.treasury;
+	world = world.endEpoch();
+	assert world.global.treasury == treasury;
+}
+
 test "an heir takes the slot after the grace period" {
 	let world = World.create(1, 5).beginEpoch(1);
 	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0 };
@@ -1016,6 +1052,54 @@ test "an heir takes the slot after the grace period" {
 	assert world.pets[7].slot == 7;
 	assert world.pets[7].bornEpoch == 1 + GRACE_EPOCHS;
 	assert world.deathEpochs[7] == 0;
+	assert world.stats.heirs == 1;
+}
+
+test "a wild replaced by an heir before re-sort retires its share exactly once" {
+	let world = World.create(1, 5);
+	const heirEpoch = 1 + GRACE_EPOCHS;
+	world = {
+		...world,
+		epoch: 1,
+		resort: {
+			every: heirEpoch,
+			measure: StrengthMeasure.Combat,
+			wildDefenders: true,
+		},
+	};
+	for (let index = 0; index < world.pets.length; index++) {
+		world.owners[index] = OwnerKind.Absent;
+	}
+	const victim = world.pets[7];
+	world.pets[7] = { ...victim, alive: false, hearts: 0 };
+	world = { ...world, global: world.global.withDeath(victim.stats().rewardWeight()) };
+	world = world.endEpoch().wildsSpawned();
+	assert world.pets[7].wild && world.pets[7].alive;
+	const wild: Pet = { ...world.pets[7], harvest: 40, burrow: 60, giftOwed: 7 };
+	world.pets[7] = wild;
+	const settled = world.global.settle(heirEpoch);
+	const expected = wild.retiredWild(settled);
+	assert expected.treasury > settled.treasury + 107;
+	world = world.beginEpoch(heirEpoch);
+	assert world.global.treasury == expected.treasury;
+	assert world.global.livingPets == (world.pets.length as uint32);
+	let weight: uint64 = 0;
+	let heirs = 0;
+	for (let index = 0; index < world.pets.length; index++) {
+		const pet = world.pets[index];
+		assert pet.alive && !pet.wild;
+		weight += pet.stats().rewardWeight();
+		if (world.origins[index] != 7) { continue; }
+		assert pet.lineageGeneration == 1 && pet.bornEpoch == heirEpoch;
+		assert pet.burrow == 0 && pet.giftOwed == 0;
+		assert world.deathEpochs[index] == 0;
+		heirs += 1;
+	}
+	assert heirs == 1 && world.stats.heirs == 1;
+	assert world.global.totalWorkPower == weight;
+	const before = world.global;
+	world = world.resorted().resorted();
+	assert world.global == before;
 	assert world.stats.heirs == 1;
 }
 
