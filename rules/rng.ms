@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 export function splitmix(state: uint64): uint64 {
 	let mixed: uint64 = state + 11400714819323198485;
 	mixed = (mixed ^ (mixed >> 30)) * 13787848793156543929;

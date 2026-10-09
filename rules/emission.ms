@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { EPOCH_SECONDS, HBRN_UNIT, BPS } from "./units";
 
 export const NEWBORN_EPOCHS: uint64 = 3;

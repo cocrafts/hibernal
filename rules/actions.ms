@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { REWARD_WEIGHT_OFFSET, Combatant, Mod, Region, Stats, aged } from "./stats";
 import { revived } from "./owner";

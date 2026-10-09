@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { Region } from "./stats";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";

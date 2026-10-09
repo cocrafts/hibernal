@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { Combatant, noMods } from "./stats";
 import { BPS } from "./units";
 import { Tree } from "./tree";

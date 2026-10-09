@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { ACTS_PER_EPOCH, BPS, EPOCH_SECONDS, HBRN_UNIT } from "./units";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
