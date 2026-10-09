@@ -23,6 +23,7 @@ export const DIARY_SEED: uint64 = 7;
 export struct Diary {
 	pets: int32[];
 	lines: string[];
+	wild: boolean[];
 }
 
 function money(amount: uint64): string {
@@ -41,12 +42,13 @@ function nameOf(this world: World, index: int32): string {
 function note(this diary: Diary, index: int32, text: string): void {
 	const lines = diary.lines;
 	for (let row = 0; row < diary.pets.length; row++) {
-		if (diary.pets[row] == index) { lines[row] = lines[row] + " | " + text; }
+		if (diary.pets[row] == index && !diary.wild[row]) { lines[row] = lines[row] + " | " + text; }
 	}
 }
 
 function morning(this pet: Pet, yesterday: Pet, day: int32, ownerBanked: uint64): string {
 	if (!pet.alive && pet.bornEpoch > (day as uint64)) { return `day ${day} unclaimed`; }
+	if (pet.agedOut()) { return `day ${day} dead of old age`; }
 	if (!pet.alive) { return `day ${day} dead`; }
 	let line = `day ${day} hearts ${pet.hearts}/${pet.maxHearts} level ${pet.level}`;
 	line = line + ` harvest ${money(pet.harvest)} burrow ${money(pet.burrow)}`;
@@ -74,14 +76,15 @@ function ownerNotes(
 	ownerBanked: uint64,
 ): string {
 	const pet = world.pets[index];
-	if (!pet.alive) { return ""; }
+	if (!pet.alive || pet.wild) { return ""; }
 	let notes = "";
 	if (world.ownerLedgers[index].visits > visitsBefore) {
 		notes = notes + ` | owner visited, bonding ${pet.bonding as int32}`;
 	}
 	if (ownerBanked > 0) { notes = notes + ` | owner banked ${money(ownerBanked)}`; }
 	if (pet.giftOwed > yesterday.giftOwed) {
-		notes = notes + ` | gifted ${money(pet.giftOwed - yesterday.giftOwed)} to its owner`;
+		const gift = pet.giftOwed - yesterday.giftOwed;
+		notes = notes + ` | gifted ${gift < HBRN_UNIT ? "less than 1" : money(gift)} to its owner`;
 	}
 	if (pet.bornEpoch == yesterday.bornEpoch && pet.scars > yesterday.scars) {
 		notes = notes + " | insurance brought it back";
@@ -206,7 +209,7 @@ function step(this world: World, index: int32, diary: Diary): World {
 
 function main(): int32 {
 	let world = World.staggered(WORLD_BLOCKS, DIARY_SEED);
-	const diary: Diary = { pets: [1, 4, 7], lines: ["", "", ""] };
+	const diary: Diary = { pets: [1, 4, 7], lines: ["", "", ""], wild: [false, false, false] };
 	const pages: string[] = [];
 	for (let day = 1; day <= EPISODE_EPOCHS; day++) {
 		const yesterday: Pet[] = [];
@@ -222,7 +225,10 @@ function main(): int32 {
 		for (let row = 0; row < diary.pets.length; row++) {
 			const index = diary.pets[row];
 			const ownerBanked = world.ownerLedgers[index].banked - bankedBefore[row];
-			lines[row] = world.pets[index].morning(yesterday[row], day, ownerBanked) +
+			const seat = world.pets[index];
+			diary.wild[row] = seat.wild;
+			const pet = seat.wild ? world.absent[index] : seat;
+			lines[row] = pet.morning(yesterday[row], day, ownerBanked) +
 				world.ownerNotes(index, yesterday[row], visitsBefore[row], ownerBanked);
 		}
 		for (let round = 0; round < ACTS_PER_EPOCH; round++) {
