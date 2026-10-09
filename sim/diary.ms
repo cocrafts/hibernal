@@ -39,6 +39,14 @@ function nameOf(this world: World, index: int32): string {
 	return `#${index % BLOCK_SLOTS} ${world.personaOf(index).toString()}`;
 }
 
+function followedMoves(this diary: Diary, world: World): void {
+	if (world.movedEpoch != world.epoch) { return; }
+	const pets = diary.pets;
+	for (let row = 0; row < pets.length; row++) {
+		pets[row] = world.origins.indexOf(pets[row]) as int32;
+	}
+}
+
 function note(this diary: Diary, index: int32, text: string): void {
 	const lines = diary.lines;
 	for (let row = 0; row < diary.pets.length; row++) {
@@ -221,6 +229,7 @@ function main(): int32 {
 			bankedBefore.push(world.ownerLedgers[index].banked);
 		}
 		world = world.beginEpoch(day as uint64);
+		diary.followedMoves(world);
 		const lines = diary.lines;
 		for (let row = 0; row < diary.pets.length; row++) {
 			const index = diary.pets[row];
@@ -242,7 +251,8 @@ function main(): int32 {
 	}
 	for (let row = 0; row < diary.pets.length; row++) {
 		const index = diary.pets[row];
-		const pet = world.pets[index];
+		const seat = world.pets[index];
+		const pet = seat.wild ? world.absent[index] : seat;
 		const owner = world.owners[index].toString();
 		const origin = `start ${pet.startRegion().toString()}, owner ${owner}`;
 		console.log(`== ${world.nameOf(index)}, ${origin}, seed ${DIARY_SEED}`);
