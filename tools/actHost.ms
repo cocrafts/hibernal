@@ -230,7 +230,7 @@ function written(
 	checkSim: boolean,
 ): Result<ActChoice, HostError> {
 	const pets = copied(world.pets);
-	const wilds = copied(world.wilds);
+	const wilds = copied(world.absent);
 	const before = petLine("pets", pets) + petLine("wilds", wilds) + contextLine("context", context) +
 		globalLine("global", world.global);
 	const outcome = context.actOnce(policy, pets, wilds, world.global);
@@ -258,7 +258,7 @@ function dayWritten(policy: uint8[]): Result<int32, HostError> {
 	const moment: Moment = { day: TYPICAL_DAY, round: 0, turn: 0, index: 0 };
 	const world = worldAt(moment);
 	const pets = copied(world.pets);
-	const wilds = copied(world.wilds);
+	const wilds = copied(world.absent);
 	let global = world.global;
 	const order: int32[] = [];
 	let orderText = "order";
