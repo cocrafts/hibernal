@@ -95,6 +95,7 @@ function opsCheck() {
 	if (!OPS_STATUS) return null;
 	if (!existsSync(OPS_STATUS)) return { alarm: `ops status ${OPS_STATUS} missing` };
 	const at = Date.parse(JSON.parse(readFileSync(OPS_STATUS, "utf8")).at);
+	if (!Number.isFinite(at)) return { alarm: `ops status ${OPS_STATUS} has an invalid timestamp` };
 	const ageSeconds = Math.round((Date.now() - at) / 1000);
 	return { ageSeconds, alarm: ageSeconds > OPS_STALE_SECONDS ? `ops last wrote its status ${ageSeconds} s ago` : null };
 }
