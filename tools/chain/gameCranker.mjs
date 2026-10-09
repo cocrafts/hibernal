@@ -210,7 +210,8 @@ async function refreshBlockhash() {
 		try {
 			const { value } = await ephemeral.getLatestBlockhash().send();
 			blockhash = value;
-			if (slot === 0n) slot = BigInt(await ephemeral.getSlot().send());
+			const polledSlot = BigInt(await ephemeral.getSlot().send());
+			if (polledSlot > slot) slot = polledSlot;
 		} catch (error) {
 			console.error(`blockhash: ${error.message}`);
 		}
