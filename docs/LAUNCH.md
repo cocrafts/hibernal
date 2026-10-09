@@ -57,7 +57,7 @@ Smoke local chạy lại 2026-09-30, **không gửi network transaction**: trong
 | Surface | Trách nhiệm cần hoàn thành |
 |---|---|
 | Hibernal trên L1 | Init/config authority; SGT admission và registry duy nhất theo mint; tạo/delegate state; SKR shop và receipt; callback undelegate; ledger chi trả và `$HBRN` mint; kiểm tra mọi khoản rời game. |
-| Hibernal trong ER | Tick/emission; observation/inference; economy/node; attack, talent và item randomness qua VRF; settlement, replay, market, bonding/gift, death/grace/heir; owner actions; kiểm tra lịch act và replay protection. |
+| Hibernal trong ER | Tick/emission; observation/inference; economy/node; attack, talent và item randomness qua VRF; settlement, replay, market, bonding/gift, death/heir; owner actions; kiểm tra lịch act và replay protection. |
 | Account giữ trên L1 | Policy được xác thực và cập nhật bởi authority; admission/identity mapping theo layout đã chốt; cấu hình giới hạn outflow và paid ledger không delegate; purchase receipts nếu dùng đường L1 → ER. |
 | Account delegate | Game state theo layout đã chốt, gồm block/pets, market/replay/pending state và global reward state. Mọi state một transaction ghi phải ở **cùng một ER**. |
 | Hạ tầng có sẵn | System, SPL Token/Token-2022, MagicBlock delegation/magic/VRF/Hydra, session program nếu dùng. Xác minh ID, version, validator và quyền ở cluster thật; không deploy lại chúng như program của Hibernal. |
@@ -117,7 +117,7 @@ Owner: Hibernal chain + app/device. Mục tiêu checkpoint khoảng **2026-10-03
 
 - Game account/guard/instruction layer trên rules hiện có: config, admission uniqueness/owner, block assignment, claim/delegate, policy và lifecycle. DevAdmission là token test được ghi nhãn, không giả là SGT mainnet.
 - `act` lấy clock/context hợp lệ từ chain, xác thực caller/schedule, không chạy cùng pet/round hai lần; wild pets và observation xây trong program, không nhận fixture tin cậy từ client.
-- Nối economy/node/attack, food/bank, items/market, owner feed/talk/shop, gifting, reward accounting, death/grace/heir. Layout change không được làm mất admission mapping.
+- Nối economy/node/attack, food/bank, items/market, owner feed/talk/shop, gifting, reward accounting, death/heir. Layout change không được làm mất admission mapping.
 - Attack policy → reserve/lock → pending VRF → verified callback → settle hai pet/global/block/replay một lần. Talent/item mint cũng dùng VRF, không client seed/slot-hash fallback. Kiểm mutation khi pending, stale/out-of-order callbacks và recovery.
 - Native RPC/decoder dùng ABI thật; Kotlin/MWA connect/sign/cancel/reconnect; app đọc pet/neighbor/records từ ER. Nhập renderer artifact đúng repo nếu đã có, không tự đổi stack.
 

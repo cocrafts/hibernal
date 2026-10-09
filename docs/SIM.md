@@ -303,7 +303,7 @@
 ### D3. Đảo block theo sức mạnh (D39) — Có trong code (sau cờ, mặc định tắt) · Đo được với teacher
 
 - Tâm lý: con yếu không bị con mạnh ăn hiếp tới chết; mỗi block là mười con ngang sức.
-- Code (2026-09-30): `rules/resort.ms` (`strengthOf` theo Level, Power hoặc Combat, có tính gear; `movedTo` xoá thù hận), `World.resorted` và `newbornsPlacedWeak` trong `sim/world.ms`, `health.py --resort N --measure M --wilds 0|1`. Mặc định tắt: digest và engine `16948401298924711931` không đổi, native = JS.
+- Code (2026-09-30): `rules/resort.ms` (`strengthOf` theo Level, Power hoặc Combat, có tính gear; `movedTo` xoá thù hận), `World.resorted` và `newbornsPlacedWeak` trong `sim/world.ms` (từ 2026-10-10 là `newbornsPlacedLowestLevel`: Pet mới sinh vào block có level trung bình thấp nhất còn ghế, có re-sort hay không), `health.py --resort N --measure M --wilds 0|1`. Mặc định tắt: digest và engine `16948401298924711931` không đổi, native = JS.
 - Đo (teacher, 8 world × 200 pet × 120 ngày, seed 9001–9003, `out/resort/`):
 
 | Cấu hình | Cướp bởi con mạnh gấp đôi | Tiền mất vì bị cướp, % thu nhập | Chết sớm / 100 đời | Wealth median region cao / thấp |

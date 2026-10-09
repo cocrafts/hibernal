@@ -152,7 +152,7 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 
 ### Package 3: the world and the teacher — Measured
 
-`sim/world.ms` holds the state (`Pet[]`, `GlobalConfig`, death and level-milestone epochs per slot) and the steps: `beginEpoch` (tick every living pet, hatch an heir into a slot whose pet died at least `GRACE_EPOCHS` ago, lineage +1), one `act` as three head steps `applyEconomy` → `applyNode` → `applyAttack`, and `endEpoch` (bury, split the wallet to block-mates). `sim/teacher.ms` is the heuristic teacher on top of `brain.ms` personas (slot ÷ 3 picks Cautious, Greedy, Vengeful) and `playEpisode(blocks, epochs, seed)`.
+`sim/world.ms` holds the state (`Pet[]`, `GlobalConfig`, death and level-milestone epochs per slot) and the steps: `beginEpoch` (tick every living pet, move newborns to the lowest-level block with `newbornsPlacedLowestLevel`), one `act` as three head steps `applyEconomy` → `applyNode` → `applyAttack`, and `endEpoch` (bury; a natural death hatches the heir at once, lineage +1; any other death gives half the wallet to one living block-mate). `sim/teacher.ms` is the heuristic teacher on top of `brain.ms` personas (slot ÷ 3 picks Cautious, Greedy, Vengeful) and `playEpisode(blocks, epochs, seed)`.
 
 - Each head gets its own mask on the state the previous head left, exactly as the four policies run inside `act`. A single joint mask per `act` was measured wrong: eating lowers the burrow and turns an attack the joint mask allowed into `Broke`. The env in package 4 therefore exposes three observe/step pairs per `act`, not one.
 - A rejected action counts in `stats.illegal` and applies nothing. The teacher runs 200 pets × 120 epochs with `illegal == 0`.
@@ -301,7 +301,7 @@ uv run python ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 
 | PPO seed 5 / 6 / 7 | 12,416 / 12,432 / 11,704 | 65 / 173 / 102 / 74 · 62 / 175 / 103 / 74 · 58 / 170 / 97 / 64 | 1–6 · 1–6 · 1–7 | same | same | 0 | 0 |
 
 - Days 1–6 have no fight by design, not by a bug: `World.staggered` gives slot 0 of the 20 blocks days 1–3 and slot 1 days 4–6, so until day 7 no block holds two pets outside the 3-epoch newborn shield (`BRIEF.md` §3.2). The first fights come on day 7 (7 of them, then 14, 20, 34). The "fights every day" condition does not hold for days 1–6, and it is not special-cased.
-- Deaths and heirs do not depend on the controller: every pet ages out (no starved and no bitten death anywhere), and the heir comes back after the 7-epoch grace.
+- Deaths and heirs do not depend on the controller: every pet ages out (no starved and no bitten death anywhere), and the heir comes back after the 7-epoch grace (rules before 2026-10-10; the heir now hatches at the same dusk).
 
 **Behavior cloning**, 16 worlds (1.24M economy, 1.02M node, 381k attack decisions with more than one legal action; collection 222 s, 7 min in all):
 
