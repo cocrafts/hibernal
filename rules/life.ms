@@ -1,4 +1,5 @@
 import * as arithmetic from "std/solana/arithmetic";
+import { mixSeeds } from "./rng";
 import { BPS } from "./units";
 import {
 	BASE_STAT,
@@ -92,6 +93,7 @@ export enum BurialError {
 
 export enum HeirError {
 	Alive,
+	Lost,
 	TreasuryShort,
 }
 
@@ -103,7 +105,7 @@ export struct PetAndGlobal {
 export struct Burial {
 	pet: Pet;
 	global: GlobalConfig;
-	perMate: uint64;
+	toMate: uint64;
 }
 
 export function genesis(this typeof GlobalConfig, genesisTimestamp: uint64): GlobalConfig {
@@ -482,15 +484,22 @@ export function bury(
 		return Result.ok({
 			pet: { ...pet, harvest: 0, burrow: wallet - tax },
 			global: { ...global, recycledPending: global.recycledPending + tax },
-			perMate: 0,
+			toMate: 0,
 		});
 	}
-	const [perMate, unshared] = deathSplit(wallet, livingMates);
+	const [toMate, unshared] = deathSplit(wallet, livingMates);
 	return Result.ok({
 		pet: { ...pet, harvest: 0, burrow: 0, gear: Gear.bare() },
 		global: { ...global, treasury: global.treasury + unshared },
-		perMate: perMate,
+		toMate: toMate,
 	});
+}
+
+export const LUCKY_MATE_SALT: uint64 = 104729;
+
+export function luckyMateOf(seed: uint64, seat: int32, epoch: uint64, livingMates: int32): int32 {
+	const mixed = mixSeeds(mixSeeds(mixSeeds(seed, LUCKY_MATE_SALT), seat as uint64), epoch);
+	return (mixed % (livingMates as uint64)) as int32;
 }
 
 export function heirOf(
@@ -499,6 +508,7 @@ export function heirOf(
 	global: GlobalConfig,
 ): Result<PetAndGlobal, HeirError> {
 	if (dead.alive) { return Result.err(HeirError.Alive); }
+	if (!dead.agedOut()) { return Result.err(HeirError.Lost); }
 	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS);
 	if (global.itemReserve < proceeds) { return Result.err(HeirError.TreasuryShort); }
 	const paid: GlobalConfig = { ...global, itemReserve: global.itemReserve - proceeds };
@@ -717,9 +727,12 @@ test "ticks refuse the dead and the past, and a burial splits the wallet" {
 	const burial = dead.bury(3, newborn.global);
 	assert burial.ok;
 	if (burial.ok) {
-		assert burial.value.perMate == 166;
+		assert burial.value.toMate == 500;
 		assert burial.value.pet.harvest == 0 && burial.value.pet.burrow == 0;
-		assert burial.value.global.treasury == 1001 - 166 * 3;
+		assert burial.value.global.treasury == 501;
+		const heir = burial.value.pet.heirOf(2, burial.value.global);
+		assert !heir.ok;
+		if (!heir.ok) { assert heir.error == HeirError.Lost; }
 	}
 	assert !newborn.pet.bury(3, newborn.global).ok;
 }
@@ -759,7 +772,7 @@ test "an old pet fades, dies on day 90 with its hearts, and pays the tax once" {
 	assert burial.ok;
 	if (burial.ok) {
 		const tax = wallet * INHERITANCE_TAX_PERCENT / 100;
-		assert burial.value.perMate == 0;
+		assert burial.value.toMate == 0;
 		assert burial.value.pet.burrow == wallet - tax;
 		assert burial.value.global.recycledPending == gone.global.recycledPending + tax;
 	}

@@ -127,8 +127,8 @@ export function stakeSplit(amount: uint64): [uint64, uint64] {
 
 export function deathSplit(wallet: uint64, livingMates: int32): [uint64, uint64] {
 	if (livingMates <= 0) { return [0, wallet]; }
-	const perMate = wallet / 2 / (livingMates as uint64);
-	return [perMate, wallet - perMate * (livingMates as uint64)];
+	const toMate = wallet / 2;
+	return [toMate, wallet - toMate];
 }
 
 test "emission halves every 90 epochs and stops at the cap" {
@@ -202,9 +202,8 @@ test "splits conserve value" {
 	assert spend.treasury == 400;
 	const [winner, fee] = stakeSplit(999);
 	assert winner + fee == 999;
-	const [perMate, unshared] = deathSplit(1000, 3);
-	assert perMate == 166;
-	assert perMate * 3 + unshared == 1000;
+	const [toMate, unshared] = deathSplit(1001, 3);
+	assert toMate == 500 && unshared == 501;
 	const [toMates, allUnshared] = deathSplit(1000, 0);
 	assert toMates == 0 && allUnshared == 1000;
 }

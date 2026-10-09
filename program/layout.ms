@@ -253,6 +253,7 @@ export enum HibernalError {
 	SlotsFull,
 	EngagedThisRound,
 	SessionExpired,
+	PetLost,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {

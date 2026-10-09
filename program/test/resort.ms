@@ -100,12 +100,17 @@ function stageBlockEntry(): void {
 	const block = (target.value.data().address + 8) as Ptr<Block>;
 	const id = data.readU32(0);
 	const filled = data.readU8(4);
-	if (!id.ok || !filled.ok) { return; }
+	const freed = data.readU8(5);
+	if (!id.ok || !filled.ok || !freed.ok) { return; }
 	block.id = id.value;
 	block.filled = filled.value;
 	for (let seat = 0; seat < (filled.value as int32); seat++) {
 		const member = unchecked(1 + seat);
 		if (member.ok) { block.members[seat] = member.value.key(); }
+	}
+	if ((freed.value as int32) < 10) {
+		block.members[freed.value as int32] = Pubkey.zero();
+		block.filled = block.filled - 1;
 	}
 	block.grudges[3].robber = 7;
 	block.grudges[3].epoch = 5;
@@ -222,10 +227,15 @@ function petHolder(ordinal: uint32, blockId: uint32, slot: uint8, might: uint16,
 }
 
 function blockHolder(id: uint32, first: int32): HostAccount {
+	return blockHolderFreeing(id, first, 255);
+}
+
+function blockHolderFreeing(id: uint32, first: int32, freed: uint8): HostAccount {
 	const blank = stamped(holder(keyOf(100 + (id as uint8)), sizeof(Block) as int32), Block.discriminator().word());
 	const data: uint8[] = [];
 	pushU32(data, id);
 	data.push(10);
+	data.push(freed);
 	const accounts: HostAccount[] = [blank];
 	for (let seat = 0; seat < 10; seat++) { accounts.push(state[PETS + first + seat]); }
 	return staged(accounts, data, stageBlockEntry);
@@ -276,9 +286,13 @@ function fixture(): void {
 }
 
 function begun(): uint64 {
+	return begunWith(20);
+}
+
+function begunWith(count: uint64): uint64 {
 	const data = headed("ResortBegin");
 	data.push(COMBAT);
-	pushU64(data, 20);
+	pushU64(data, count);
 	const accounts: HostAccount[] = [authority(), state[CONFIG], state[WORLD], state[RESORT]];
 	const outcome = run(programKey(), accounts, data, beginEntry);
 	state[WORLD] = accounts[2];
@@ -287,14 +301,23 @@ function begun(): uint64 {
 }
 
 function cleared(block: int32): uint64 {
+	return clearedWithout(block, -1);
+}
+
+function clearedWithout(block: int32, freed: int32): uint64 {
 	const accounts: HostAccount[] = [authority(), state[CONFIG], state[WORLD], state[RESORT], state[BLOCKS + block]];
 	const first = PETS + block * 10;
-	for (let seat = 0; seat < 10; seat++) { accounts.push(state[first + seat]); }
+	const seats: int32[] = [];
+	for (let seat = 0; seat < 10; seat++) {
+		if (seat == freed) { continue; }
+		seats.push(seat);
+		accounts.push(state[first + seat]);
+	}
 	const outcome = run(programKey(), accounts, headed("ResortClear"), clearEntry);
 	state[WORLD] = accounts[2];
 	state[RESORT] = accounts[3];
 	state[BLOCKS + block] = accounts[4];
-	for (let seat = 0; seat < 10; seat++) { state[first + seat] = accounts[5 + seat]; }
+	for (let index = 0; index < seats.length; index++) { state[first + seats[index]] = accounts[5 + index]; }
 	return outcome.result;
 }
 
@@ -357,6 +380,23 @@ test "twenty pets re-sort into two blocks, strongest first, each pet on its new 
 	const stayed = peek(state[PETS + 3], peekPetEntry);
 	assert stayed[0] == 1 && stayed[1] == 3;
 	assert peek(state[WORLD], peekWorldEntry)[0] == 0;
+}
+
+test "a block with a seat freed by a death clears its remaining pets and leaves no stale member" {
+	fixture();
+	state[BLOCKS + 1] = blockHolderFreeing(1, 10, 4);
+	state[WORLD] = worldHolder(19, FIXTURE_TREASURY);
+	assert peek(state[BLOCKS + 1], peekBlockEntry)[0] == 9;
+	assert begunWith(19) == 0;
+	assert cleared(0) == 0;
+	assert cleared(1) == codeOf(HibernalError.NotAMember);
+	assert clearedWithout(1, 4) == 0;
+	assert assigned(0, 0, 0, [10, 11, 12, 13, 15]) == 0;
+	assert assigned(0, 0, 5, [16, 17, 18, 19, 9]) == 0;
+	assert assigned(1, 0, 0, range(0, 9)) == 0;
+	assert finished() == 0;
+	const weak = peek(state[BLOCKS + 1], peekBlockEntry);
+	assert weak[0] == 9 && weak[5 + 9] == 0;
 }
 
 test "a block may not be stronger than the block before it" {

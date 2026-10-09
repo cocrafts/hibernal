@@ -30,7 +30,6 @@ import {
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
 	BLOCK_SLOTS,
-	GRACE_EPOCHS,
 	STAKE_LEVELS,
 	BlockSlot,
 	Combatant,
@@ -58,6 +57,8 @@ import {
 	legalNodes,
 	listedItem,
 	listingGain,
+	luckyMateOf,
+	agedOut,
 	overtimeBanked,
 	mixSeeds,
 	allocateNodeWithSums,
@@ -77,6 +78,8 @@ import {
 	Grudge,
 	HibernalError,
 	LISTINGS,
+	NO_BLOCK,
+	NO_SEAT,
 	PetAccount,
 	Phase,
 	Policy,
@@ -439,17 +442,7 @@ export function dawned(
 		if (records[seat] == 0) { continue; }
 		const record = records[seat] as Ptr<PetAccount>;
 		const pet = pets[seat];
-		if (!pet.alive) {
-			const diedAt = record.diedEpoch;
-			if (diedAt == 0 || epoch < diedAt + GRACE_EPOCHS) { continue; }
-			const heir = pet.heirOf(epoch, settled);
-			if (!heir.ok) { return Result.err(heirFailure(heir.error)); }
-			pets[seat] = heir.value.pet;
-			settled = heir.value.global;
-			record.diedEpoch = 0;
-			block.grudges[seat] = noGrudge();
-			continue;
-		}
+		if (!pet.alive) { continue; }
 		const ticked = pet.tickTo(settled, epoch);
 		if (!ticked.ok) { continue; }
 		pets[seat] = ticked.value.pet;
@@ -472,6 +465,7 @@ export function dawned(
 function heirFailure(error: HeirError): ProgramError {
 	const mapped: HibernalError = match (error) {
 		HeirError.Alive => HibernalError.Illegal,
+		HeirError.Lost => HibernalError.Illegal,
 		HeirError.TreasuryShort => HibernalError.TreasuryShort,
 	};
 	return hibernalError(mapped);
@@ -497,28 +491,61 @@ function livingMates(pets: Span<Pet>, records: Span<uint64>, seat: int32): int32
 	return living;
 }
 
-export function dusked(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>, global: GlobalConfig): GlobalConfig {
-	let settled = global;
+function livingMateAt(pets: Span<Pet>, records: Span<uint64>, seat: int32, nth: int32): int32 {
+	let seen = 0;
+	for (let mate = 0; mate < SEATS; mate++) {
+		if (mate == seat || records[mate] == 0 || !pets[mate].alive) { continue; }
+		if (seen == nth) { return mate; }
+		seen += 1;
+	}
+	return seat;
+}
+
+function unseated(pet: Pet): Pet {
+	return { ...pet, blockId: NO_BLOCK, slot: NO_SEAT };
+}
+
+function leftSeat(world: Ptr<World>, record: Ptr<PetAccount>, dead: Pet, epoch: uint64): Result<Pet, ProgramError> {
+	if (!dead.agedOut()) { return Result.ok(unseated(dead)); }
+	const heir = dead.heirOf(epoch + 1, world.global);
+	if (!heir.ok) { return Result.err(heirFailure(heir.error)); }
+	world.global = heir.value.global;
+	record.diedEpoch = 0;
+	return Result.ok(unseated(heir.value.pet));
+}
+
+function vacated(block: Ptr<Block>, seat: int32): void {
+	block.members[seat] = Pubkey.zero();
+	block.filled = block.filled - 1;
+	block.grudges[seat] = noGrudge();
+	for (let mate = 0; mate < SEATS; mate++) {
+		if (block.grudges[mate].epoch != 0 && (block.grudges[mate].robber as int32) == seat) { block.grudges[mate] = noGrudge(); }
+	}
+}
+
+export function dusked(world: Ptr<World>, block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>): Result<void, ProgramError> {
 	for (let seat = 0; seat < SEATS; seat++) {
-		if (records[seat] == 0) { continue; }
+		if (records[seat] == 0 || pets[seat].alive) { continue; }
 		const record = records[seat] as Ptr<PetAccount>;
-		const pet = pets[seat];
-		if (pet.alive || record.diedEpoch != 0) { continue; }
-		const burial = pet.bury(livingMates(pets, records, seat), settled);
-		if (!burial.ok) { continue; }
-		pets[seat] = burial.value.pet;
-		record.diedEpoch = block.epoch;
-		settled = burial.value.global;
-		if (burial.value.perMate == 0) { continue; }
-		for (let mate = 0; mate < SEATS; mate++) {
-			if (mate == seat || records[mate] == 0 || !pets[mate].alive) { continue; }
-			pets[mate] = { ...pets[mate], harvest: pets[mate].harvest + burial.value.perMate };
+		let dead = pets[seat];
+		if (record.diedEpoch == 0) {
+			const mates = livingMates(pets, records, seat);
+			const burial = dead.bury(mates, world.global);
+			if (!burial.ok) { return Result.err(hibernalError(HibernalError.Illegal)); }
+			dead = burial.value.pet;
+			world.global = burial.value.global;
+			record.diedEpoch = block.epoch;
+			if (burial.value.toMate != 0) {
+				const lucky = livingMateAt(pets, records, seat, luckyMateOf(block.roundSeed, seat, block.epoch, mates));
+				pets[lucky] = { ...pets[lucky], harvest: pets[lucky].harvest + burial.value.toMate };
+			}
 		}
+		record.pet = try leftSeat(world, record, dead, block.epoch);
+		vacated(block, seat);
+		world.placed = world.placed - 1;
+		records[seat] = 0;
 	}
-	for (let seat = 0; seat < SEATS; seat++) {
-		if (records[seat] != 0) { pets[seat] = pets[seat].overtimeBanked(); }
-	}
-	return settled;
+	return Result.ok(null);
 }
 
 function emptySeat(key: Pubkey): boolean {
@@ -766,7 +793,7 @@ function dawnedBlock(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): 
 
 function dayEnded(x: TurnAccounts, block: Ptr<Block>, heap: Ptr<BlockPets>): Result<void, ProgramError> {
 	const world = x.world.data();
-	world.global = dusked(block, heap.pets, heap.records, world.global);
+	const _dusked = try dusked(world, block, heap.pets, heap.records);
 	storedPets(heap);
 	block.epoch = block.epoch + 1;
 	block.round = 0;

@@ -36,7 +36,7 @@ import {
 	groupMemberPointer,
 	tokenGroupMember,
 } from "std/solana/token";
-import { BlockSlot, GlobalConfig, Pet, Region, born, genesis } from "../rules/index";
+import { BlockSlot, GlobalConfig, Pet, Region, born, genesis, movedTo } from "../rules/index";
 import {
 	Block,
 	ClaimArgs,
@@ -280,6 +280,7 @@ export function place(): Result<uint64, ProgramError> {
 	const record = x.pet.data();
 	const _pet = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	if (record.pet.blockId != NO_BLOCK) { return Result.err(hibernalError(HibernalError.AlreadyPlaced)); }
+	if (!record.pet.alive && record.diedEpoch != 0) { return Result.err(hibernalError(HibernalError.PetLost)); }
 	if (world.resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
 	let seat = -1;
 	for (let index = 0; index < SEATS; index++) {
@@ -291,9 +292,13 @@ export function place(): Result<uint64, ProgramError> {
 	if (seat < 0) { return Result.err(hibernalError(HibernalError.BlockFull)); }
 	if ((block.phase as Phase) != Phase.Idle) { return Result.err(hibernalError(HibernalError.NotIdle)); }
 	const epoch = block.started != 0 ? block.epoch : dayOf(config, clock().unixTimestamp);
-	const hatched = Pet.born(block.id, seat as BlockSlot, record.pet.startRegion(), epoch, world.global);
-	record.pet = hatched.pet;
-	world.global = hatched.global;
+	if (record.pet.alive) {
+		record.pet = record.pet.movedTo(block.id, seat as BlockSlot);
+	} else {
+		const hatched = Pet.born(block.id, seat as BlockSlot, record.pet.startRegion(), epoch, world.global);
+		record.pet = hatched.pet;
+		world.global = hatched.global;
+	}
 	block.members[seat] = x.pet.key();
 	block.filled = block.filled + 1;
 	world.placed = world.placed + 1;

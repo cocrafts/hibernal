@@ -1,6 +1,5 @@
 import {
 	BLOCK_SLOTS,
-	GRACE_EPOCHS,
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
 	STAKE_LEVELS,
@@ -22,6 +21,7 @@ import {
 	INHERITANCE_TAX_PERCENT,
 	agedOut,
 	heirOf,
+	luckyMateOf,
 	TalentKind,
 	built,
 	withNode,
@@ -253,6 +253,17 @@ export function livingMates(this world: World, index: int32): int32 {
 	return living;
 }
 
+function livingMateAt(this world: World, index: int32, nth: int32): int32 {
+	const base = blockStart(index);
+	let seen = 0;
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		if (base + slot == index || !world.pets[base + slot].alive) { continue; }
+		if (seen == nth) { return base + slot; }
+		seen += 1;
+	}
+	unreachable;
+}
+
 export function robberOf(this world: World, index: int32): Result<BlockSlot, GrudgeError> {
 	const grudge = world.grudges[index];
 	if (grudge.epoch == 0) { return Result.err(GrudgeError.None); }
@@ -269,7 +280,6 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 	const levelTenEpochs = world.levelTenEpochs;
 	const levelTwentyEpochs = world.levelTwentyEpochs;
 	let global = world.global.settle(epoch);
-	let heirs = world.stats.heirs;
 	for (let index = 0; index < world.pets.length; index++) {
 		const claimEpoch = claimEpochs[index];
 		if (claimEpoch != 0 && epoch >= claimEpoch) {
@@ -279,21 +289,6 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 			pets[index] = claimed.pet;
 			claimEpochs[index] = 0;
 			global = claimed.global;
-		}
-		const real = pets[index].wild ? absent[index] : pets[index];
-		const diedAt = deathEpochs[index];
-		if (claimEpochs[index] == 0 && !real.alive && diedAt != 0 && epoch >= diedAt + GRACE_EPOCHS) {
-			global = vacated(pets, absent, index, global);
-			const heir = real.heirOf(epoch, global);
-			if (!heir.ok) { unreachable; }
-			levelTenEpochs[index] = 0;
-			levelTwentyEpochs[index] = 0;
-			grudges[index] = Grudge.none();
-			pets[index] = heir.value.pet;
-			deathEpochs[index] = 0;
-			global = heir.value.global;
-			heirs += 1;
-			continue;
 		}
 		if (!pets[index].alive) { continue; }
 		const ticked = pets[index].tickTo(global, epoch);
@@ -328,9 +323,8 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		global: global,
 		epoch: epoch,
 		market: market,
-		stats: { ...world.stats, heirs: heirs },
 	};
-	const placed = resortsAt(epoch, world.resort.every) ? begun.resorted() : begun.newbornsPlacedWeak();
+	const placed = resortsAt(epoch, world.resort.every) ? begun.resorted() : begun.newbornsPlacedLowestLevel();
 	return placed.ownersVisited().wildsSpawned().inRound(0);
 }
 
@@ -446,20 +440,55 @@ export function resorted(this world: World): World {
 	return everyone;
 }
 
-export function newbornsPlacedWeak(this world: World): World {
-	if (world.resort.every == 0) { return world; }
+function levelsIn(this world: World, block: int32, skipped: int32): [int32, int32] {
+	let total = 0;
+	let living = 0;
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		const index = block * BLOCK_SLOTS + slot;
+		const real = world.realAt(index);
+		if (index == skipped || !real.alive) { continue; }
+		total += real.level as int32;
+		living += 1;
+	}
+	return [total, Math.max(living, 1)];
+}
+
+function freeSeatIn(this world: World, origins: int32[], block: int32): int32 {
+	for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
+		const index = block * BLOCK_SLOTS + slot;
+		if (world.isFree(index) && origins[index] == index) { return index; }
+	}
+	return -1;
+}
+
+function lowestLevelSeat(this world: World, origins: int32[], newborn: int32): int32 {
+	const home = newborn / BLOCK_SLOTS;
+	let [bestTotal, bestLiving] = world.levelsIn(home, newborn);
+	let best = newborn;
+	for (let block = 0; block < world.pets.length / BLOCK_SLOTS; block++) {
+		if (block == home) { continue; }
+		const seat = world.freeSeatIn(origins, block);
+		if (seat < 0) { continue; }
+		const [total, living] = world.levelsIn(block, -1);
+		if (total * bestLiving >= bestTotal * living) { continue; }
+		bestTotal = total;
+		bestLiving = living;
+		best = seat;
+	}
+	return best;
+}
+
+export function newbornsPlacedLowestLevel(this world: World): World {
 	const origins: int32[] = [];
 	for (let index = 0; index < world.pets.length; index++) { origins.push(index); }
 	let moved = false;
-	let free = world.pets.length - 1;
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = world.pets[index];
-		if (!pet.alive || pet.bornEpoch != world.epoch) { continue; }
-		while (free > index && !(world.isFree(origins[free]) && origins[free] == free)) { free -= 1; }
-		if (free / BLOCK_SLOTS <= index / BLOCK_SLOTS) { continue; }
-		origins[index] = free;
-		origins[free] = index;
-		free -= 1;
+		if (!pet.alive || pet.wild || pet.bornEpoch != world.epoch || origins[index] != index) { continue; }
+		const seat = world.lowestLevelSeat(origins, index);
+		if (seat == index) { continue; }
+		origins[index] = seat;
+		origins[seat] = index;
 		moved = true;
 	}
 	if (!moved) { return world; }
@@ -576,6 +605,7 @@ export function endEpoch(this world: World): World {
 	const levelTwentyEpochs = world.levelTwentyEpochs;
 	let global = world.global;
 	let deaths = world.stats.deaths;
+	let heirs = world.stats.heirs;
 	for (let index = 0; index < world.pets.length; index++) {
 		const pet = pets[index];
 		if (pet.wild) {
@@ -596,18 +626,25 @@ export function endEpoch(this world: World): World {
 		deathEpochs[index] = world.epoch;
 		global = burial.value.global;
 		deaths += 1;
-		if (burial.value.perMate == 0) { continue; }
-		const base = blockStart(index);
-		for (let slot = 0; slot < BLOCK_SLOTS; slot++) {
-			const mate = pets[base + slot];
-			if (base + slot == index || !mate.alive) { continue; }
-			pets[base + slot] = { ...mate, harvest: mate.harvest + burial.value.perMate };
+		if (burial.value.toMate != 0) {
+			const lucky = world.livingMateAt(index, luckyMateOf(world.seed, index, world.epoch, world.livingMates(index)));
+			pets[lucky] = { ...pets[lucky], harvest: pets[lucky].harvest + burial.value.toMate };
 		}
+		if (!burial.value.pet.agedOut()) { continue; }
+		const heir = burial.value.pet.heirOf(world.epoch + 1, global);
+		if (!heir.ok) { unreachable; }
+		pets[index] = heir.value.pet;
+		global = heir.value.global;
+		deathEpochs[index] = 0;
+		levelTenEpochs[index] = 0;
+		levelTwentyEpochs[index] = 0;
+		world.grudges[index] = Grudge.none();
+		heirs += 1;
 	}
 	for (let index = 0; index < world.pets.length; index++) {
 		pets[index] = pets[index].overtimeBanked();
 	}
-	return { ...world, global: global, stats: { ...world.stats, deaths: deaths } };
+	return { ...world, global: global, stats: { ...world.stats, deaths: deaths, heirs: heirs } };
 }
 
 export function surroundingsOf(this world: World, index: int32): Surroundings {
@@ -966,6 +1003,12 @@ test "an illegal action counts and changes nothing" {
 	assert after.stats.illegal == 1;
 }
 
+function harvestTotal(pets: Pet[]): uint64 {
+	let total: uint64 = 0;
+	for (const pet of pets) { total += pet.harvest; }
+	return total;
+}
+
 test "a dead pet has empty masks and is buried once" {
 	let world = World.create(1, 4).beginEpoch(1);
 	const victim = world.pets[2];
@@ -974,12 +1017,12 @@ test "a dead pet has empty masks and is buried once" {
 	assert masks.economy.isEmpty();
 	assert masks.nodes.bits == 0;
 	assert masks.attacks.bits == 0;
-	const mateBefore = world.pets[5].harvest;
+	const matesBefore = harvestTotal(world.pets) - 100;
 	world = world.endEpoch();
 	assert world.stats.deaths == 1;
 	assert world.deathEpochs[2] == 1;
 	assert world.pets[2].burrow == 0;
-	assert world.pets[5].harvest == mateBefore + 55;
+	assert harvestTotal(world.pets) == matesBefore + 500;
 	const again = world.endEpoch();
 	assert again.stats.deaths == 1;
 }
@@ -1039,71 +1082,26 @@ test "a dead wild retires its wallet once and restores the absent pet" {
 	assert world.global.treasury == treasury;
 }
 
-test "an heir takes the slot after the grace period" {
+test "a starved pet is lost: half its wallet to one living mate, half to the treasury, no heir" {
 	let world = World.create(1, 5).beginEpoch(1);
-	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0 };
-	world = world.endEpoch().beginEpoch(1 + GRACE_EPOCHS - 1);
-	assert !world.realAt(7).alive;
-	assert world.pets[7].wild && world.pets[7].alive;
-	assert world.stats.heirs == 0;
-	world = world.beginEpoch(1 + GRACE_EPOCHS);
-	assert world.pets[7].alive && !world.pets[7].wild;
-	assert world.pets[7].lineageGeneration == 1;
-	assert world.pets[7].slot == 7;
-	assert world.pets[7].bornEpoch == 1 + GRACE_EPOCHS;
-	assert world.deathEpochs[7] == 0;
-	assert world.stats.heirs == 1;
+	const harvests: uint64[] = world.pets.map((pet) => pet.harvest);
+	const treasury = world.global.treasury;
+	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0, harvest: 600, burrow: 401 };
+	world = world.endEpoch();
+	let lucky = 0;
+	for (let index = 0; index < world.pets.length; index++) {
+		if (index == 7 || world.pets[index].harvest == harvests[index]) { continue; }
+		assert world.pets[index].harvest == harvests[index] + 500;
+		lucky += 1;
+	}
+	assert lucky == 1;
+	assert world.global.treasury == treasury + 501;
+	assert world.stats.heirs == 0 && world.deathEpochs[7] == 1;
+	world = world.beginEpoch(2).endEpoch().beginEpoch(9);
+	assert !world.realAt(7).alive && world.stats.heirs == 0;
 }
 
-test "a wild replaced by an heir before re-sort retires its share exactly once" {
-	let world = World.create(1, 5);
-	const heirEpoch = 1 + GRACE_EPOCHS;
-	world = {
-		...world,
-		epoch: 1,
-		resort: {
-			every: heirEpoch,
-			measure: StrengthMeasure.Combat,
-			wildDefenders: true,
-		},
-	};
-	for (let index = 0; index < world.pets.length; index++) {
-		world.owners[index] = OwnerKind.Absent;
-	}
-	const victim = world.pets[7];
-	world.pets[7] = { ...victim, alive: false, hearts: 0 };
-	world = { ...world, global: world.global.withDeath(victim.stats().rewardWeight()) };
-	world = world.endEpoch().wildsSpawned();
-	assert world.pets[7].wild && world.pets[7].alive;
-	const wild: Pet = { ...world.pets[7], harvest: 40, burrow: 60, giftOwed: 7 };
-	world.pets[7] = wild;
-	const settled = world.global.settle(heirEpoch);
-	const expected = wild.retiredWild(settled);
-	assert expected.treasury > settled.treasury + 107;
-	world = world.beginEpoch(heirEpoch);
-	assert world.global.treasury == expected.treasury;
-	assert world.global.livingPets == (world.pets.length as uint32);
-	let weight: uint64 = 0;
-	let heirs = 0;
-	for (let index = 0; index < world.pets.length; index++) {
-		const pet = world.pets[index];
-		assert pet.alive && !pet.wild;
-		weight += pet.stats().rewardWeight();
-		if (world.origins[index] != 7) { continue; }
-		assert pet.lineageGeneration == 1 && pet.bornEpoch == heirEpoch;
-		assert pet.burrow == 0 && pet.giftOwed == 0;
-		assert world.deathEpochs[index] == 0;
-		heirs += 1;
-	}
-	assert heirs == 1 && world.stats.heirs == 1;
-	assert world.global.totalWorkPower == weight;
-	const before = world.global;
-	world = world.resorted().resorted();
-	assert world.global == before;
-	assert world.stats.heirs == 1;
-}
-
-test "a pet dies of age on day 90 and its heir returns with the estate after the grace" {
+test "a pet dies of age on day 90 and its heir hatches at dusk with the estate" {
 	const start = World.create(1, 5);
 	const pets = start.pets;
 	pets[4] = { ...pets[4], lastTickEpoch: LIFESPAN_EPOCHS - 2 };
@@ -1115,11 +1113,10 @@ test "a pet dies of age on day 90 and its heir returns with the estate after the
 	const mateHarvest = world.pets[5].harvest;
 	world = world.endEpoch();
 	assert world.pets[5].harvest == mateHarvest;
+	assert world.pets[4].alive && world.pets[4].lineageGeneration == 1;
+	assert world.pets[4].bornEpoch == LIFESPAN_EPOCHS + 1;
 	assert world.pets[4].burrow == wallet - wallet * INHERITANCE_TAX_PERCENT / 100;
-	world = world.beginEpoch(LIFESPAN_EPOCHS + GRACE_EPOCHS);
-	assert world.pets[4].alive;
-	assert world.pets[4].lineageGeneration == 1;
-	assert world.pets[4].burrow == wallet - wallet * INHERITANCE_TAX_PERCENT / 100;
+	assert world.deathEpochs[4] == 0 && world.stats.heirs == 1;
 }
 
 test "a robbery leaves a grudge for three epochs and striking back settles it" {
@@ -1180,14 +1177,20 @@ test "a re-sort puts the strongest ten in the first block and forgets every grud
 	}
 }
 
-test "a newborn takes a free slot in a weaker block between two re-sorts" {
+test "a newborn moves to the free seat of the block with the lowest living level" {
 	const start = World.create(3, 11);
-	const world: World = { ...start, epoch: 9, resort: { every: 7, measure: StrengthMeasure.Combat, wildDefenders: false } };
+	const world: World = { ...start, epoch: 9 };
 	const pets = world.pets;
+	for (let index = 0; index < pets.length; index++) {
+		pets[index] = { ...pets[index], level: index < 10 ? 9 : (index < 20 ? 3 : 5) };
+	}
+	pets[15] = { ...pets[15], alive: false };
 	pets[27] = { ...pets[27], alive: false };
 	pets[3] = { ...pets[3], bornEpoch: 9 };
-	const placed = world.newbornsPlacedWeak();
-	assert placed.pets[27].alive && placed.pets[27].bornEpoch == 9 && placed.pets[27].blockId == 2;
-	assert !placed.pets[3].alive;
-	assert placed.origins[27] == 3 && placed.origins[3] == 27;
+	const placed = world.newbornsPlacedLowestLevel();
+	assert placed.pets[15].alive && placed.pets[15].bornEpoch == 9 && placed.pets[15].blockId == 1;
+	assert !placed.pets[3].alive && !placed.pets[27].alive;
+	assert placed.origins[15] == 3 && placed.origins[3] == 15;
+	pets[12] = { ...pets[12], bornEpoch: 9 };
+	assert world.newbornsPlacedLowestLevel().pets[12].bornEpoch == 9;
 }

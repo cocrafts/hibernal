@@ -8,7 +8,6 @@ import { Pantry } from "./pantry";
 import { Talent, TalentKind } from "./talent";
 import { Gear, statBonusBps } from "./items";
 
-export const GRACE_EPOCHS: uint64 = 7;
 export const BLOCK_SLOTS: int32 = 10;
 export const FIGHT_RING: int32 = 32;
 

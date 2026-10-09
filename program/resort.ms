@@ -5,6 +5,7 @@ import {
 	Program,
 	DELEGATION_PROGRAM_ID,
 	ProgramError,
+	Pubkey,
 	Signer,
 	System,
 	Writable,
@@ -132,19 +133,25 @@ export function resortClear(): Result<uint64, ProgramError> {
 	const resort = x.resort.data();
 	const block = x.block.data();
 	if (block.rotation == resort.rotation) { return failed(HibernalError.OutOfOrder); }
-	const filled = block.filled as int32;
-	if (accountCount() - CLEARED_MEMBERS_FROM != filled) { return failed(HibernalError.NotAMember); }
+	if (accountCount() - CLEARED_MEMBERS_FROM != (block.filled as int32)) { return failed(HibernalError.NotAMember); }
 	let members: Ptr<PetAccount>[10] = [];
-	for (let seat = 0; seat < filled; seat++) {
-		const member = try mutable<PetAccount>(CLEARED_MEMBERS_FROM + seat);
+	let given = 0;
+	for (let seat = 0; seat < SEATS; seat++) {
+		if (block.members[seat].isZero()) { continue; }
+		const member = try mutable<PetAccount>(CLEARED_MEMBERS_FROM + given);
 		if (member.key() != block.members[seat]) { return failed(HibernalError.NotAMember); }
 		members[seat] = member.data();
+		given += 1;
 	}
 	for (let index = 0; index < LISTINGS; index++) {
 		if (block.listed[index] == 0) { continue; }
 		const listing = block.listings[index];
 		const seller = listing.seller as int32;
-		if (seller >= filled) { return failed(HibernalError.NotAMember); }
+		if (seller >= SEATS) { return failed(HibernalError.NotAMember); }
+		if (block.members[seller].isZero()) {
+			block.listed[index] = 0;
+			continue;
+		}
 		const back = members[seller].pet.boughtBack(listing, world.global);
 		if (!back.ok) { return failed(HibernalError.TreasuryShort); }
 		members[seller].pet = back.value.pet;
@@ -154,6 +161,7 @@ export function resortClear(): Result<uint64, ProgramError> {
 	for (let seat = 0; seat < SEATS; seat++) {
 		block.grudges[seat].robber = 0;
 		block.grudges[seat].epoch = 0;
+		block.members[seat] = Pubkey.zero();
 	}
 	block.filled = 0;
 	block.rotation = resort.rotation;
