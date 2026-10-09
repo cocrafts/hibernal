@@ -439,7 +439,7 @@ export function tickTo(
 		might: faded.might as uint16,
 		grit: faded.grit as uint16,
 		maxHearts: faded.maxHearts as uint8,
-		hearts: hearts as uint8,
+		hearts: Math.max(hearts, 0) as uint8,
 		pantry: pantry,
 		foodBoughtToday: newDay ? 0 : pet.foodBoughtToday,
 		engagedToday: newDay ? 0 : pet.engagedToday,
@@ -612,6 +612,9 @@ test "hunger takes a heart every day and starvation leaves the work power" {
 	assert starved.pet.hearts == 0;
 	assert !starved.pet.alive;
 	assert starved.global.totalWorkPower == 0;
+	const overfed: Pet = { ...hungry, maxHearts: 50, hearts: 2, pantry: { small: 0, medium: 0, large: 0 } };
+	const overshot = overfed.tickedTo(newborn.global, 1).pet;
+	assert !overshot.alive && overshot.hearts == 0 && !overshot.agedOut();
 }
 
 test "the floor eats from the pantry at night, never from the burrow" {
