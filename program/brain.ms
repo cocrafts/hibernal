@@ -57,6 +57,8 @@ import {
 	writeTargetHold,
 } from "../rules/index";
 
+const ATTACK_CHOICES: int32 = ATTACK_HOLD + 1;
+
 export struct ActContext {
 	epoch: uint64;
 	round: int32;
@@ -121,8 +123,8 @@ export function economyChoice(
 	self: Span<int32>,
 ): EconomyAction {
 	const legal = around.economyMask(context.market);
-	let hidden: int32[32] = [];
-	let logits: int32[12] = [];
+	let hidden: int32[ECONOMY_HIDDEN] = [];
+	let logits: int32[ECONOMY_OUTPUTS] = [];
 	economyLogits(policy, self, hidden, logits);
 	foldEatIntoBuy(logits, legal, self[SelfFeature.Hearts as int32] >= FEATURE_ONE);
 	foldPortionSizes(logits, legal);
@@ -148,8 +150,8 @@ export function nodeChoice(
 	const pet = around.actorPet();
 	if (legal.bits == 0) { return ALLOCATE_HOLD; }
 	const before = sums.finished(pet.tree, pet.talent());
-	let input: int32[30] = [];
-	let hidden: int32[32] = [];
+	let input: int32[NODE_INPUTS] = [];
+	let hidden: int32[NODE_HIDDEN] = [];
 	let score: int32[1] = [];
 	for (let position = 0; position < NODE_SELF_INPUTS; position++) {
 		input[position] = self[nodeSelfInput(position) as int32];
@@ -192,11 +194,11 @@ export function attackChoice(
 	const own = around.actorPet().combatant();
 	const mask = around.attackMask(own);
 	if (mask.bits == attackHoldMask().bits) { return ATTACK_HOLD; }
-	let input: int32[25] = [];
-	let hidden: int32[32] = [];
-	let narrow: int32[16] = [];
-	let out: int32[4] = [];
-	let logits: int32[41] = [];
+	let input: int32[ATTACK_INPUTS] = [];
+	let hidden: int32[ATTACK_HIDDEN] = [];
+	let narrow: int32[ATTACK_NARROW] = [];
+	let out: int32[ATTACK_OUTPUTS] = [];
+	let logits: int32[ATTACK_CHOICES] = [];
 	for (let position = 0; position < ATTACK_SELF_INPUTS; position++) {
 		input[position] = self[attackSelfInput(position) as int32];
 	}
