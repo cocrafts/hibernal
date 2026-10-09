@@ -5,6 +5,7 @@ Found running the 50,000-pet localnet (`docs/OPERATIONS.md` §9). The ER is `mag
 | # | Bug | Status |
 |---|---|---|
 | 1 | The account index stops at `MDB_MAP_FULL` while it holds free pages | open; localnet index raised to 2 GiB to keep the world running |
+| 2 | RPC bank clock freezes while snapshot archive numbers keep advancing | open; world preserved, no recovery proved |
 
 ## 1. The account index stops at `MDB_MAP_FULL` while it holds free pages
 
@@ -21,8 +22,26 @@ So LMDB had free pages and no reader pinning them, and still refused to grow the
 - `AccountOffsetFinder` (`index/utils.rs`) keeps a `RoTransaction` open for its own lifetime. A finder kept for a long time pins the snapshot it opened, so pages freed after it cannot be reused. It does not explain the stall after 13:56Z, when no reader held a snapshot, unless the stall had become permanent by then.
 - One write transaction that needs more pages than the free list hands back (`WRITE_MAP`, eviction batches).
 
-Not measured: whether the first world of the same day (stopped at 08:40Z) met the same error. Its ER log is 72 KB and holds none of these lines, so it logged less, or did not reach the limit. Also not measured: how fast pages used grow with a 2 GiB index (the sentinel records it from the rebuilt world on).
+Not measured: whether the first world of the same day (stopped at 08:40Z) met the same error. Its ER log is 72 KB and holds none of these lines, so it logged less, or did not reach the limit.
+
+Third-world observation, 2026-10-06, same program and validator, `index-size` 2 GiB, Hibernal tree `cd0c708d59589141ae2491d2423b19b65f40048a`: `out/localnet/run20261006c/watch.jsonl` recorded three healthy samples from 14:41:44.947Z to 15:01:45.185Z, all at epoch 1 with 50,000 placed and living pets. Pages used rose 2,704 → 5,066 of 131,072; live pages 1,009 → 1,341; free pages 1,695 → 3,725. Endpoint slope: 7,085 pages/hour, or 110.7 MiB/hour at 16 KiB/page, over only 20 minutes. This is an early-window measurement, not a sustained growth rate or a forecast of time to exhaustion; reuse and the day-8 gate are not yet proved.
+
+The same watch reached `EPOCH8` at 18:11:47.270Z: 50,000 placed, 43,788 living, healthy sentinel, index 12,169/131,072 pages (9%), live 1,549 and free 10,620. Across 22 samples spanning 3.50065 hours, pages used grew by 9,465: endpoint-average 2,704 pages/hour or 42.25 MiB/hour, not the initial 110.7 MiB/hour. Two samples alarmed on stale ops status during the day-7 re-sort, not on the index; both recovered by the endpoint. This proves survival to this gate, not an LMDB root fix or multi-real-day endurance.
 
 Workaround in place: `tools/chain/localnet.sh` sets `index-size` to 2 GiB, which only delays the limit if the free list is never reused. `tools/chain/sentinel.mjs` alarms when pages used pass `ER_INDEX_PERCENT` (70%).
 
 Next: reproduce in `magicblock-accounts-db` with a small map (insert and remove accounts in a loop the way clones and evictions do) and see whether `MDB_MAP_FULL` comes while `mdb_stat -f` shows free pages. That work belongs to a session started in the validator checkout, with this entry as its brief.
+
+## 2. RPC bank clock freezes while snapshot archive numbers keep advancing
+
+Third world, same validator/program as above, observed 2026-10-07 evening UTC:
+
+- Sentinel first alarm: **13:40:22.679Z**, ER slot **8,414,055** frozen for75seconds. At17:28:47.986Z it reported13,781seconds frozen; L1 slot170,006 was progressing.
+- Read-only curl to local ER `http://127.0.0.1:17799` independently returned8,414,055 for default, processed, confirmed and finalized `getSlot`. Processed `getBlockHeight`, `getEpochInfo.absoluteSlot`/blockHeight, and `getLatestBlockhash.context.slot` all agreed. **getHealth still returned `ok`**. L1 processed getSlot was172,417. This is not only a commitment-default discrepancy or an endpoint reachability failure.
+- World epoch46,5,000 blocksIdle,50,000 pets placed,38,784living; last re-sort epoch42. Cranker sends0/s and no in-flight transactions. Ops watchdog reportedstuck0/resumed0/maxOverdue0 while using the same frozen ERslot: it does **not** prove maintenance recovery.
+- Validator process4094 was alive. The ER log continued snapshot archives through `snapshot-000009864000.tar.gz` at17:40:34.532144Z, plus ledger compaction at17:30. Therefore do not describe the entire validator process as stopped, or infer the archive suffix is the RPC-visible bank slot without tracing it.
+- Sentinel index12% (15,942/131,072pages,1,540live/14,402free), disk56GiB. The copied current ERlog has no MDB_MAP_FULL or panic sighting; DLP scan RPC timeouts at15:11/15:16/15:26/15:31 are later than the initial freeze and not a demonstrated cause. Bug#1 is not established as this stall's root.
+
+Evidence frozen under `/tmp/hibernalErStall20261008a/`: sentinel/opsJSON, ERlog, per-commitment RPC replies and bank/health replies. These are diagnostic reads only; no signing, funding, restart/reset, kill or validator/std implementation edit. This world uses the historical private build, not the goal's gated-upstream build; neither elapsed uptime nor these diagnostics count as48-hour upstream endurance.
+
+Owning-repo brief: `/Users/le/projects/magicblock-validator/.inbox/hibernal/2026-10-08-rpc-bank-clock-frozen-while-snapshots-advance.md`. Next: a validator session claims the issue, traces RPC bank/clock publication against snapshot clock, and reproduces the mechanism without resetting this evidence world. Recovery requires a separately approved, data-impact-reviewed action; no restart as a health-check.
