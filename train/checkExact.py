@@ -14,7 +14,7 @@ policyBytes = policy.toBytes(env.engineVersion)
 env.loadPolicy(0, policyBytes)
 try:
     env.loadPolicy(1, policyBytes[:8] + bytes(8) + policyBytes[16:])
-    print("stale engine version accepted: WRONG")
+    raise RuntimeError("stale engine version accepted")
 except ValueError as refused:
     print("stale engine version refused:", refused)
 compared = [0, 0, 0]
@@ -35,3 +35,5 @@ while env.episode == 0:
 for head, name in enumerate(HEADS):
     print(f"{name}: {compared[head]} legal logits compared, {mismatched[head]} differ")
 print("policy bytes", len(policyBytes))
+if any(mismatched):
+    raise RuntimeError(f"integer logits differ: {mismatched}")
