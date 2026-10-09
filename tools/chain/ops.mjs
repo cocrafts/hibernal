@@ -363,10 +363,9 @@ async function discoverPets() {
 		before = signatures[signatures.length - 1].signature;
 		if (signatures.length < 1000) break;
 	}
-	if (fresh.length > 0) state.claimCursor = fresh[0].signature;
 	await inParallel(fresh, async (entry) => {
 		const found = await patiently(() => baseRead.getTransaction(entry.signature, { maxSupportedTransactionVersion: 0, encoding: "json" }).send());
-		if (!found) return;
+		if (!found) throw new Error(`claim transaction ${entry.signature} unavailable`);
 		const keys = found.transaction.message.accountKeys;
 		for (const instruction of found.transaction.message.instructions) {
 			if (keys[instruction.programIdIndex] !== programAddress) continue;
@@ -376,6 +375,7 @@ async function discoverPets() {
 			state.pets[pet] ??= { mint: keys[instruction.accounts[2]], owner: keys[instruction.accounts[0]] };
 		}
 	});
+	if (fresh.length > 0) state.claimCursor = fresh[0].signature;
 	return Object.keys(state.pets);
 }
 
@@ -490,7 +490,7 @@ async function blocks() {
 		});
 		if (started > 0) note("blocks", `started ${started} block chains`);
 	}
-	state.lastBlocks = { at: new Date().toISOString(), known: keys.length, notDelegated, unplacedBefore: unplaced.length, placed, started, unplacedLeft: queue.length };
+	state.lastBlocks = { at: new Date().toISOString(), known: keys.length, notDelegated, unplacedBefore: unplaced.length, placed, started, unplacedLeft: unplaced.length - placed };
 	save();
 	return state.lastBlocks;
 }
