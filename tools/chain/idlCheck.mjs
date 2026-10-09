@@ -64,6 +64,6 @@ for (const instruction of built) {
 for (const entry of idl.instructions) {
 	if (!covered.has(entry.name) && !BUILT_ON_CHAIN.has(entry.name)) failures.push(`${entry.name}: no client builder checked`);
 }
-console.log(`checked ${covered.size} instructions against the IDL; built on chain (Hydra template, VRF callback, delegation program), not checked here: ${[...BUILT_ON_CHAIN].join(", ")}`);
+console.log(`checked ${covered.size} instruction discriminators/account metadata against the IDL; argument ABI not checked; built on chain (Hydra template, VRF callback, delegation program), not checked here: ${[...BUILT_ON_CHAIN].join(", ")}`);
 for (const failure of failures) console.log(`MISMATCH ${failure}`);
 process.exit(failures.length === 0 ? 0 : 1);
