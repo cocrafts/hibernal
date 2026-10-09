@@ -5,7 +5,7 @@ Found running the 50,000-pet localnet (`docs/OPERATIONS.md` §9). The ER is `mag
 | # | Bug | Status |
 |---|---|---|
 | 1 | The account index stops at `MDB_MAP_FULL` while it holds free pages | open; localnet index raised to 2 GiB to keep the world running |
-| 2 | RPC bank clock freezes while snapshot archive numbers keep advancing | open; world preserved, no recovery proved |
+| 2 | RPC bank clock freezes while snapshot archive numbers keep advancing | upstream [magicblock-validator#1783](https://github.com/magicblock-labs/magicblock-validator/issues/1783); cranker workaround recovered the world 2026-10-09 |
 
 ## 1. The account index stops at `MDB_MAP_FULL` while it holds free pages
 
@@ -44,4 +44,6 @@ Third world, same validator/program as above, observed 2026-10-07 evening UTC:
 
 Evidence frozen under `/tmp/hibernalErStall20261008a/`: sentinel/opsJSON, ERlog, per-commitment RPC replies and bank/health replies. These are diagnostic reads only; no signing, funding, restart/reset, kill or validator/std implementation edit. This world uses the historical private build, not the goal's gated-upstream build; neither elapsed uptime nor these diagnostics count as48-hour upstream endurance.
 
-Owning-repo brief: `/Users/le/projects/magicblock-validator/.inbox/hibernal/2026-10-08-rpc-bank-clock-frozen-while-snapshots-advance.md`. Next: a validator session claims the issue, traces RPC bank/clock publication against snapshot clock, and reproduces the mechanism without resetting this evidence world. Recovery requires a separately approved, data-impact-reviewed action; no restart as a health-check.
+Cause, 2026-10-09: `magicblock-aperture/src/processor.rs:169` (`EventProcessor::run`) matches only `Ok(latest)` from the block broadcast (capacity 32). A `Lagged` disables the block arm until an account update or transaction status ends the `select!`, and by then the receiver is usually behind again. A standalone tokio copy of the loop (`/tmp/mbLaggedRepro`) stays frozen with no traffic or one transaction every 3 blocks and recovers at one per block; handling `Lagged` recovers in every case. Same code in v1.0.0; on 2026-10-09 the mainnet ERs `as`/`eu` reported 0.16.0 `e66d914` and `devnet-as` reported 1.0.0 `cc32775`. Filed as magicblock-validator#1783.
+
+Recovery, 2026-10-09: `gameCranker.mjs` sends 4 compute-budget-only transactions, signed with the frozen blockhash, when the ER slot has not moved for `FREEZE_SECONDS` (10). The restarted cranker sent one burst at 06:34:20.765Z and the ER slot moved from 8,414,055 to 23,167,590 by 06:37:51Z, the bank having advanced about 14.7M slots while the RPC was frozen. The sentinel cleared its ER alarm at 06:34:33.913Z; no second burst was needed. Remove the workaround once a fixed release runs on the ERs we use.
