@@ -205,7 +205,7 @@ for (const [name, refuse, capacity, pending] of [
 			readMany: async () => [{ owner: "delegation" }],
 			delegated: holder => holder.owner === "delegation",
 			readCloned: async () => [{}],
-			petOf: key => ({ key, mint: "mint", blockId: 0xffffffff }),
+			petOf: key => ({ key, mint: "mint", blockId: 0xffffffff, alive: false, diedEpoch: 0n, level: 0 }),
 			delegateBlocks: async () => {},
 			allBlocks: async () => capacity ? [{ id: 0, phase: 0, members: Array(10).fill(null) }] : [],
 			createBlocks: async () => {},
@@ -221,3 +221,38 @@ for (const [name, refuse, capacity, pending] of [
 		assert.equal(result.unplacedLeft, pending);
 	});
 }
+
+test("placement seats an heir in the block with the lowest living level and never a lost pet", async () => {
+	const pets = {
+		veteran: { key: "veteran", mint: "veteran", blockId: 0, alive: true, diedEpoch: 0n, level: 9 },
+		novice: { key: "novice", mint: "novice", blockId: 1, alive: true, diedEpoch: 0n, level: 2 },
+		heir: { key: "heir", mint: "heir", blockId: 0xffffffff, alive: true, diedEpoch: 0n, level: 1 },
+		lost: { key: "lost", mint: "lost", blockId: 0xffffffff, alive: false, diedEpoch: 7n, level: 4 },
+	};
+	const seated = [];
+	const context = {
+		state: {}, baseRead: {}, NO_BLOCK: 0xffffffff, SEATS: 10,
+		PLACES_PER_TRANSACTION: 5, PARALLEL: 16,
+		address: key => key,
+		discoverPets: async () => Object.keys(pets),
+		readMany: async (_, keys) => keys.map(() => ({ owner: "delegation" })),
+		delegated: holder => holder.owner === "delegation",
+		readCloned: async keys => keys.map(() => ({})),
+		petOf: key => pets[key],
+		delegateBlocks: async () => {},
+		allBlocks: async () => [
+			{ id: 0, phase: 0, members: ["veteran", ...Array(9).fill(null)] },
+			{ id: 1, phase: 0, members: ["novice", ...Array(9).fill(null)] },
+		],
+		createBlocks: async () => {},
+		program: { place: async (id, mint) => { seated.push([id, mint]); return {}; } },
+		onEr: async () => {},
+		note: () => {}, supportsRelay: () => false, save: () => {},
+	};
+	loadFunction("ops.mjs", "inParallel", "readMany", context);
+	const place = loadFunction("ops.mjs", "blocks", "exhaustedCranks", context);
+	const result = await place();
+	assert.deepEqual(seated, [[1, "heir"]]);
+	assert.equal(result.unplacedBefore, 1);
+	assert.equal(result.placed, 1);
+});

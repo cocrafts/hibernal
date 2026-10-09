@@ -187,6 +187,7 @@ function petOf(key, holder) {
 		blockId: readU32(data, at("block_id")),
 		slot: data[at("slot")],
 		alive: data[at("alive")] !== 0,
+		diedEpoch: readU64(data, petAccountAt.died_epoch),
 		level: new DataView(data.buffer, data.byteOffset).getUint16(at("level"), true),
 		forage: new DataView(data.buffer, data.byteOffset).getUint16(at("forage"), true),
 		might: new DataView(data.buffer, data.byteOffset).getUint16(at("might"), true),
@@ -444,7 +445,7 @@ async function blocks() {
 	const notDelegated = keys.length - delegatedKeys.length;
 	const holders = await readCloned(delegatedKeys);
 	const pets = holders.map((holder, index) => (holder ? petOf(delegatedKeys[index], holder) : null)).filter(Boolean);
-	const unplaced = pets.filter((pet) => pet.blockId === NO_BLOCK);
+	const unplaced = pets.filter((pet) => pet.blockId === NO_BLOCK && (pet.alive || pet.diedEpoch === 0n));
 	await delegateBlocks();
 	let current = await allBlocks();
 	const idle = (block) => !block.missing && block.phase === 0;
@@ -455,14 +456,21 @@ async function blocks() {
 		await delegateBlocks();
 		current = await allBlocks();
 	}
-	const plan = [];
-	let queue = unplaced.slice();
-	for (const block of current.filter(idle)) {
-		const empty = block.members.filter((member) => member === null).length;
-		if (empty === 0 || queue.length === 0) continue;
-		plan.push({ block, pets: queue.slice(0, empty) });
-		queue = queue.slice(empty);
+	const seats = current.filter(idle).map((block) => {
+		const living = pets.filter((pet) => pet.blockId === block.id && pet.alive);
+		return { block, empty: block.members.filter((member) => member === null).length, total: living.reduce((sum, pet) => sum + pet.level, 0), living: living.length, pets: [] };
+	});
+	const average = (entry) => (entry.living === 0 ? 0 : entry.total / entry.living);
+	for (const pet of unplaced) {
+		const open = seats.filter((entry) => entry.empty > 0);
+		if (open.length === 0) break;
+		const lowest = open.reduce((best, entry) => (average(entry) < average(best) ? entry : best));
+		lowest.pets.push(pet);
+		lowest.empty -= 1;
+		lowest.total += pet.alive ? pet.level : 1;
+		lowest.living += 1;
 	}
+	const plan = seats.filter((entry) => entry.pets.length > 0);
 	let placed = 0;
 	await inParallel(plan, async ({ block, pets: chosen }) => {
 		for (let start = 0; start < chosen.length; start += PLACES_PER_TRANSACTION) {
@@ -613,7 +621,7 @@ async function resort() {
 	await inParallel(blocksNow, async (block) => {
 		const holder = (await readMany(ephemeral, [await blockAddress(block.id)]))[0];
 		if (readU64(holder.data, blockAt.rotation) === rotation) return;
-		const members = block.members.slice(0, block.filled).map((member) => address(member));
+		const members = block.members.filter(Boolean).map((member) => address(member));
 		await onEr(`resort clear ${block.id}`, [await program.resortClear(block.id, members)]);
 	});
 	const memberKeys = blocksNow.flatMap((block) => block.members.filter(Boolean)).map((member) => address(member));
