@@ -252,6 +252,29 @@ test "a delegated pet's committed gift mints HBRN the same way" {
 	assert run(programKey(), accounts, claim, entry).result == code(HibernalError.NothingOwed);
 }
 
+test "an existing Paid ledger at a substituted address cannot claim new gifts" {
+	for (const petOwner of [programKey(), DELEGATION_PROGRAM_ID]) {
+		dayClock(20000);
+		const accounts = claimAccounts(1_000, petOwner);
+		assert run(programKey(), accounts, claim, entry).result == 0;
+		const paid = accounts[3];
+		accounts[2] = petHolder(2_000, petOwner);
+		accounts[3] = { ...paid, key: keyOf(44) };
+		const refused = run(programKey(), accounts, claim, entry);
+		assert refused.result == ProgramError.constraintSeeds().code;
+		assert u64At(accounts[4].data, 36) == 1_000;
+		assert u64At(accounts[5].data, 64) == 1_000;
+		const rejectedLedger = ledgerOf(accounts[3]);
+		assert rejectedLedger.total == 1_000 && rejectedLedger.today == 1_000;
+		assert rejectedLedger.day == 20000 && rejectedLedger.mint == admission;
+		accounts[3] = paid;
+		assert run(programKey(), accounts, claim, entry).result == 0;
+		assert u64At(accounts[5].data, 64) == 2_000;
+		assert ledgerOf(accounts[3]).total == 2_000;
+		assert run(programKey(), accounts, claim, entry).result == code(HibernalError.NothingOwed);
+	}
+}
+
 test "a day's claims stop at the cap and resume the next day" {
 	dayClock(20000);
 	const accounts = claimAccounts(25_000_000, programKey());
