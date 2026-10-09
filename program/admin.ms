@@ -23,7 +23,7 @@ import {
 	programId,
 	signed,
 } from "std/solana";
-import { accounts, args } from "std/solana/macro";
+import { accounts, args } from "std/solana";
 import { DelegationAccounts, DelegationConfig, anyValidator, delegate, onValidator } from "std/solana/magicblock";
 import { Mint, TokenAccount, associatedTokenAddress, createMintPda, transferTokens } from "std/solana/token";
 import { ACTS_PER_EPOCH, GlobalConfig, PolicyError, checkPolicy, genesis } from "../rules/index";

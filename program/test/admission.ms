@@ -1,5 +1,5 @@
 import { ProgramError, Pubkey, failWith, instructionDiscriminator, selectInstruction, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf, leBytes } from "std/solana";
-import { instruction } from "std/solana/macro";
+import { instruction } from "std/solana";
 import { HostAccount, HostInvocation, invocations, run, setClock } from "std/solana/host";
 
 import { EPOCH_SECONDS, POLICY_FORMAT, POLICY_MAGIC } from "../../rules/index";

@@ -19,7 +19,7 @@ import {
 	pdaWithBump,
 	programAddress,
 } from "std/solana";
-import { accounts, args } from "std/solana/macro";
+import { accounts, args } from "std/solana";
 import { Mint, TokenAccount, transferTokens } from "std/solana/token";
 import { Food, OwnerItem, Pet, foodItem, growthItem, withOwnerItem, withSkin } from "../rules/index";
 import {

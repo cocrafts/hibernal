@@ -19,7 +19,7 @@ import {
 	programId,
 	unchecked,
 } from "std/solana";
-import { accounts } from "std/solana/macro";
+import { accounts } from "std/solana";
 import {
 	DelegationAccounts,
 	DelegationConfig,

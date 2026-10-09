@@ -27,7 +27,7 @@ import {
 	putU32,
 	signed,
 } from "std/solana";
-import { accounts } from "std/solana/macro";
+import { accounts } from "std/solana";
 import { MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import { Mint, TokenAccount, expectTokenMint, expectTokenOwner, mintTokens } from "std/solana/token";
 import {

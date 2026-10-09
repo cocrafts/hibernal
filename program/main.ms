@@ -1,5 +1,5 @@
 import { ProgramError, failWith, selectInstruction } from "std/solana";
-import { instruction } from "std/solana/macro";
+import { instruction } from "std/solana";
 import { Op } from "./layout";
 import { createBlock, delegateVrfPayer, initialize, withdrawRevenue, writePolicy } from "./admin";
 import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "./admission";

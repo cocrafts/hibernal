@@ -112,7 +112,8 @@ function cancelsOf(key: Pubkey): int32 {
 test "the program keeps the sim's grudge window and the pet record keeps its pet at a fixed offset" {
 	assert GRUDGE_EPOCHS == SIM_GRUDGE_EPOCHS;
 	assert (sizeof PetAccount as int32) == PET_OFFSET + (sizeof Pet as int32);
-	assert seededDiscriminator() != 0;
+	const expectedSeededDiscriminator: uint64 = 17358739751253998038;
+	assert seededDiscriminator() == expectedSeededDiscriminator;
 }
 
 test "ten days of a block on the program match the sim acting with the same policy and seed" {

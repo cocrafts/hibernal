@@ -15,7 +15,7 @@ import {
 	mutable,
 	programId,
 } from "std/solana";
-import { accounts, args } from "std/solana/macro";
+import { accounts, args } from "std/solana";
 import { DelegationAccounts, DelegationConfig, delegate } from "std/solana/magicblock";
 import { BlockSlot, Pet, StrengthMeasure, boughtBack, movedTo, strengthOf } from "../rules/index";
 import {

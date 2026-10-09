@@ -3,7 +3,6 @@ import {
 	Account,
 	Bytes,
 	Clock,
-	Discriminator,
 	Mutable,
 	Owned,
 	ProgramError,
@@ -23,7 +22,7 @@ import {
 	putU64,
 	signed,
 } from "std/solana";
-import { accounts, args } from "std/solana/macro";
+import { accounts, args } from "std/solana";
 import { RandomnessRequest, VRF_PROGRAM_ID, requestRandomness, verifyVrfCallback } from "std/solana/vrf";
 import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import {
@@ -209,25 +208,9 @@ export function seedOf(randomness: Pubkey): uint64 {
 	return seed;
 }
 
-function seededInstruction(): Discriminator {
-	return @comptime { return instructionDiscriminator("Seeded"); };
-}
-
-function roundStartInstruction(): Discriminator {
-	return @comptime { return instructionDiscriminator("RoundStart"); };
-}
-
-function turnInstruction(): Discriminator {
-	return @comptime { return instructionDiscriminator("Turn"); };
-}
-
 export function seededDiscriminator(): uint64 {
-	const discriminator = seededInstruction();
-	let value: uint64 = 0;
-	for (let position = 7; position >= 0; position--) {
-		value = (value << (8 as uint64)) | (discriminator.bytes[position] as uint64);
-	}
-	return value;
+	const discriminator: uint64 = @comptime { return instructionDiscriminator("Seeded").word(); };
+	return discriminator;
 }
 
 export function turnOrder(roundSeed: uint64, epoch: uint64, blockId: uint32, round: int32, turns: Span<uint8>): void {
@@ -681,8 +664,9 @@ function scheduled(schedule: Schedule, block: Ptr<Block>, kind: StepKind, dueSlo
 		metas[10] = { key: Pubkey.magicVault(), writable: true };
 		metas[11] = { key: MAGIC_PROGRAM_ID, writable: false };
 		metas[12] = { key: Pubkey.hydraProgram(), writable: false };
+		const discriminator: uint64 = @comptime { return instructionDiscriminator("RoundStart").word(); };
 		return signed(
-			createCrank(schedule.cranks, seed, dueSlot, metas, roundStartInstruction().word(), seq),
+			createCrank(schedule.cranks, seed, dueSlot, metas, discriminator, seq),
 			["vrf-payer", [bump]],
 		);
 	}
@@ -707,8 +691,9 @@ function scheduled(schedule: Schedule, block: Ptr<Block>, kind: StepKind, dueSlo
 			? { key: SYSTEM_PROGRAM_ID, writable: false }
 			: { key: member, writable: true };
 	}
+	const discriminator: uint64 = @comptime { return instructionDiscriminator("Turn").word(); };
 	return signed(
-		createCrank(schedule.cranks, seed, dueSlot, metas, turnInstruction().word(), seq),
+		createCrank(schedule.cranks, seed, dueSlot, metas, discriminator, seq),
 		["vrf-payer", [bump]],
 	);
 }
