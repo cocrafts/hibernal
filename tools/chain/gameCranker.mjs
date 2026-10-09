@@ -23,6 +23,8 @@ const RETRY_SLOTS = BigInt(process.env.RETRY_SLOTS ?? 300);
 const MAX_BACKOFF_SLOTS = BigInt(process.env.MAX_BACKOFF_SLOTS ?? 3000);
 const MAX_IN_FLIGHT = Number(process.env.MAX_IN_FLIGHT ?? 512);
 const REPORT_SECONDS = Number(process.env.REPORT_SECONDS ?? 10);
+const FREEZE_SECONDS = Number(process.env.FREEZE_SECONDS ?? 10);
+const UNFREEZE_BURST = Number(process.env.UNFREEZE_BURST ?? 4);
 const CRANK_HEADER = 120;
 const REMAINING_OFFSET = 80;
 const CU_LIMIT_OFFSET = 115;
@@ -46,8 +48,10 @@ const programsByKey = new Map(programs.map((programAddress) => [programAddress, 
 const blocks = new Map();
 const inFlight = new Map();
 const crankKeys = new Map();
-const stats = { sent: 0, retried: 0, failedSends: 0, skippedSpent: 0, refreshed: 0, notifications: 0, resyncs: 0, maxLag: 0n };
+const stats = { sent: 0, retried: 0, failedSends: 0, skippedSpent: 0, refreshed: 0, notifications: 0, resyncs: 0, maxLag: 0n, unfreezeBursts: 0, unfreezeSent: 0 };
+const erClock = { slot: null, since: Date.now(), burstAt: Date.now() };
 let slot = 0n;
+let slotMillis = 0n;
 let blockhash = null;
 let sending = 0;
 
@@ -83,7 +87,9 @@ async function resync() {
 		const program = programsByKey.get(programAddress);
 		const config = await baseRead.getAccountInfo(await program.address(program.seeds.config()), { encoding: "base64" }).send();
 		if (!config.value) continue;
-		const count = readU32(new Uint8Array(Buffer.from(config.value.data[0], "base64")), configAt.blocks);
+		const configData = new Uint8Array(Buffer.from(config.value.data[0], "base64"));
+		const count = readU32(configData, configAt.blocks);
+		slotMillis = readU64(configData, configAt.slot_millis);
 		const keys = await Promise.all(Array.from({ length: count }, (_, id) => program.address(program.seeds.block(id))));
 		const holders = await readMany(keys);
 		holders.forEach((holder, id) => {
@@ -212,6 +218,7 @@ async function refreshBlockhash() {
 			blockhash = value;
 			const polledSlot = BigInt(await ephemeral.getSlot().send());
 			if (polledSlot > slot) slot = polledSlot;
+			await unfrozen(polledSlot, Date.now());
 		} catch (error) {
 			console.error(`blockhash: ${error.message}`);
 		}
@@ -219,12 +226,43 @@ async function refreshBlockhash() {
 	}
 }
 
+// MagicBlock RPC freezes its slot until it sees transactions (magicblock-validator#1783);
+// the frozen blockhash stays accepted. Remove once a release with the fix is deployed.
+async function unfrozen(polledSlot, now) {
+	if (erClock.slot !== polledSlot) {
+		erClock.slot = polledSlot;
+		erClock.since = now;
+		erClock.burstAt = now;
+		return;
+	}
+	if (slotMillis > 0n) {
+		const estimate = polledSlot + BigInt(now - erClock.since) / slotMillis;
+		if (estimate > slot) slot = estimate;
+	}
+	if (now - erClock.burstAt < FREEZE_SECONDS * 1000) return;
+	erClock.burstAt = now;
+	stats.unfreezeBursts++;
+	console.error(`${new Date(now).toISOString()} ER slot frozen at ${polledSlot} for ${Math.round((now - erClock.since) / 1000)} s, sending ${UNFREEZE_BURST} transactions`);
+	await Promise.all(Array.from({ length: UNFREEZE_BURST }, () => nudge(1_000 + (stats.unfreezeSent++ % 1_000_000))));
+}
+
+async function nudge(units) {
+	const message = pipe(
+		createTransactionMessage({ version: 0 }),
+		(m) => setTransactionMessageFeePayerSigner(cranker, m),
+		(m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
+		(m) => appendTransactionMessageInstructions([computeLimit(units)], m),
+	);
+	const signed = await signTransactionMessageWithSigners(message);
+	await ephemeral.sendTransaction(getBase64EncodedWireTransaction(signed), { encoding: "base64", skipPreflight: true }).send().catch(() => { stats.failedSends++; });
+}
+
 async function report() {
 	let last = { ...stats };
 	for (;;) {
 		await sleep(REPORT_SECONDS * 1000);
 		const rate = (stats.sent - last.sent) / REPORT_SECONDS;
-		console.log(`${new Date().toISOString()} blocks ${blocks.size} slot ${slot} sent ${stats.sent} (${rate.toFixed(0)}/s) retried ${stats.retried} spent-skipped ${stats.skippedSpent} failed-sends ${stats.failedSends} in-flight ${sending} max-lag ${stats.maxLag} notifications ${stats.notifications}`);
+		console.log(`${new Date().toISOString()} blocks ${blocks.size} slot ${slot} sent ${stats.sent} (${rate.toFixed(0)}/s) retried ${stats.retried} spent-skipped ${stats.skippedSpent} failed-sends ${stats.failedSends} in-flight ${sending} max-lag ${stats.maxLag} notifications ${stats.notifications} unfreeze-bursts ${stats.unfreezeBursts}`);
 		stats.maxLag = 0n;
 		last = { ...stats };
 	}

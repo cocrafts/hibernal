@@ -52,6 +52,7 @@ test("HTTP refresh advances cranker due and retry clock without a slot stream", 
 			getSlot: () => ({ send: async () => 100n + BigInt(++polls) }),
 		},
 		console: { error: () => assert.fail("unexpected refresh error") },
+		unfrozen: async () => {},
 		blocks: new Map([["block", { key: "block", program: "program", crankSeq: 1n, dueSlot: 101n }]]),
 		inFlight: new Map([["block", { seq: 1n, attempts: 1, retryAt: 102n }]]),
 		stats: { maxLag: 0n, retried: 0, skippedSpent: 0, sent: 0, failedSends: 0 },
@@ -71,7 +72,7 @@ test("HTTP refresh advances cranker due and retry clock without a slot stream", 
 	context.blockhash = { blockhash: "initial" };
 	await tick();
 	assert.equal(fired, 0);
-	const refresh = loadFunction("gameCranker.mjs", "refreshBlockhash", "report", context);
+	const refresh = loadFunction("gameCranker.mjs", "refreshBlockhash", "unfrozen", context);
 	await assert.rejects(refresh(), error => error === stop);
 	assert.equal(polls, 2);
 	assert.equal(context.slot, 102n);
@@ -91,10 +92,40 @@ test("HTTP refresh does not rewind a newer streamed slot", async () => {
 			getSlot: () => ({ send: async () => 102n }),
 		},
 		console: { error: () => assert.fail("unexpected refresh error") },
+		unfrozen: async () => {},
 	};
-	const refresh = loadFunction("gameCranker.mjs", "refreshBlockhash", "report", context);
+	const refresh = loadFunction("gameCranker.mjs", "refreshBlockhash", "unfrozen", context);
 	await assert.rejects(refresh(), error => error === stop);
 	assert.equal(context.slot, 103n);
+});
+
+test("frozen ER slot gets one nudge burst per freeze window and a time-based slot", async () => {
+	const nudged = [];
+	const context = {
+		slot: 100n,
+		slotMillis: 50n,
+		erClock: { slot: null, since: 0, burstAt: 0 },
+		stats: { unfreezeBursts: 0, unfreezeSent: 0 },
+		FREEZE_SECONDS: 10,
+		UNFREEZE_BURST: 4,
+		console: { error: () => {} },
+		nudge: async (units) => { nudged.push(units); },
+	};
+	const unfrozen = loadFunction("gameCranker.mjs", "unfrozen", "nudge", context);
+	await unfrozen(100n, 0);
+	for (let second = 1; second <= 9; second++) await unfrozen(100n, second * 1000);
+	assert.equal(nudged.length, 0, "no burst before FREEZE_SECONDS");
+	assert.equal(context.slot, 280n, "scheduler clock follows wall time while frozen");
+	await unfrozen(100n, 10_000);
+	assert.deepEqual(nudged, [1000, 1001, 1002, 1003], "one burst of distinct transactions");
+	await unfrozen(100n, 11_000);
+	assert.equal(context.stats.unfreezeBursts, 1, "one burst per freeze window");
+	await unfrozen(100n, 20_000);
+	assert.equal(context.stats.unfreezeBursts, 2, "a burst that did not re-arm repeats");
+	await unfrozen(101n, 21_000);
+	for (let second = 22; second <= 30; second++) await unfrozen(BigInt(second + 80), second * 1000);
+	assert.equal(context.stats.unfreezeBursts, 2, "no burst while the slot advances");
+	assert.equal(nudged.length, 8);
 });
 
 function discoveryFixture(failure) {
