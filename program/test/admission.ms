@@ -312,7 +312,9 @@ function blockCreated(made: HostAccount[], signer: Pubkey, id: uint32, target: P
 }
 
 function claimRan(made: HostAccount[], accounts: HostAccount[]): uint64 {
-	const result = run(programKey(), accounts, instructionBytes("Claim"), entry).result;
+	const bytes = instructionBytes("Claim");
+	bytes.push(NAME_ID);
+	const result = run(programKey(), accounts, bytes, entry).result;
 	made[1] = accounts[1];
 	return result;
 }
@@ -337,6 +339,8 @@ function now(epoch: uint64): void {
 
 const PET_RECORD: int32 = 8;
 const PET_ORDINAL: int32 = PET_RECORD + 64;
+const PET_NAME: int32 = PET_RECORD + 70;
+const NAME_ID: uint8 = 42;
 const PET_DATA: int32 = PET_RECORD + 120;
 const PET_BLOCK: int32 = PET_DATA + 88;
 const PET_SLOT: int32 = PET_DATA + 128;
@@ -459,6 +463,7 @@ test "claim admits a group member once and refuses mints outside the group" {
 	assert keyAt(pet.data, PET_RECORD) == owner;
 	assert keyAt(pet.data, PET_RECORD + 32) == admissionMintKey(0);
 	assert u32At(pet.data, PET_ORDINAL) == 0;
+	assert pet.data[PET_NAME] == NAME_ID;
 	assert u64At(pet.data, PET_RECORD + 72) == 3;
 	assert u32At(pet.data, PET_RECORD + 116) == appearanceOf(admissionMintKey(0));
 	assert u32At(pet.data, PET_BLOCK) == NO_BLOCK && pet.data[PET_SLOT] == NO_SEAT && pet.data[PET_ALIVE] == 0;

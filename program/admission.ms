@@ -19,7 +19,7 @@ import {
 	programId,
 	unchecked,
 } from "std/solana";
-import { accounts } from "std/solana";
+import { accounts, args } from "std/solana";
 import {
 	DelegationAccounts,
 	DelegationConfig,
@@ -39,6 +39,7 @@ import {
 import { BlockSlot, GlobalConfig, Pet, Region, born, genesis } from "../rules/index";
 import {
 	Block,
+	ClaimArgs,
 	Config,
 	HibernalError,
 	MAX_PETS,
@@ -149,6 +150,7 @@ function admitted(mint: External<Mint>, group: Pubkey): Result<uint64, ProgramEr
 
 export function claim(): Result<uint64, ProgramError> {
 	const x = try accounts<ClaimAccounts>();
+	const a = try args<ClaimArgs>();
 	const config = x.config.data();
 	const _config = try pdaWithBump(x.config, ["config"], config.bump);
 	const mintKey = x.mint.key();
@@ -168,6 +170,7 @@ export function claim(): Result<uint64, ProgramError> {
 	record.mint = mintKey;
 	record.ordinal = config.pets;
 	record.persona = mintKey.bytes[1] % PERSONAS;
+	record.nameId = a.nameId;
 	record.appearance = appearanceOf(mintKey);
 	record.bump = madePet.bump;
 	record.claimedEpoch = epoch;

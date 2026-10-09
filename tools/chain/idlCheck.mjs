@@ -15,7 +15,7 @@ const built = [
 	await program.initialize({ admissionGroup: await someKey(), engine: 0n, genesisTimestamp: 0n, claimCapPerDay: 0n, resortEvery: 0n, skrMint, treasury: await someKey(), validator: await someKey(), vrfQueue: await someKey() }),
 	await program.writePolicy(0, new Uint8Array(4), false),
 	await program.createBlock(0),
-	await program.claim(owner, mint, await someKey()),
+	await program.claim(owner, mint, await someKey(), 0),
 	await program.delegatePet(authority, mint),
 	await program.delegateBlock(0),
 	await program.delegateWorld(),

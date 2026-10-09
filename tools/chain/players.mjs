@@ -318,7 +318,7 @@ async function claim() {
 	await runBatches("claim+delegate", todo, Number(process.env.PER_TRANSACTION ?? 2), async (batch) => {
 		const instructions = [];
 		for (const player of batch) {
-			if (!player.claimed) instructions.push(await program.claim(player.owner, player.mint.address, await associated(player.owner.address, player.mint.address)));
+			if (!player.claimed) instructions.push(await program.claim(player.owner, player.mint.address, await associated(player.owner.address, player.mint.address), encoder.encode(player.mint.address)[2]));
 			instructions.push(await program.delegatePet(player.owner, player.mint.address));
 		}
 		return { feePayer: batch[0].owner, instructions };

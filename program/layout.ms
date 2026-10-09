@@ -155,7 +155,8 @@ export struct PetAccount {
 	ordinal: uint32;
 	persona: uint8;
 	bump: uint8;
-	pad: uint16;
+	nameId: uint8;
+	pad: uint8;
 	claimedEpoch: uint64;
 	diedEpoch: uint64;
 	loaded: uint32[7];
@@ -301,6 +302,10 @@ export struct InitializeArgs {
 
 export struct CreateBlockArgs {
 	id: uint32;
+}
+
+export struct ClaimArgs {
+	nameId: uint8;
 }
 
 export struct BuyArgs {

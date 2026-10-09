@@ -7,6 +7,7 @@ import { Tree } from "../rules/tree";
 import {
 	Block,
 	BuyArgs,
+	ClaimArgs,
 	Config,
 	CreateBlockArgs,
 	Grudge,
@@ -61,7 +62,7 @@ export function hibernalIdl(): string {
 		Initialize: [InitializeAccounts, InitializeArgs],
 		WritePolicy: [WritePolicyAccounts, WritePolicyArgs],
 		CreateBlock: [CreateBlockAccounts, CreateBlockArgs],
-		Claim: [ClaimAccounts],
+		Claim: [ClaimAccounts, ClaimArgs],
 		DelegatePet: [DelegatePetAccounts],
 		DelegateBlock: [DelegateBlockAccounts],
 		DelegateWorld: [DelegateWorldAccounts],

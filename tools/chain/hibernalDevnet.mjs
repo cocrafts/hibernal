@@ -91,7 +91,7 @@ async function setup() {
 	for (const mint of mints) {
 		if (await read(baseRead, await program.address(program.seeds.pet(mint)))) continue;
 		const held = await associated(authority.address, mint, TOKEN_2022_PROGRAM);
-		report(`claim ${mint}`, await onL1("claim", [await program.claim(authority, mint, held)]));
+		report(`claim ${mint}`, await onL1("claim", [await program.claim(authority, mint, held, encoder.encode(mint)[2])]));
 	}
 	const delegated = async (key) => (await read(baseRead, key))?.owner === "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh";
 	if (!(await delegated(await program.address(program.seeds.world())))) report("delegate world", await onL1("delegate world", [await program.delegateWorld()]));

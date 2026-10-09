@@ -348,7 +348,7 @@ export function hibernal(programAddress, authority) {
 				readonly(SYSTEM_PROGRAM),
 			], u32(id));
 		},
-		async claim(owner, mint, held) {
+		async claim(owner, mint, held, nameId) {
 			return call("Claim", [
 				writableSigner(owner),
 				writable(await address(seeds.config())),
@@ -357,7 +357,7 @@ export function hibernal(programAddress, authority) {
 				writable(await address(seeds.pet(mint))),
 				writable(await address(seeds.paid(mint))),
 				readonly(SYSTEM_PROGRAM),
-			]);
+			], u8(nameId));
 		},
 		async delegatePet(payer, mint) {
 			const pet = await address(seeds.pet(mint));
