@@ -30,6 +30,9 @@ import {
 	u64,
 	writable,
 	writableSigner,
+	MEMBER_MINT_BYTES,
+	admissionTicket,
+	groupDiscriminator,
 } from "./hibernal.mjs";
 
 const STAGE = process.env.STAGE ?? "keys";
@@ -40,8 +43,6 @@ const IN_FLIGHT = Number(process.env.IN_FLIGHT ?? 1500);
 const FUND_LAMPORTS = BigInt(process.env.FUND_LAMPORTS ?? 30_000_000);
 const MASTER_PATH = process.env.MASTER ?? "out/localnet/playersMaster.hex";
 const MAX_WIRE_BYTES = 1232;
-const MEMBER_MINT_BYTES = 310n;
-const POINTER_MINT_BYTES = 234n;
 const TOKEN_GROUP_EXTENSION = 21;
 
 const { base, baseRead } = cluster();
@@ -76,10 +77,6 @@ async function associated(owner, mint) {
 		seeds: [encoder.encode(owner), encoder.encode(TOKEN_2022_PROGRAM), encoder.encode(mint)],
 	});
 	return found;
-}
-
-function groupDiscriminator(name) {
-	return new Uint8Array(createHash("sha256").update(`spl_token_group_interface:${name}`).digest().subarray(0, 8));
 }
 
 async function existing(keys) {
@@ -257,44 +254,6 @@ async function groupMaxSize(needed) {
 	return { size, maxSize: raised };
 }
 
-async function admitInstructions(player, mintRent) {
-	const owner = player.owner.address;
-	const mint = player.mint;
-	const held = await associated(owner, mint.address);
-	return [
-		{
-			programAddress: SYSTEM_PROGRAM,
-			accounts: [writableSigner(wallet), writableSigner(mint)],
-			data: joined(u32(0), u64(mintRent), u64(POINTER_MINT_BYTES), encoder.encode(TOKEN_2022_PROGRAM)),
-		},
-		{
-			programAddress: TOKEN_2022_PROGRAM,
-			accounts: [writable(mint.address)],
-			data: joined(Uint8Array.of(41, 0), encoder.encode(wallet.address), encoder.encode(mint.address)),
-		},
-		{
-			programAddress: TOKEN_2022_PROGRAM,
-			accounts: [writable(mint.address)],
-			data: joined(Uint8Array.of(20, 0), encoder.encode(wallet.address), Uint8Array.of(0)),
-		},
-		{
-			programAddress: TOKEN_2022_PROGRAM,
-			accounts: [writable(mint.address), readonly(mint.address), signer(wallet), writable(group.address), signer(wallet)],
-			data: groupDiscriminator("initialize_member"),
-		},
-		{
-			programAddress: ASSOCIATED_TOKEN_PROGRAM,
-			accounts: [writableSigner(wallet), writable(held), readonly(owner), readonly(mint.address), readonly(SYSTEM_PROGRAM), readonly(TOKEN_2022_PROGRAM)],
-			data: Uint8Array.of(1),
-		},
-		{
-			programAddress: TOKEN_2022_PROGRAM,
-			accounts: [writable(mint.address), writable(held), signer(wallet)],
-			data: joined(Uint8Array.of(7), u64(1)),
-		},
-	];
-}
-
 async function admit() {
 	await groupMaxSize(FIRST + COUNT + 1000);
 	const players = await playersIn(FIRST, COUNT);
@@ -305,7 +264,7 @@ async function admit() {
 	const mintRent = BigInt(await base.getMinimumBalanceForRentExemption(MEMBER_MINT_BYTES).send());
 	await runBatches("admit", todo, Number(process.env.PER_TRANSACTION ?? 2), async (batch) => ({
 		feePayer: wallet,
-		instructions: (await Promise.all(batch.map((player) => admitInstructions(player, mintRent)))).flat(),
+		instructions: (await Promise.all(batch.map((player) => admissionTicket(wallet, group.address, player.owner.address, player.mint, mintRent)))).flat(),
 	}), async (left) => {
 		const made = await existing(left.map((player) => player.mint.address));
 		return left.filter((player) => !made.has(player.mint.address));

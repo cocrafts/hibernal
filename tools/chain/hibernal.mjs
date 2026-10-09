@@ -179,6 +179,52 @@ async function sendOnce(rpc, readRpc, step, instructions, feePayer, units, detai
 	throw new Error(`${step}: not confirmed ${signature}`);
 }
 
+export const MEMBER_MINT_BYTES = 310n;
+const POINTER_MINT_BYTES = 234n;
+
+export function groupDiscriminator(name) {
+	return new Uint8Array(createHash("sha256").update(`spl_token_group_interface:${name}`).digest().subarray(0, 8));
+}
+
+export async function admissionTicket(authority, group, owner, mint, mintRent) {
+	const [held] = await getProgramDerivedAddress({
+		programAddress: ASSOCIATED_TOKEN_PROGRAM,
+		seeds: [encoder.encode(owner), encoder.encode(TOKEN_2022_PROGRAM), encoder.encode(mint.address)],
+	});
+	return [
+		{
+			programAddress: SYSTEM_PROGRAM,
+			accounts: [writableSigner(authority), writableSigner(mint)],
+			data: joined(u32(0), u64(mintRent), u64(POINTER_MINT_BYTES), encoder.encode(TOKEN_2022_PROGRAM)),
+		},
+		{
+			programAddress: TOKEN_2022_PROGRAM,
+			accounts: [writable(mint.address)],
+			data: joined(Uint8Array.of(41, 0), encoder.encode(authority.address), encoder.encode(mint.address)),
+		},
+		{
+			programAddress: TOKEN_2022_PROGRAM,
+			accounts: [writable(mint.address)],
+			data: joined(Uint8Array.of(20, 0), encoder.encode(authority.address), Uint8Array.of(0)),
+		},
+		{
+			programAddress: TOKEN_2022_PROGRAM,
+			accounts: [writable(mint.address), readonly(mint.address), signer(authority), writable(group), signer(authority)],
+			data: groupDiscriminator("initialize_member"),
+		},
+		{
+			programAddress: ASSOCIATED_TOKEN_PROGRAM,
+			accounts: [writableSigner(authority), writable(held), readonly(owner), readonly(mint.address), readonly(SYSTEM_PROGRAM), readonly(TOKEN_2022_PROGRAM)],
+			data: Uint8Array.of(1),
+		},
+		{
+			programAddress: TOKEN_2022_PROGRAM,
+			accounts: [writable(mint.address), writable(held), signer(authority)],
+			data: joined(Uint8Array.of(7), u64(1)),
+		},
+	];
+}
+
 export async function read(rpc, key) {
 	const { value } = await patiently(() => rpc.getAccountInfo(key, { encoding: "base64", commitment: "confirmed" }).send());
 	if (!value) return null;
