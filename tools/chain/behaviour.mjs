@@ -292,6 +292,8 @@ async function petState(entry) {
 		insurance: field("insurance"),
 		harvest: field("harvest"),
 		giftOwed: field("gift_owed"),
+		bonding: Number(field("bonding")),
+		burrow: field("burrow"),
 		lineage: field("lineage_generation"),
 		slotsFree: (field("owner_first") === 0n ? 1 : 0) + (field("owner_second") === 0n ? 1 : 0),
 		blockId: Number(field("block_id")),
@@ -460,11 +462,37 @@ async function bankcheck(owners) {
 	save();
 }
 
+async function gift(owners, config) {
+	const entry = owners.find((owner) => owner.index === Number(process.env.GIFT_PET ?? 0));
+	let stockedEpoch = -1n;
+	for (;;) {
+		const epoch = (BigInt(Math.floor(Date.now() / 1000)) - config.genesis) / config.secondsPerDay;
+		const pet = await petState(entry);
+		if (!pet?.alive) throw new Error(`gift: pet ${entry.mint} is not alive`);
+		console.log(`${new Date().toISOString()} epoch ${epoch} bonding ${pet.bonding} burrow ${pet.burrow} gift ${pet.giftOwed} slots free ${pet.slotsFree}`);
+		if (pet.giftOwed > 0n) {
+			await claimed(entry, config, epoch);
+			console.log(json({ pet: entry.mint, owner: entry.owner.address, day: dayOf(epoch) }));
+			save();
+			return;
+		}
+		recorded(epoch, "engage", await submit(ephemeral, [await program.engage(entry.owner, entry.mint)], entry.owner));
+		if (stockedEpoch !== epoch && pet.slotsFree === 2) {
+			await bought(entry, config, epoch, ITEM.Growth, 0, GROWTH_SKR_PER_STEP, "growth");
+			await bought(entry, config, epoch, ITEM.Food, 2, FOOD_SKR[2], "food");
+			stockedEpoch = epoch;
+		}
+		save();
+		await sleep(60_000);
+	}
+}
+
 const owners = await ownersOf();
 const config = await readConfig();
 if (STAGE === "commits") await commits(owners);
 else if (STAGE === "bankcheck") await bankcheck(owners);
 else if (STAGE === "onramp") await onramp(owners, config);
+else if (STAGE === "gift") await gift(owners, config);
 else if (STAGE === "run") {
 	await onramp(owners, config);
 	await run(owners, config);
