@@ -286,7 +286,6 @@ export function place(): Result<uint64, ProgramError> {
 	const record = x.pet.data();
 	const _pet = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	if (record.pet.blockId != NO_BLOCK) { return Result.err(hibernalError(HibernalError.AlreadyPlaced)); }
-	if (!record.pet.alive && record.diedEpoch != 0) { return Result.err(hibernalError(HibernalError.PetLost)); }
 	if (world.resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
 	let seat = -1;
 	for (let index = 0; index < SEATS; index++) {

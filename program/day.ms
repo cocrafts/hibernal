@@ -465,7 +465,6 @@ export function dawned(
 function heirFailure(error: HeirError): ProgramError {
 	const mapped: HibernalError = match (error) {
 		HeirError.Alive => HibernalError.Illegal,
-		HeirError.Lost => HibernalError.Illegal,
 		HeirError.TreasuryShort => HibernalError.TreasuryShort,
 	};
 	return hibernalError(mapped);
@@ -506,7 +505,6 @@ function unseated(pet: Pet): Pet {
 }
 
 function leftSeat(world: Ptr<World>, record: Ptr<PetAccount>, dead: Pet, epoch: uint64): Result<Pet, ProgramError> {
-	if (!dead.agedOut()) { return Result.ok(unseated(dead)); }
 	const heir = dead.heirOf(epoch + 1, world.global);
 	if (!heir.ok) { return Result.err(heirFailure(heir.error)); }
 	world.global = heir.value.global;

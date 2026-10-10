@@ -346,7 +346,6 @@ function now(epoch: uint64): void {
 const PET_RECORD: int32 = 8;
 const PET_ORDINAL: int32 = PET_RECORD + 64;
 const PET_NAME: int32 = PET_RECORD + 70;
-const PET_DIED: int32 = PET_RECORD + 80;
 const NAME_ID: uint8 = 42;
 const PET_DATA: int32 = PET_RECORD + 120;
 const PET_BLOCK: int32 = PET_DATA + 88;
@@ -628,7 +627,7 @@ test "place seats pets in order, births them into the world and stops at ten" {
 	assert u32At(late[4].data, PET_BLOCK) == 1 && u32At(made[3].data, WORLD_PLACED) == (SEATS + 1) as uint32;
 }
 
-test "place moves a living heir in with its estate and refuses a pet lost for good" {
+test "place moves a living heir in with its estate" {
 	now(2);
 	const made = initialized();
 	const home = blockCreated(made, authority, 0, blockKey(0));
@@ -644,8 +643,5 @@ test "place moves a living heir in with its estate and refuses a pet lost for go
 	assert u32At(heir[4].data, PET_DATA) == 424242;
 	for (let position = 0; position < estate.length; position++) { assert heir[4].data[PET_DATA + position] == estate[position]; }
 	assert contains(nursery[0].data, heir[4].key) && nursery[0].data[BLOCK_FILLED] == 1;
-	const lost = claimed(made, 1);
-	setU32At(lost[4].data, PET_DIED, 9);
-	assert placeRan(made, authority, nursery, lost) == hibernalError(HibernalError.PetLost).code;
 	assert nursery[0].data[BLOCK_FILLED] == 1;
 }

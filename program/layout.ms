@@ -254,7 +254,6 @@ export enum HibernalError {
 	SlotsFull,
 	EngagedThisRound,
 	SessionExpired,
-	PetLost,
 	BadMetadata,
 }
 

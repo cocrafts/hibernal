@@ -210,7 +210,7 @@ test "ten days of a block on the program match the sim acting with the same poli
 	assert fights > 0 && (blockOf(step).fightHead as int32) == fights % 32;
 }
 
-test "a pet starved by dusk is lost: half its wallet to one living mate, half to the treasury, its seat freed" {
+test "a pet starved by dusk leaves half its wallet to one living mate, half to the treasury, frees its seat and hatches the next generation with nothing" {
 	const policy = policyBytes();
 	let world = worldBeforeDay(TEST_DAY);
 	const victim = world.pets[3];
@@ -238,11 +238,12 @@ test "a pet starved by dusk is lost: half its wallet to one living mate, half to
 	assert passed(turned(step, TEST_DAY));
 	world = world.endEpoch().beginEpoch(TEST_DAY + 1);
 	assert digestOf(seatedPets(step), globalOf(step)) == digestOf(world.pets, world.global);
-	const lost = petsOf(step)[3];
-	assert !lost.alive && lost.blockId == NO_BLOCK && lost.harvest == 0 && lost.burrow == 0;
+	const next = petsOf(step)[3];
+	assert next.alive && next.lineageGeneration == victim.lineageGeneration + 1;
+	assert next.blockId == NO_BLOCK && next.harvest == 0 && next.burrow == 0 && next.gear.resaleValue() == 0;
 	assert blockOf(step).members[3].isZero() && blockOf(step).filled == (BLOCK_SLOTS - 1) as uint8;
 	assert worldOfData(step[2].data).placed == placedBefore - 1;
-	assert world.stats.heirs == heirsBefore && world.deathEpochs[3] == TEST_DAY;
+	assert world.stats.heirs == heirsBefore + 1 && world.deathEpochs[3] == 0;
 }
 
 test "a member whose pet sits in another block is dropped from the seat and its pet left untouched" {
