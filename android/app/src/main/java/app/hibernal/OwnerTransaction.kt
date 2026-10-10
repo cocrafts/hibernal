@@ -15,8 +15,6 @@ object OwnerTransaction {
     const val MAX_WIRE_BYTES = 1232
     const val SYSTEM_PROGRAM = "11111111111111111111111111111111"
     const val DELEGATION_PROGRAM = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-    const val MAGIC_PROGRAM = "Magic11111111111111111111111111111111111111"
-    const val MAGIC_CONTEXT = "MagicContext1111111111111111111111111111111"
     const val COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111"
     const val ASSOCIATED_TOKEN_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
     const val COMPUTE_UNIT_PRICE_MICRO_LAMPORTS = 100_000L
@@ -139,13 +137,6 @@ object OwnerTransaction {
 
     fun canonicalLoad(program: String, pet: String, ledger: String) =
         canonical(program, "load", "53ecbb4ce79f56ac", listOf(writable(pet), readonly(ledger)))
-
-    fun canonicalCommitPet(program: String, owner: String, pet: String, vrfPayer: String,
-        magicContext: String, magicFeeVault: String, magicProgram: String): SourceInstruction {
-        require(magicProgram == MAGIC_PROGRAM && magicContext == MAGIC_CONTEXT) { "MagicBlock program/context mismatch" }
-        return canonical(program, "commit_pet", "9c3fc91ca75a7165", listOf(signer(owner), writable(pet),
-            writable(vrfPayer), writable(magicContext), writable(magicFeeVault), readonly(magicProgram)))
-    }
 
     fun canonicalClaimReward(program: String, owner: String, config: String, pet: String,
         paid: String, hbrnMint: String, destinationToken: String, tokenProgram: String,

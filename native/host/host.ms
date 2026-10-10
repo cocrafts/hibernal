@@ -171,6 +171,8 @@ export enum OwnerActionOutcome {
 	Unavailable,
 	NoSeekerGenesisToken,
 	AdmissionFailed,
+	// The game already committed this Pet today; the next gift reaches L1 tomorrow.
+	GiftTooSoon,
 }
 
 // Only Buy reads item and tier; other actions pass 0.
@@ -201,6 +203,7 @@ export function ownerActionOutcome(): OwnerActionOutcome {
 		10 => { return OwnerActionOutcome.Unavailable; },
 		11 => { return OwnerActionOutcome.NoSeekerGenesisToken; },
 		12 => { return OwnerActionOutcome.AdmissionFailed; },
+		13 => { return OwnerActionOutcome.GiftTooSoon; },
 		_ => {},
 	};
 	console.log("host: unknown owner action outcome " + state.toString());
@@ -225,10 +228,12 @@ test "one owner action is in flight until the shell publishes its outcome" {
 	hostSetOwnerAction(OwnerActionOutcome.ConfirmedAwaitingRead as int32);
 	requestOwnerAction(OwnerAction.ClaimReward, 0);
 	assert hostTakeOwnerActionRequest() == 8;
-	hostSetOwnerAction(13);
+	hostSetOwnerAction(14);
 	assert ownerActionOutcome() == OwnerActionOutcome.Unknown;
 	hostSetOwnerAction(OwnerActionOutcome.AdmissionFailed as int32);
 	assert ownerActionOutcome() == OwnerActionOutcome.AdmissionFailed;
+	hostSetOwnerAction(OwnerActionOutcome.GiftTooSoon as int32);
+	assert ownerActionOutcome() == OwnerActionOutcome.GiftTooSoon;
 	hostSetOwnerAction(OwnerActionOutcome.Unavailable as int32);
 	assert ownerActionOutcome() == OwnerActionOutcome.Unavailable;
 	hostSetOwnerAction(OwnerActionOutcome.Idle as int32);

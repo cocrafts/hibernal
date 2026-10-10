@@ -201,7 +201,7 @@ class OwnerSigningTest {
     @Test fun hostAbiOrdinalsMatchHostMs() {
         assertEquals(listOf("IDLE", "REQUESTED", "CANCELLED", "NO_WALLET", "WALLET_FAILED", "SENT_PENDING",
             "CONFIRMED_AWAITING_READ", "FAILED_ON_CHAIN", "EXPIRED", "UNKNOWN", "UNAVAILABLE",
-            "NO_SEEKER_GENESIS_TOKEN", "ADMISSION_FAILED"),
+            "NO_SEEKER_GENESIS_TOKEN", "ADMISSION_FAILED", "GIFT_TOO_SOON"),
             OwnerSigning.Outcome.entries.map { it.name })
         assertEquals(listOf("CLAIM", "DELEGATE_PET", "ENGAGE", "BANK", "BUY", "LOAD", "COMMIT_PET", "CLAIM_REWARD"),
             OwnerSigning.OwnerAction.entries.map { it.name })

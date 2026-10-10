@@ -134,7 +134,7 @@ void hostRequestOwnerAction(int action, int item) {
 int hostTakeOwnerActionRequest(void) { return atomic_exchange(&s_ownerActionRequest, 0); }
 
 void hostSetOwnerAction(int state) {
-	atomic_store(&s_ownerActionState, state < 0 || state > 12 ? 9 : state);
+	atomic_store(&s_ownerActionState, state < 0 || state > 13 ? 9 : state);
 	atomic_fetch_add(&s_ownerActionRevision, 1);
 }
 

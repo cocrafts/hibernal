@@ -20,6 +20,7 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
@@ -206,28 +207,55 @@ class WalletBridge(private val activity: MainActivity) {
         val liveGift = live?.let { SourcePetRead.decodeSourceOnly(it, program, LivePetRead.PROFILE, SolanaPublicKey(ownerKey)).pet.giftOwed }
             ?: committedRecord.pet.giftOwed
         val paidTotal = LivePetRead.paidTotal(paid, committedRecord.mint, program)
-        val step = OwnerReward.step(committedRecord.pet.giftOwed, liveGift, paidTotal)
-        val preview = when (step) {
-            OwnerReward.Step.CLAIM -> {
-                val hbrnMint = OwnerReward.hbrnMint(config)
-                val tokenProgram = base.getAccountInfo(hbrnMint).value?.owner ?: throw SolanaRpc.Failure("HBRN mint missing")
-                OwnerPreflight.inspectSourceOnly(base, OwnerReward.claim(owner, pet.address, pet.mint, GameSync.PROGRAM,
-                    GameSync.CONFIG, hbrnMint, tokenProgram), owner, GameSync.PROGRAM)
+        when (OwnerReward.step(committedRecord.pet.giftOwed, liveGift, paidTotal)) {
+            OwnerReward.Step.CLAIM -> {}
+            // The game commits and pays for it, so the wallet signs on L1 only: it refuses an ER transaction.
+            OwnerReward.Step.COMMIT -> when (val answer = AdmissionService.commit(pet.mint)) {
+                AdmissionService.CommitAnswer.Committed -> if (!committedOnL1(base, pet.address, delegation, program, ownerKey, paidTotal)) {
+                    publishOwnerAction(OwnerSigning.Outcome.CONFIRMED_AWAITING_READ)
+                    GameSync.select(ownerKey)
+                    return
+                }
+                is AdmissionService.CommitAnswer.TooSoon -> {
+                    Log.i(TAG, "Gift commit too soon; retry in ${answer.retryAfterSeconds} s")
+                    publishOwnerAction(OwnerSigning.Outcome.GIFT_TOO_SOON)
+                    return
+                }
+                AdmissionService.CommitAnswer.NothingToClaim -> {
+                    publishOwnerAction(OwnerSigning.Outcome.IDLE)
+                    GameSync.select(ownerKey)
+                    return
+                }
             }
-            OwnerReward.Step.COMMIT -> OwnerPreflight.inspectSourceOnly(ephemeral,
-                OwnerReward.commit(owner, pet.address, GameSync.PROGRAM, OwnerReward.validator(config)), owner, GameSync.PROGRAM)
             OwnerReward.Step.NOTHING_OWED -> {
                 publishOwnerAction(OwnerSigning.Outcome.IDLE)
                 GameSync.select(ownerKey)
                 return
             }
         }
+        val hbrnMint = OwnerReward.hbrnMint(config)
+        val tokenProgram = base.getAccountInfo(hbrnMint).value?.owner ?: throw SolanaRpc.Failure("HBRN mint missing")
+        val preview = OwnerPreflight.inspectSourceOnly(base, OwnerReward.claim(owner, pet.address, pet.mint, GameSync.PROGRAM,
+            GameSync.CONFIG, hbrnMint, tokenProgram), owner, GameSync.PROGRAM)
         preview.simulation.value.error?.let { error ->
-            Log.e(TAG, "$step simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
+            Log.e(TAG, "Claim simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
             publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
             return
         }
         signAndConfirm(preview, ownerKey)
+    }
+
+    // The commit lands on L1 about a second after the ER; a few spaced reads, then the next poll takes over.
+    private suspend fun committedOnL1(base: SolanaRpc, pet: String, delegation: SolanaPublicKey, program: SolanaPublicKey,
+        ownerKey: ByteArray, paidTotal: java.math.BigInteger): Boolean {
+        repeat(COMMIT_READS) {
+            delay(COMMIT_READ_GAP_MS)
+            val account = base.getAccountInfo(pet).value ?: return@repeat
+            val record = SourcePetRead.decodeSourceOnly(account, if (account.owner == delegation.address) delegation else program,
+                LivePetRead.PROFILE, SolanaPublicKey(ownerKey))
+            if (record.pet.giftOwed > paidTotal) return true
+        }
+        return false
     }
 
     private suspend fun buy(cartCode: Int) {
@@ -408,6 +436,8 @@ class WalletBridge(private val activity: MainActivity) {
 
     companion object {
         private const val TAG = "HibernalWallet"
+        private const val COMMIT_READS = 6
+        private const val COMMIT_READ_GAP_MS = 2_000L
         private const val CONNECT = 1
         private const val DISCONNECT = 2
         private const val DISCONNECTED = 0

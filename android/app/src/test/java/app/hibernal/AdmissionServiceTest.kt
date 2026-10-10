@@ -33,4 +33,17 @@ class AdmissionServiceTest {
         refused(500, """{"error":"AdmitFailed","detail":"rpc"}""")
         refused(502, "<html>bad gateway</html>")
     }
+
+    @Test fun commitAnswersCommittedTooSoonOrNothingAndFailsLoudOtherwise() {
+        assertEquals(AdmissionService.CommitAnswer.Committed,
+            AdmissionService.commitAnswer(200, """{"status":"committed","giftOwed":"5","signature":"s"}"""))
+        assertEquals(AdmissionService.CommitAnswer.TooSoon(3600),
+            AdmissionService.commitAnswer(429, """{"error":"TooSoon","retryAfterSeconds":3600}"""))
+        assertEquals(AdmissionService.CommitAnswer.NothingToClaim,
+            AdmissionService.commitAnswer(409, """{"error":"NothingToClaim"}"""))
+        for ((status, body) in listOf(429 to """{"error":"TooSoon"}""", 404 to """{"error":"NoPet"}""",
+            400 to """{"error":"BadMint"}""", 500 to """{"error":"CommitFailed"}""", 200 to """{"status":"queued"}""", 502 to "<html/>")) {
+            assertThrows(AdmissionService.Failure::class.java) { AdmissionService.commitAnswer(status, body) }
+        }
+    }
 }

@@ -20,10 +20,27 @@ object AdmissionService {
     const val BASE = "https://hibernal.metascriptlang.org"
     private const val MAX_BODY_BYTES = 64 * 1024
 
-    suspend fun admit(owner: String, base: String = BASE): Answer = withContext(Dispatchers.IO) {
+    // The game's own answer to a gift on the ER: it commits the Pet to L1 and pays for it.
+    sealed interface CommitAnswer {
+        data object Committed : CommitAnswer
+        data class TooSoon(val retryAfterSeconds: Long) : CommitAnswer
+        data object NothingToClaim : CommitAnswer
+    }
+
+    suspend fun admit(owner: String, base: String = BASE): Answer {
+        val (status, body) = post(base, "admit", JSONObject().put("owner", key(owner, "owner")))
+        return answer(status, body, owner)
+    }
+
+    suspend fun commit(mint: String, base: String = BASE): CommitAnswer {
+        val (status, body) = post(base, "commit", JSONObject().put("mint", key(mint, "mint")))
+        return commitAnswer(status, body)
+    }
+
+    private suspend fun post(base: String, path: String, request: JSONObject): Pair<Int, String> = withContext(Dispatchers.IO) {
         check(base.startsWith("https://"), "admission service must be https")
-        val body = JSONObject().put("owner", key(owner, "owner")).toString().toByteArray(Charsets.UTF_8)
-        val connection = URL("$base/admit").openConnection() as HttpsURLConnection
+        val body = request.toString().toByteArray(Charsets.UTF_8)
+        val connection = URL("$base/$path").openConnection() as HttpsURLConnection
         try {
             connection.requestMethod = "POST"
             connection.instanceFollowRedirects = false
@@ -39,7 +56,7 @@ object AdmissionService {
                 ?: throw Failure("admission service HTTP $status without body")
             val bytes = stream.use { it.readNBytes(MAX_BODY_BYTES + 1) }
             check(bytes.size <= MAX_BODY_BYTES, "admission response exceeds body limit")
-            answer(status, String(bytes, Charsets.UTF_8), owner)
+            status to String(bytes, Charsets.UTF_8)
         } catch (error: Failure) {
             throw error
         } catch (error: IOException) {
@@ -68,6 +85,19 @@ object AdmissionService {
                 else -> throw Failure("admission refused: $error")
             }
             else -> throw Failure("admission HTTP $status: ${json.optString("error")} ${json.optString("detail")}".trim())
+        }
+    }
+
+    internal fun commitAnswer(status: Int, body: String): CommitAnswer {
+        val json = try { JSONObject(body) } catch (error: JSONException) {
+            throw Failure("commit HTTP $status body is not JSON", error)
+        }
+        return when {
+            status == 200 && json.optString("status") == "committed" -> CommitAnswer.Committed
+            status == 429 && json.optString("error") == "TooSoon" ->
+                CommitAnswer.TooSoon(json.optLong("retryAfterSeconds", -1).also { check(it >= 0, "TooSoon without retryAfterSeconds") })
+            status == 409 && json.optString("error") == "NothingToClaim" -> CommitAnswer.NothingToClaim
+            else -> throw Failure("commit HTTP $status: ${json.optString("error")} ${json.optString("status")}".trim())
         }
     }
 

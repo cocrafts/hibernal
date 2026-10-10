@@ -47,7 +47,7 @@ int hostWalletAddressByte(int index);
 // Buy's packed cart). Ignored while Requested (1) or SentPending (5). The request is (action + 1) | item << 8.
 void hostRequestOwnerAction(int action, int item);
 int hostTakeOwnerActionRequest(void);
-// State 0..12 is host.ms OwnerActionOutcome; anything else publishes Unknown (9).
+// State 0..13 is host.ms OwnerActionOutcome; anything else publishes Unknown (9).
 void hostSetOwnerAction(int state);
 int hostOwnerActionState(void);
 int hostOwnerActionRevision(void);

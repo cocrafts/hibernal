@@ -165,6 +165,7 @@ export function summonStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.Unavailable => "SUMMON PREFLIGHT FAILED. NOTHING SENT.",
 		OwnerActionOutcome.NoSeekerGenesisToken => "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.",
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING SENT.",
+		OwnerActionOutcome.GiftTooSoon => "",
 	};
 }
 
@@ -183,6 +184,7 @@ export function buyStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.Unavailable => "PURCHASE PREFLIGHT FAILED. NOTHING PAID.",
 		OwnerActionOutcome.NoSeekerGenesisToken => "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.",
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING PAID.",
+		OwnerActionOutcome.GiftTooSoon => "",
 	};
 }
 
@@ -246,6 +248,7 @@ export function giftStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.Unavailable => "CLAIM PREFLIGHT FAILED. NOTHING SENT.",
 		OwnerActionOutcome.NoSeekerGenesisToken => "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.",
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING SENT.",
+		OwnerActionOutcome.GiftTooSoon => "TODAY'S GIFT IS ALREADY ON ITS WAY. MORE TOMORROW.",
 	};
 }
 

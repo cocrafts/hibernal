@@ -18,8 +18,6 @@ class OwnerTransactionTest {
     private val system = OwnerTransaction.SYSTEM_PROGRAM
     private val delegation = OwnerTransaction.DELEGATION_PROGRAM
     private val token = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-    private val magic = OwnerTransaction.MAGIC_PROGRAM
-    private val context = OwnerTransaction.MAGIC_CONTEXT
     private val budget = OwnerTransaction.COMPUTE_BUDGET_PROGRAM
 
     @Test fun bankHasIndependentFullWireGoldenAndOwnerFirstWritableSigner() {
@@ -67,9 +65,6 @@ class OwnerTransactionTest {
             address(3) to "R", address(4) to "W", address(5) to "R", address(6) to "W", address(7) to "W", token to "R", system to "R"))
         verify(OwnerTransaction.canonicalLoad(program, address(2), address(3)),
             "load", "53ecbb4ce79f56ac", listOf(address(2) to "W", address(3) to "R"))
-        verify(OwnerTransaction.canonicalCommitPet(program, owner, address(2), address(3), context, address(4), magic),
-            "commit_pet", "9c3fc91ca75a7165", listOf(owner to "S", address(2) to "W", address(3) to "W",
-                context to "W", address(4) to "W", magic to "R"))
         verify(OwnerTransaction.canonicalClaimReward(program, owner, address(2), address(3), address(4), address(5), address(6), token, system),
             "claim_reward", "955fb5f25e5a9ea2", listOf(owner to "WS", address(2) to "R", address(3) to "R",
                 address(4) to "W", address(5) to "W", address(6) to "W", token to "R", system to "R"))
@@ -150,7 +145,6 @@ class OwnerTransactionTest {
         refuses { OwnerTransaction.canonicalDelegatePet(program, owner, address(2), address(3), program, address(5), address(6), address(7), address(8), system) }
         refuses { OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), address(7), address(8), 0) }
         refuses { OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), system, address(7), 256) }
-        refuses { OwnerTransaction.canonicalCommitPet(program, owner, address(2), address(3), context, address(4), address(5)) }
         refuses { OwnerTransaction.canonicalBuy(program, owner, address(2), address(3), address(4), address(5), address(6), address(7), address(8), system, 0, 0) }
         refuses { OwnerTransaction.prepareSourceOnly(buy(0, 0), "", program, blockhash, TEST_COMPUTE_UNIT_LIMIT) }
         refuses { OwnerTransaction.prepareSourceOnly(buy(0, 0), owner, address(80), blockhash, TEST_COMPUTE_UNIT_LIMIT) }

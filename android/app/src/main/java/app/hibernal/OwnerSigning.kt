@@ -30,6 +30,7 @@ object OwnerSigning {
         UNAVAILABLE,
         NO_SEEKER_GENESIS_TOKEN,
         ADMISSION_FAILED,
+        GIFT_TOO_SOON,
     }
 
     data class Request(val action: OwnerAction, val item: Int)

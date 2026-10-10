@@ -506,7 +506,7 @@ function claimBanner(home: Home, pet: GamePet, left: float32, y: float32): void 
 	const enabled: boolean = step != GiftStep.Nothing && !(home.giftAsked && summonInFlight(outcome));
 	const label: string = match (step) {
 		GiftStep.Nothing => "CLAIM",
-		GiftStep.Commit => "PREPARE CLAIM",
+		GiftStep.Commit => "CLAIM",
 		GiftStep.Claim => "CLAIM",
 	};
 	pressedLook(home.kit, subId(CLAIM_ID, 15), enabled && home.ui.down && home.ui.activeId == subId(CLAIM_ID, 15));
@@ -641,7 +641,7 @@ function liveActivities(home: Home, block: NeighbourBlock): PetActivity[] {
 function toastOutcome(home: Home, outcome: OwnerActionOutcome, status: string): void {
 	if (status == "") { return; }
 	pushToast(home.toasts, status, outcome != OwnerActionOutcome.SentPending && outcome != OwnerActionOutcome.Requested
-		&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead);
+		&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead && outcome != OwnerActionOutcome.GiftTooSoon);
 }
 
 function settled(outcome: OwnerActionOutcome): boolean {
