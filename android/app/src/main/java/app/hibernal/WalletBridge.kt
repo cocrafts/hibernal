@@ -6,10 +6,12 @@ import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import com.solana.mobilewalletadapter.clientlib.AdapterOperations
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.AuthorizationResult
 import com.solana.mobilewalletadapter.common.ProtocolContract
 import com.solana.publickey.SolanaPublicKey
 import java.io.File
@@ -41,6 +43,33 @@ class WalletBridge(private val activity: MainActivity) {
     ).apply { blockchain = Solana.Devnet }
 
     private val authFile = AtomicFile(File(activity.noBackupFilesDir, "walletAuthToken"))
+
+    private val ownerWallet = OwnerSigning.ConnectedWallet(
+        object : OwnerSigning.Session {
+            override suspend fun <T> open(
+                authToken: String?, block: suspend (AdapterOperations, AuthorizationResult) -> T,
+            ): TransactionResult<T> {
+                adapter.authToken = authToken
+                return adapter.transact(sender) { block(this, it) }
+            }
+        },
+        object : OwnerSigning.Authorization {
+            override suspend fun saved() = withContext(Dispatchers.IO) { readAuthToken() }
+            override suspend fun keep(authToken: String) {
+                try {
+                    withContext(NonCancellable + Dispatchers.IO) { writeAuthToken(authToken) }
+                } catch (error: Exception) {
+                    Log.e(TAG, "Rotated wallet authorization not stored: ${error.javaClass.name}")
+                }
+            }
+            override suspend fun forget() {
+                adapter.authToken = null
+                withContext(NonCancellable + Dispatchers.IO) { authFile.delete() }
+            }
+        },
+    ) { authorization ->
+        authorization.accounts.firstOrNull()?.let { publish(CONNECTED, SolanaPublicKey(it.publicKey).address) }
+    }
 
     // Called on the UI thread after the render loop consumes a native request.
     fun request(request: Int) {
@@ -225,17 +254,11 @@ class WalletBridge(private val activity: MainActivity) {
 
     // A confirmed transaction for rediscoverOwner restarts its discovery so the new Pet is read.
     private suspend fun signAndConfirm(preview: OwnerPreflight.SourceOnlyPreview, rediscoverOwner: ByteArray?) {
-        adapter.authToken = withContext(Dispatchers.IO) { readAuthToken() }
-        if (adapter.authToken == null) {
-            Log.i(TAG, "Sign refused: no wallet authorization stored")
-            publishOwnerAction(OwnerSigning.Outcome.WALLET_FAILED)
-            return
-        }
         if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             publishOwnerAction(OwnerSigning.Outcome.CANCELLED)
             return
         }
-        when (val answer = OwnerSigning.sign(preview) { block -> adapter.transact(sender) { block(this, it) } }) {
+        when (val answer = OwnerSigning.sign(preview, ownerWallet)) {
             is OwnerSigning.WalletAnswer.Signed -> {
                 publishOwnerAction(OwnerSigning.Outcome.SENT_PENDING)
                 val chain = OwnerSigning.chain(SolanaRpc(preview.endpoint))
@@ -248,17 +271,8 @@ class WalletBridge(private val activity: MainActivity) {
                         GameSync.select(rediscoverOwner)
                     }
                 }
-                try {
-                    withContext(NonCancellable + Dispatchers.IO) { writeAuthToken(answer.authToken) }
-                } catch (error: Exception) {
-                    Log.e(TAG, "Rotated wallet authorization not stored: ${error.javaClass.name}")
-                }
             }
             is OwnerSigning.WalletAnswer.Refused -> {
-                if (answer.forgetAuthorization) {
-                    adapter.authToken = null
-                    withContext(NonCancellable + Dispatchers.IO) { authFile.delete() }
-                }
                 answer.error?.let { logFailure("Sign", it, answer.outcome == OwnerSigning.Outcome.CANCELLED) }
                 publishOwnerAction(answer.outcome)
             }
@@ -300,6 +314,11 @@ class WalletBridge(private val activity: MainActivity) {
     }
 
     private suspend fun disconnect() {
+        try {
+            withContext(NonCancellable + Dispatchers.IO) { GameOwnerStore.forget(activity) }
+        } catch (error: Exception) {
+            GameOwnerStore.reportFailure("Forget", error)
+        }
         if (adapter.authToken == null) {
             publish(DISCONNECTED)
             return

@@ -17,9 +17,9 @@ import kotlin.coroutines.coroutineContext
 import kotlin.random.Random
 
 object GameSync {
-    internal const val PROGRAM = "239hXbhBXz9wz4LGjdq98S6EyGcbqm9wAZt7KG9WPDcR"
+    internal const val PROGRAM = "FqNDZWzei5gvnUnNEVXVroe3MsMZ5tibJXyGsS3omQHP"
     private const val DELEGATION = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-    internal const val CONFIG = "7hS8Uu238NTQ8Aw6yHYaWyrX5bFRcS863gFqwV8vsdSi"
+    internal const val CONFIG = "AZGqC5edzRUNMBbPHcfHteisMWPYaQ7dhx7BaJ5MUujC"
     private const val DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
     internal const val DISCOVERY_TTL_MS = 600_000L
     internal const val REFRESH_INTERVAL_MS = 30_000L
@@ -29,6 +29,7 @@ object GameSync {
     private val PET_TAG = byteArrayOf(0xdf.toByte(), 0xde.toByte(), 0x81.toByte(), 0x59, 0x46, 0xe7.toByte(), 0x8d.toByte(), 0xb8.toByte())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var selection: Job? = null
+    private var selectedOwner: ByteArray? = null
 
     data class LivePet(val owner: String, val address: String, val mint: String)
 
@@ -36,17 +37,20 @@ object GameSync {
     @Volatile var livePet: LivePet? = null
         private set
 
+    // Selecting the owner already shown rediscovers behind its last read instead of blanking it.
     @Synchronized
     fun select(publicKey: ByteArray?) {
         selection?.cancel()
         selection = null
-        livePet = null
-        if (publicKey == null || publicKey.size != 32) return
-        val selected = publicKey.copyOf()
+        val owner = publicKey?.takeIf { it.size == 32 }?.copyOf()
+        val sameOwner = owner != null && selectedOwner?.contentEquals(owner) == true
+        selectedOwner = owner
+        if (!sameOwner) livePet = null
+        if (owner == null) return
         val revision = VoidNative.gameOwnerRevision()
         selection = scope.launch {
-            val poll = Poll(selected, SolanaRpc(SolanaRpc.DEVNET), SolanaRpc(SolanaRpc.DEVNET_ER),
-                SystemClock::elapsedRealtime, Random.Default) { publish(revision, it) }
+            val poll = Poll(owner, SolanaRpc(SolanaRpc.DEVNET), SolanaRpc(SolanaRpc.DEVNET_ER),
+                SystemClock::elapsedRealtime, Random.Default, shown = sameOwner) { publish(revision, it) }
             while (true) delay(poll.cycle() ?: return@launch)
         }
     }
@@ -85,12 +89,13 @@ object GameSync {
         private val clock: () -> Long,
         private val random: Random,
         private val wallSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
+        shown: Boolean = false,
         private val publish: (Publication) -> Boolean,
     ) {
         private val address = SolanaPublicKey(selected).address
         private var cache: Discovery? = null
         private var failures = 0
-        private var reported = false
+        private var reported = shown
         private var placementKeys = emptyList<String>()
         private var neighbourKeys = emptyList<String>()
         private var shopKeys = emptyList<String>()

@@ -10,6 +10,7 @@ object OwnerShop {
     const val LEDGER_BYTES = 72
     const val OWNER_ITEM_KINDS = 7
     private const val SHOP_ITEMS = 4
+    const val CART_GOODS = 3
     private val LEDGER_TAG = byteArrayOf(0x2b, 0x29, 0x15, 0xd5.toByte(), 0xb4.toByte(), 0xb0.toByte(), 0x5f, 0x20)
 
     data class Holdings(val skrBalance: BigInteger, val inTransit: Long)
@@ -50,13 +51,12 @@ object OwnerShop {
         return BigInteger(1, account.data.copyOfRange(64, 72).reversedArray())
     }
 
-    // The cart byte holds two bits per shop item (Food, Growth, Insurance, Skin): its tier + 1, 0 when absent.
+    // packedCart in native/hud/ownerGoods.ms: 4 bits per good, item * 3 + tier + 1, in cart order.
     fun cart(code: Int): List<Good> {
-        require(code in 1..255) { "Shop cart $code is empty or not a byte" }
-        return (0 until SHOP_ITEMS).mapNotNull { item ->
-            val tier = (code ushr (item * 2)) and 3
-            if (tier == 0) null else Good(item, tier - 1)
-        }
+        require(code > 0 && code ushr (4 * CART_GOODS) == 0) { "Shop cart $code is empty or holds more than $CART_GOODS goods" }
+        val values = (0 until CART_GOODS).map { (code ushr (4 * it)) and 15 }.dropLastWhile { it == 0 }
+        require(values.none { it == 0 || it > SHOP_ITEMS * 3 }) { "Shop cart $code has a gap or an unknown good" }
+        return values.map { Good((it - 1) / 3, (it - 1) % 3) }
     }
 
     suspend fun buy(owner: String, petAddress: String, mint: String, program: String, configAddress: String,

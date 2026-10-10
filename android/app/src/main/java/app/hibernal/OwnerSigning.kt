@@ -32,18 +32,56 @@ object OwnerSigning {
         ADMISSION_FAILED,
     }
 
-    data class Request(val action: OwnerAction, val item: Int, val tier: Int)
+    data class Request(val action: OwnerAction, val item: Int)
 
     fun request(packed: Int): Request {
         val action = (packed and 0xff) - 1
         require(action in OwnerAction.entries.indices && packed ushr 24 == 0) { "Unknown owner action request $packed" }
-        return Request(OwnerAction.entries[action], (packed ushr 8) and 0xff, (packed ushr 16) and 0xff)
+        return Request(OwnerAction.entries[action], (packed ushr 8) and 0xffff)
     }
 
     fun interface Wallet {
         suspend fun transact(
             block: suspend (AdapterOperations, AuthorizationResult) -> Array<ByteArray>,
         ): TransactionResult<Array<ByteArray>>
+    }
+
+    // Where the wallet's authorization waits between owner actions.
+    interface Authorization {
+        suspend fun saved(): String?
+        suspend fun keep(authToken: String)
+        suspend fun forget()
+    }
+
+    // One wallet session: authorizes with authToken, or asks the owner to connect when it is null, then runs block.
+    interface Session {
+        suspend fun <T> open(authToken: String?, block: suspend (AdapterOperations, AuthorizationResult) -> T): TransactionResult<T>
+    }
+
+    // Every owner action reaches the wallet through this: connected first, by the saved authorization or the
+    // wallet's connect prompt in the same session, then the action. A saved authorization the wallet refuses is
+    // forgotten and connect asked once more; nothing has been signed or sent by then.
+    class ConnectedWallet(
+        private val session: Session,
+        private val authorization: Authorization,
+        private val connected: (AuthorizationResult) -> Unit,
+    ) : Wallet {
+        suspend fun <T> run(block: suspend (AdapterOperations, AuthorizationResult) -> T): TransactionResult<T> {
+            val saved = authorization.saved()
+            var result = session.open(saved, block)
+            if (saved != null && result is TransactionResult.Failure &&
+                remoteCode(result.e) == ProtocolContract.ERROR_AUTHORIZATION_FAILED) {
+                authorization.forget()
+                result = session.open(null, block)
+            }
+            if (result is TransactionResult.Success) {
+                authorization.keep(result.authResult.authToken)
+                connected(result.authResult)
+            }
+            return result
+        }
+
+        override suspend fun transact(block: suspend (AdapterOperations, AuthorizationResult) -> Array<ByteArray>) = run(block)
     }
 
     interface Chain {
@@ -60,7 +98,7 @@ object OwnerSigning {
 
     sealed interface WalletAnswer {
         class Signed(val shape: OwnerTransaction.SourceOnlyWalletReturnShape, val authToken: String) : WalletAnswer
-        class Refused(val outcome: Outcome, val error: Exception?, val forgetAuthorization: Boolean = false) : WalletAnswer
+        class Refused(val outcome: Outcome, val error: Exception?) : WalletAnswer
     }
 
     class OwnerNotAuthorized : IllegalStateException("Wallet authorization does not include the fee payer owner")
@@ -91,8 +129,7 @@ object OwnerSigning {
         val causes = generateSequence<Throwable>(error) { it.cause }.take(8).toList()
         return when (remoteCode(error)) {
             ProtocolContract.ERROR_NOT_SIGNED -> WalletAnswer.Refused(Outcome.CANCELLED, error)
-            ProtocolContract.ERROR_AUTHORIZATION_FAILED -> WalletAnswer.Refused(Outcome.WALLET_FAILED, error, forgetAuthorization = true)
-            null -> if (causes.any { it is InterruptedException || (it is CancellationException && it !is TimeoutCancellationException) }) {
+                        null -> if (causes.any { it is InterruptedException || (it is CancellationException && it !is TimeoutCancellationException) }) {
                 WalletAnswer.Refused(Outcome.CANCELLED, error)
             } else {
                 WalletAnswer.Refused(Outcome.WALLET_FAILED, error)

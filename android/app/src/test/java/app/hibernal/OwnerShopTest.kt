@@ -53,9 +53,13 @@ class OwnerShopTest {
         }
     }
 
-    @Test fun cartByteNamesEachItemAndTier() {
-        assertEquals(listOf(OwnerShop.Good(0, 2), OwnerShop.Good(2, 0)), OwnerShop.cart(3 or (1 shl 4)))
+    @Test fun cartCodeNamesEachGoodInOrderWithDuplicates() {
+        assertEquals(listOf(OwnerShop.Good(0, 0), OwnerShop.Good(0, 0), OwnerShop.Good(2, 0)), OwnerShop.cart(1 or (1 shl 4) or (7 shl 8)))
+        assertEquals(listOf(OwnerShop.Good(1, 2)), OwnerShop.cart(6))
         assertThrows(IllegalArgumentException::class.java) { OwnerShop.cart(0) }
+        assertThrows(IllegalArgumentException::class.java) { OwnerShop.cart(1 or (1 shl 4) or (1 shl 8) or (1 shl 12)) }
+        assertThrows(IllegalArgumentException::class.java) { OwnerShop.cart(1 shl 4) }
+        assertThrows(IllegalArgumentException::class.java) { OwnerShop.cart(13) }
     }
 
     @Test fun buyIsOneInstructionPerGoodIntoTheTreasury() = runBlocking {
@@ -65,7 +69,7 @@ class OwnerShopTest {
         })
         val pet = SolanaPublicKey(ByteArray(32) { 8 }).address
         val calls = OwnerShop.buy(owner, pet, mint.address, program.address, SolanaPublicKey(ByteArray(32) { 2 }).address,
-            config, tokenProgram, OwnerShop.cart(2 or (1 shl 2)))
+            config, tokenProgram, OwnerShop.cart(1 or (4 shl 4)))
         assertEquals(2, calls.size)
         assertEquals(OwnerShop.ledgerAddress(program, mint), calls[0].instruction.accounts[3].publicKey.base58())
         assertEquals(SolanaPublicKey(ByteArray(32) { 7 }).address, calls[0].instruction.accounts[6].publicKey.base58())

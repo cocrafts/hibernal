@@ -88,20 +88,17 @@ class OwnerSigningTest {
         val declined = refused(OwnerSigning.sign(preview(),
             failing(JsonRpc20RemoteException(ProtocolContract.ERROR_NOT_SIGNED, "declined", null))))
         assertEquals(OwnerSigning.Outcome.CANCELLED, declined.outcome)
-        assertFalse(declined.forgetAuthorization)
         val closed = refused(OwnerSigning.sign(preview(), failing(Exception(CancellationException("closed")))))
         assertEquals(OwnerSigning.Outcome.CANCELLED, closed.outcome)
     }
 
-    @Test fun walletErrorsAreFailuresAndStaleAuthorizationIsForgotten() = runBlocking {
+    @Test fun walletErrorsAreFailures() = runBlocking {
         val stale = refused(OwnerSigning.sign(preview(),
             failing(JsonRpc20RemoteException(ProtocolContract.ERROR_AUTHORIZATION_FAILED, "stale", null))))
         assertEquals(OwnerSigning.Outcome.WALLET_FAILED, stale.outcome)
-        assertTrue(stale.forgetAuthorization)
         val invalid = refused(OwnerSigning.sign(preview(),
             failing(JsonRpc20RemoteException(ProtocolContract.ERROR_INVALID_PAYLOADS, "invalid", null))))
         assertEquals(OwnerSigning.Outcome.WALLET_FAILED, invalid.outcome)
-        assertFalse(invalid.forgetAuthorization)
         val transport = refused(OwnerSigning.sign(preview(), failing(IOException("association lost"))))
         assertEquals(OwnerSigning.Outcome.WALLET_FAILED, transport.outcome)
     }
@@ -210,9 +207,9 @@ class OwnerSigningTest {
             OwnerSigning.OwnerAction.entries.map { it.name })
     }
 
-    @Test fun packedRequestDecodesActionItemAndTier() {
-        assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.BUY, 3, 1), OwnerSigning.request(5 or (3 shl 8) or (1 shl 16)))
-        assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.CLAIM, 0, 0), OwnerSigning.request(1))
+    @Test fun packedRequestDecodesActionAndSixteenBitItem() {
+        assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.BUY, 0x713), OwnerSigning.request(5 or (0x713 shl 8)))
+        assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.CLAIM, 0), OwnerSigning.request(1))
         for (bad in listOf(0, 9, 1 or (1 shl 24), -1)) {
             assertThrows(IllegalArgumentException::class.java) { OwnerSigning.request(bad) }
         }
@@ -228,4 +225,61 @@ class OwnerSigningTest {
     }
 
     private fun address(value: Int) = SolanaPublicKey(ByteArray(32) { value.toByte() }).address
+
+    // A wallet session that refuses some saved authorizations with a protocol code and connects otherwise.
+    private class FakeSession(val refusals: Map<String?, Int>) : OwnerSigning.Session {
+        val opened = mutableListOf<String?>()
+        override suspend fun <T> open(
+            authToken: String?, block: suspend (AdapterOperations, AuthorizationResult) -> T,
+        ): TransactionResult<T> {
+            opened += authToken
+            refusals[authToken]?.let { return TransactionResult.Failure("refused", JsonRpc20RemoteException(it, "refused", null)) }
+            val operations = Proxy.newProxyInstance(javaClass.classLoader, arrayOf(AdapterOperations::class.java)) { _, method, _ ->
+                throw UnsupportedOperationException(method.name)
+            } as AdapterOperations
+            val authorization = AuthorizationResult.create("fresh", ByteArray(32) { 3 }, null, null)
+            return TransactionResult.Success(block(operations, authorization), authorization)
+        }
+    }
+
+    private class SavedAuthorization(var token: String?) : OwnerSigning.Authorization {
+        override suspend fun saved() = token
+        override suspend fun keep(authToken: String) { token = authToken }
+        override suspend fun forget() { token = null }
+    }
+
+    private fun connectedRun(session: FakeSession, saved: SavedAuthorization, connected: MutableList<String>) = runBlocking {
+        OwnerSigning.ConnectedWallet(session, saved) { connected += it.authToken }.run { _, _ -> 7 }
+    }
+
+    @Test fun noSavedAuthorizationConnectsThenActsInOneSessionAndKeepsIt() {
+        val session = FakeSession(emptyMap())
+        val saved = SavedAuthorization(null)
+        val connected = mutableListOf<String>()
+        assertEquals(7, (connectedRun(session, saved, connected) as TransactionResult.Success).payload)
+        assertEquals(listOf<String?>(null), session.opened)
+        assertEquals("fresh", saved.token)
+        assertEquals(listOf("fresh"), connected)
+    }
+
+    @Test fun aRefusedSavedAuthorizationIsForgottenAndConnectAskedOnce() {
+        val session = FakeSession(mapOf("stale" to ProtocolContract.ERROR_AUTHORIZATION_FAILED))
+        val saved = SavedAuthorization("stale")
+        assertTrue(connectedRun(session, saved, mutableListOf()) is TransactionResult.Success)
+        assertEquals(listOf("stale", null), session.opened)
+        assertEquals("fresh", saved.token)
+    }
+
+    @Test fun aDeclineOrARefusedFreshConnectIsNotRetried() {
+        val declined = FakeSession(mapOf("saved" to ProtocolContract.ERROR_NOT_SIGNED))
+        val kept = SavedAuthorization("saved")
+        assertTrue(connectedRun(declined, kept, mutableListOf()) is TransactionResult.Failure)
+        assertEquals(listOf<String?>("saved"), declined.opened)
+        assertEquals("saved", kept.token)
+        val refused = FakeSession(mapOf(null to ProtocolContract.ERROR_AUTHORIZATION_FAILED))
+        val connected = mutableListOf<String>()
+        assertTrue(connectedRun(refused, SavedAuthorization(null), connected) is TransactionResult.Failure)
+        assertEquals(listOf<String?>(null), refused.opened)
+        assertTrue(connected.isEmpty())
+    }
 }

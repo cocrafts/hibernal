@@ -349,6 +349,16 @@ class GameSyncPollTest {
         assertTrue(published.all { it.state == 3 })
     }
 
+    @Test fun rediscoveringTheShownOwnerPublishesOnlyTheNewRead() {
+        val chain = placedChain()
+        val published = mutableListOf<GameSync.Publication>()
+        val poll = GameSync.Poll(owner, FakeRpc(SolanaRpc.DEVNET, chain), FakeRpc(SolanaRpc.DEVNET_ER, chain), { 0L },
+            Random(7), { genesis + 41 * 600 + 5 }, shown = true) { published.add(it); true }
+        cycle(poll)
+        assertEquals(1, published.size)
+        assertTrue(published.none { it.state == 1 })
+    }
+
     @Test fun historicalPetLayoutIsPublishedAsUnsupported() {
         val chain = chain()
         chain.base[petAddress] = pet()

@@ -23,6 +23,8 @@ object LivePetRead {
         FORAGE, MIGHT, GRIT, TALENT_KIND, TALENT_BPS, TREE, PERSONA, LINEAGE_GENERATION,
         BORN_EPOCH, CLAIMED_EPOCH, DIED_EPOCH, GIFT_OWED, COMMITTED_GIFT_OWED, PAID_TOTAL, NAME_ID,
         OWNER_FIRST, OWNER_SECOND, INSURANCE, SKIN, SKR_BALANCE, ITEMS_IN_TRANSIT,
+        WORLD_GENESIS_TIMESTAMP, WORLD_REWARD_PER_WORK_POWER, WORLD_REWARD_EPOCH, WORLD_TOTAL_WORK_POWER,
+        WORLD_RECYCLED_PENDING, WORLD_TREASURY, WORLD_ITEM_RESERVE, WORLD_EMITTED, WORLD_LIVING_PETS, WORLD_FLOOR_SLOTS,
         HEAD_RARITY, HEAD_STAT, HEAD_WEAR, HEAD_SKILL, HEAD_LEVEL,
         BODY_RARITY, BODY_STAT, BODY_WEAR, BODY_SKILL, BODY_LEVEL,
         HANDS_RARITY, HANDS_STAT, HANDS_WEAR, HANDS_SKILL, HANDS_LEVEL,
@@ -71,6 +73,7 @@ object LivePetRead {
         val blockStarted: Boolean,
         val blockEpoch: BigInteger,
         val worldDay: BigInteger,
+        val world: SourceWorldRead.SourceOnlyWorld,
         val members: List<SolanaPublicKey>,
         val activity: SourceWorldRead.SourceOnlyBlockActivity?,
     )
@@ -130,14 +133,14 @@ object LivePetRead {
         val now = BigInteger.valueOf(nowSeconds)
         val worldDay = if (now < decodedWorld.genesisTimestamp) BigInteger.ZERO
             else (now - decodedWorld.genesisTimestamp) / decodedWorld.secondsPerDay
-        if (block == null) return Placement(false, false, BigInteger.ZERO, worldDay, emptyList(), null)
+        if (block == null) return Placement(false, false, BigInteger.ZERO, worldDay, decodedWorld, emptyList(), null)
         requireLayout("BLOCK", block, BLOCK_BYTES)
         val head = SourceWorldRead.decodeSourceOnlyBlockHead(block, program, PROFILE)
         val pet = source.record.pet
         val member = head.id == pet.blockId && pet.slot != SourcePetRead.Seat.Unplaced &&
             head.members[pet.slot.sourceValue].address == source.address
         val activity = SourceWorldRead.decodeSourceOnlyBlockActivity(block, program, PROFILE)
-        return Placement(member, head.started, head.epoch, worldDay, head.members, activity)
+        return Placement(member, head.started, head.epoch, worldDay, decodedWorld, head.members, activity)
     }
 
     private fun SolanaPublicKey.isZero() = bytes.all { it == 0.toByte() }
@@ -279,6 +282,9 @@ object LivePetRead {
         val pet = record.pet
         val tail = pet.sourceTail as SourcePetRead.SourceTail.Canonical
         fun flag(value: Boolean) = if (value) 1L else 0L
+        val world = placement?.world
+        val economy = world?.sourceEconomy as SourceWorldRead.SourceEconomy.Canonical?
+        fun worldValue(value: BigInteger?) = (value ?: BigInteger.ZERO).toLong()
         val values = mapOf(
             Field.LIFE to SourcePetLifecycle.sourceFact(record).ordinal.toLong(),
             Field.DELEGATED to flag(source.delegated),
@@ -317,6 +323,16 @@ object LivePetRead {
             Field.SKIN to tail.skin.toLong(),
             Field.SKR_BALANCE to shop.skrBalance.longValueExact(),
             Field.ITEMS_IN_TRANSIT to shop.inTransit,
+            Field.WORLD_GENESIS_TIMESTAMP to worldValue(world?.genesisTimestamp),
+            Field.WORLD_REWARD_PER_WORK_POWER to worldValue(world?.rewardPerWorkPower),
+            Field.WORLD_REWARD_EPOCH to worldValue(world?.rewardEpoch),
+            Field.WORLD_TOTAL_WORK_POWER to worldValue(world?.totalWorkPower),
+            Field.WORLD_RECYCLED_PENDING to worldValue(world?.recycledPending),
+            Field.WORLD_TREASURY to worldValue(economy?.treasury),
+            Field.WORLD_ITEM_RESERVE to worldValue(economy?.itemReserve),
+            Field.WORLD_EMITTED to worldValue(economy?.emitted),
+            Field.WORLD_LIVING_PETS to (world?.livingPets ?: 0L),
+            Field.WORLD_FLOOR_SLOTS to (world?.floorSlots ?: 0L),
         ) + Field.entries.dropWhile { it != Field.HEAD_RARITY }.zip(gearValues(pet.gear))
         check(values.size == Field.entries.size) { "Live Pet fields incomplete" }
         return LongArray(Field.entries.size) { values.getValue(Field.entries[it]) }
