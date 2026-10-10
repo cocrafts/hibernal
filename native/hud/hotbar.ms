@@ -5,6 +5,9 @@
 import { Ui, box, held, pressable } from "../ui/ui";
 import { Kit, PieceLayer, piece, pieceWidth, pieceHeight, plainLook, pressedLook, say, subId } from "./kit";
 import { Color, rgba } from "@metascript/void/src/void2d/types";
+import { TalentGrade } from "../../rules/talent";
+import { gradeColour } from "./itemCard";
+import { outline, withAlpha } from "./shapes";
 
 export const HOTBAR_HEIGHT: float32 = 102.0;
 export const NO_SLOT: int32 = -1;
@@ -58,6 +61,10 @@ export const PET_SLOTS: int32 = 4;
 export const EMPTY_SLOT: string = "";
 
 // The bar's outline from its top-left: the level plate on the left and top, the end cap on the right.
+// Inside the slot frame's glow, outside the 31-unit icon.
+const RIM_INSET: float32 = 2.5;
+const RIM_INNER_ALPHA: float32 = 0.45;
+
 export function hotbarLeft(): float32 {
 	return PLATE_X;
 }
@@ -93,11 +100,13 @@ function centredText(ui: Ui, kit: Kit, id: int32, line: string, centreX: float32
 }
 
 // `slots` holds HOTBAR_SLOTS item piece names, EMPTY_SLOT for an empty one. An empty owner slot shows "+" only when
-// `shopSlots`, since it opens the shop; xpToNext 0 hides the XP numbers.
+// `shopSlots`, since it opens the shop; xpToNext 0 hides the XP numbers. `rarities` is each slot's Item.rarity,
+// 0 for none, and rims the slot in its grade's colour.
 export function hotbar(ui: Ui, kit: Kit, id: int32, y: float32, level: int32, xp: uint32, xpToNext: uint32, slots: string[],
-	shopSlots: boolean): HotbarTap {
-	if (slots.length != HOTBAR_SLOTS) {
-		console.log("hotbar: " + (slots.length as int32).toString() + " slots, not " + HOTBAR_SLOTS.toString());
+	rarities: int32[], shopSlots: boolean): HotbarTap {
+	if (slots.length != HOTBAR_SLOTS || rarities.length != HOTBAR_SLOTS) {
+		console.log("hotbar: " + (slots.length as int32).toString() + " slots and " + (rarities.length as int32).toString()
+			+ " rarities, not " + HOTBAR_SLOTS.toString());
 		unreachable;
 	}
 	let result: HotbarTap = { kind: HotbarTapKind.Nothing, slot: NO_SLOT, held: NO_SLOT };
@@ -124,12 +133,20 @@ export function hotbar(ui: Ui, kit: Kit, id: int32, y: float32, level: int32, xp
 		const slotX: float32 = SLOT_X + SLOT_STEP * (slot as float32);
 		const empty: boolean = slots[slot] == EMPTY_SLOT;
 		pressedLook(kit, subId(id + 6, slot), held(ui, subId(id + 6, slot), slotX, y + SLOT_Y, slotWidth, slotHeight));
-		piece(kit, subId(id + 2, slot), PieceLayer.Frames, empty && shopSlots && slot >= PET_SLOTS ? "plusSlotOrange" : "slot", slotX, y + SLOT_Y);
+		piece(kit, subId(id + 2, slot), PieceLayer.Frames, empty && shopSlots && slot >= PET_SLOTS ? "plusSlot" : "slot", slotX, y + SLOT_Y);
 		if (pressable(ui, subId(id + 6, slot), slotX, y + SLOT_Y, slotWidth, slotHeight)) {
 			result = { ...result, kind: HotbarTapKind.Slot, slot: slot };
 		}
 		if (ui.activeId == subId(id + 6, slot)) { pressOnSlot = true; }
 		if (ui.x >= slotX && ui.x < slotX + slotWidth && ui.y >= y + SLOT_Y && ui.y < y + SLOT_Y + slotHeight) { under = slot; }
+		if (rarities[slot] > 0) {
+			const rim: Color = gradeColour((rarities[slot] - 1) as TalentGrade);
+			const inner: float32 = RIM_INSET + 1.0;
+			outline(ui, slotX + RIM_INSET, y + SLOT_Y + RIM_INSET, slotWidth - RIM_INSET * 2.0, slotHeight - RIM_INSET * 2.0,
+				1.0, rim);
+			outline(ui, slotX + inner, y + SLOT_Y + inner, slotWidth - inner * 2.0, slotHeight - inner * 2.0, 1.0,
+				withAlpha(rim, RIM_INNER_ALPHA));
+		}
 		if (!empty) {
 			const item: string = slots[slot];
 			piece(kit, subId(id + 3, slot), PieceLayer.Icons, item, slotX + (slotWidth - pieceWidth(kit, item)) * 0.5,

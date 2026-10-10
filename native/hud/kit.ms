@@ -73,12 +73,23 @@ export const ICON_NAMES: string[] = ["heart", "bag", "lock", "warning", "winter"
 export const PIECE_NAMES: string[] = ["panel", "xpFrame", "slot", "plusSlot", "levelPlate", "endCap", "tab", "hatch", "dot",
 	"sword", "pistol", "shotgun", "core", "rifle", "statFrame", "statBadge", "statFillRedEnd", "statFillRedBody",
 	"statFillBlueEnd", "statFillBlueBody", "statFillGreenEnd", "statFillGreenBody", "statFillOrangeEnd", "statFillOrangeBody",
-	"statHeart", "statGift", "statGrowth", "medkit", "battery", "ammo", "shield", "drone", "shopSword", "shopPistol",
+	"gearIconHeadForage", "gearIconHeadMight", "gearIconHeadGrit", "gearIconBodyForage", "gearIconBodyMight",
+	"gearIconBodyGrit", "gearIconHandsForage", "gearIconHandsMight", "gearIconHandsGrit", "gearIconFeetForage",
+	"gearIconFeetMight", "gearIconFeetGrit", "statHeart", "statGift", "statGrowth", "medkit", "battery", "ammo", "shield", "drone", "shopSword", "shopPistol",
 	"shopShotgun", "shopCore", "shopMedkit", "shopBattery", "shopAmmo", "shopShield", "shopDrone", "toggleOff", "toggleOn",
 	"toggleHeld", "toggleDisabled", "bannerStart", "bannerBody", "bannerEnd", "plusSlotOrange",
 	"bannerStartOrange", "bannerBodyOrange", "bannerEndOrange",
 	"onboardingCreate", "onboardingName", "onboardingPrevious", "onboardingNext",
 	"onboardingHologram", "onboardingWallet", "onboardingHologramDead", "onboardingNameDead", "itemCard", "shopStrip",
+	"ownerShopBuy", "ownerShopCancel", "ownerShopCard", "ownerShopCardDim", "ownerShopCardInCart",
+	"ownerShopCardLocked", "ownerShopCart", "ownerShopCartIcon", "ownerShopClose", "ownerShopCoin",
+	"ownerShopComingSoon", "ownerShopCornerBottomLeft", "ownerShopCornerBottomRight", "ownerShopCornerTopLeft",
+	"ownerShopCornerTopRight", "ownerShopDeadBar", "ownerShopDeadCap", "ownerShopErrorBar", "ownerShopErrorCap",
+	"ownerShopFoodIcon0", "ownerShopFoodIcon1", "ownerShopFoodIcon2", "ownerShopFork", "ownerShopGrowthIcon0",
+	"ownerShopGrowthIcon1", "ownerShopGrowthIcon2", "ownerShopHeader", "ownerShopHelix", "ownerShopInsurance",
+	"ownerShopInsuranceIcon", "ownerShopMinus", "ownerShopOkBar", "ownerShopOkCap", "ownerShopSectionBar",
+	"ownerShopShield", "ownerShopShirt", "ownerShopTitle", "ownerShopTruck", "ownerShopWarningBar",
+	"ownerShopWarningCap",
 ];
 
 export interface Texture {
@@ -422,6 +433,15 @@ function textStyle(kit: Kit, size: float32, maxWidth: float32): TextStyle {
 export function measure(kit: Kit, line: string, size: float32): TextSize {
 	const laid: TextLayout = TextLayout.layout(line, textStyle(kit, size, 0.0));
 	return { width: laid.width, height: laid.lineHeight };
+}
+
+// Silkscreen draws its capitals 5 pixels tall on an 8-pixel em.
+const CAP_HEIGHT_EM: float32 = 0.625;
+
+// Centres the capitals, not the line box: Silkscreen is caps only, and its ascent leaves room above them.
+export function capsCentredY(kit: Kit, line: string, size: float32, y: float32, height: float32): float32 {
+	const laid: TextLayout = TextLayout.layout(line, textStyle(kit, size, 0.0));
+	return y + (height + CAP_HEIGHT_EM * size) * 0.5 - laid.ascent;
 }
 
 export function measureWrapped(kit: Kit, line: string, size: float32, maxWidth: float32): TextSize {

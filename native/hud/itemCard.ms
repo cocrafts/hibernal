@@ -177,7 +177,7 @@ function gradeName(grade: TalentGrade): string {
 	};
 }
 
-function gradeColour(grade: TalentGrade): Color {
+export function gradeColour(grade: TalentGrade): Color {
 	return match (grade) {
 		TalentGrade.Common => rgba(0.75, 0.78, 0.8, 1.0),
 		TalentGrade.Rare => rgba(0.45, 0.78, 1.0, 1.0),
