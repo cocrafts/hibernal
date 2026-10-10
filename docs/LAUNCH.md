@@ -1,6 +1,6 @@
 # LAUNCH — beta devnet để nộp, mainnet theo readiness
 
-Quyết định được người dùng chốt 2026-09-30: **ngày 2026-10-08 nộp một beta/devnet chơi được, trung thực và on-chain thật; mainnet là mốc riêng sau security và vận hành gates.** Không còn ép launch mainnet trong ba ngày để chừa thời gian review Store.
+Quyết định được người dùng chốt 2026-09-30: **nộp một beta/devnet chơi được trong cửa sổ nộp 2026-10-08 → hạn chót 2026-10-12 (người dùng xác nhận 2026-10-09; giờ/múi giờ cutoff chưa xác nhận), trung thực và on-chain thật; mainnet là mốc riêng sau security và vận hành gates.** Không còn ép launch mainnet trong ba ngày để chừa thời gian review Store.
 
 Đổi thời điểm phát hành tiền thật, không bỏ mục tiêu game online/on-chain AI, không cắt luật game và không tạo một implementation demo riêng. Phạm vi launch là toàn bộ `BRIEF.md` §7.1; phần chưa làm là nợ, không phải "sau hackathon". D38 vẫn áp dụng khi launch mainnet: `$HBRN` là token thật từ ngày launch, chỉ program mint và L1 kiểm tra outflow. Beta dùng tài sản devnet được ghi rõ là thử nghiệm.
 
@@ -147,7 +147,7 @@ Owner: integration + app + người dùng. Mục tiêu **2026-10-06 đến 2026-
 
 Gate: người khác cài APK và tự đi qua game được, repo/release artifacts truy cập được, demo/pitch trung thực và reproducible. Traffic/PMF thật có thể bổ sung bằng chứng nếu có; không phải lý do trì hoãn nộp và không được bịa metrics.
 
-### Bước 5 — nộp đúng hạn ngày 2026-10-08
+### Bước 5 — nộp trước hạn chót 2026-10-12
 
 Owner: người dùng/team representative.
 
