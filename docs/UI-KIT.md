@@ -1,6 +1,6 @@
 # UI KIT — Hibernal
 
-> Inventory of every UI component the app needs, grouped for reuse. Screens, layout and states come from `HUD-WIREFRAME.md`; this file only lists what to draw. Anything used in two or more places is one component with variants (§A). §B lists patterns that are only compositions of §A and need no new art. §C lists the few components that belong to a single screen.
+> Reusable art inventory, not an app navigation plan. Keep the Pet scene, diary and actions together on one outer Home surface; interactions stay inline or in anchored overlays, not Settings or other app pages. Legacy usage names below describe kit contexts, not separate screens. The current composition is `homeFrame` in `native/hud/home.ms`.
 >
 > Prompt for generating the art with an image model: `UI-KIT-PROMPT.md`.
 >
@@ -33,6 +33,17 @@
 - Heavy frames are **not 9-slice textures**. Each one starts from a **whole frame of the reference** (`styleReference.png`: Status Card, Info Panel or Popup Menu, the text-free ones with the thickest rims) and is resized by cutting out or repeating plank spans at the darkest rim joints, then its interior is repainted as dark planks (`spliceFrame` in `kitbashFrame.py`). A **seed per panel** picks the base and the splice points, so panels differ but stay stable between frames, and any size works. Build once, cache the texture, rebuild only on resize. (The earlier parts-library mode, `frame()`, gave thinner, holed rims and is kept only for reference.)
 - Ember spots sit on the rim line only, over wood, never on the interior or outside the frame.
 - Prototype and reference implementation: `art/ui-kit/tools/kitbashFrame.py`; Home preview: `art/ui-kit/tools/renderHomeHd.py` → `assets/ui/preview/homeHd.png`. Light frames, icons, chips and bars still come from `assets/ui/hud.png`.
+- The level-plate fit generated 179 × 280 px; an exact-footprint supplied-sheet crop
+  generated 207 × 280 px and was inspected on Seeker. The person rejected that result:
+  it still did not match the original assembled junction. Exact resizing alone is not
+  a design-match gate. If revisited, compare the contiguous original level frame,
+  three lights and XP-bar join rather than stretching isolated pieces to guess the overlap.
+
+## 0c. Press colour and feedback (decided 2026-10-10)
+
+- **Orange marks a press that changes the Pet on chain**: an empty owner shop slot (5, 6) and CLAIM. Every other press stays blue: `< NAME >`, the toggles, the log arrow, neighbour visits. A player reads orange as "this costs a signature". The orange pieces are hue turns of the blue ones, made by `ORANGE` / `orangePieces` in `art/hud/cutHud.py`; a new on-chain press adds its piece there instead of a hand-painted copy.
+- **A held press fades** instead of swapping art, like React Native's TouchableOpacity: `pressedLook` / `plainLook` in `native/hud/kit.ms`. A press that should look tappable calls them around its own drawing.
+- **The HP bar over the Pet's head sits on the scene's texel grid**, not the HUD's, so it reads as part of the pixel scene while HUD text stays sharp (`HUD_PIXEL` is 0). `projectPetHead` in `native/scene/campfireScene.ms` passes the texel size; `PET_HEAD_TOP` was measured at level 7 only.
 
 ## A. Shared components
 
@@ -80,12 +91,10 @@
 
 ---
 
-## C. Single-screen components
+## C. Context-specific components
 
-| Screen | Component |
+| Context | Component |
 |---|---|
-| App-wide | **Floating dock**: 5 items (Home · Pet · Block · Shop · Digest), 56 px tall, inset 16 px; active item filled; unread dot |
-| Block | **Pager**: `‹ Slot 4 · 1 of 9 (Threat) ›` + 9 position dots |
 | Block | **Odds block**: win %, expected loot, max loot, bar chart of fight length over 1–6 rounds; states computing / not attackable |
 | Talk | **Chat bubbles**: owner right (filled), pet left with small avatar; **input field + Send** |
 | My Pet | **Lineage timeline**: vertical, one entry per generation |
@@ -98,4 +107,4 @@
 
 Icon set → Panel → Button → Chip / Badge → HeartPips → Bar → List row → Sheet.
 
-These eight are enough to assemble Home, the Feed sheet, Digest and Settings. Then SignButton, Toast, Banner, and the §C components screen by screen.
+These are kit assembly dependencies, not a screen-by-screen build plan. Reuse them within the scene-backed Home rather than introducing separate pages.
