@@ -18,6 +18,7 @@ import {
 	joined,
 	keypairAt,
 	read,
+	readU64,
 	readonly,
 	send,
 	u32,
@@ -47,7 +48,7 @@ const program = hibernal(programAddress);
 const configAt = accountOffsets(idlAt(), "Config");
 const configHolder = await read(baseRead, await program.address(program.seeds.config()));
 const skrMint = getAddressDecoder().decode(configHolder.data.subarray(configAt.skr_mint, configAt.skr_mint + 32));
-const commitCooldownMs = Number(configHolder.data.readBigUInt64LE(configAt.seconds_per_day)) * 1000;
+const commitCooldownMs = Number(readU64(configHolder.data, configAt.seconds_per_day)) * 1000;
 const giftOwedAt = accountOffsets(idlAt(), "PetAccount").pet + fieldsOf(idlAt(), "Pet").offsets.gift_owed;
 const ticketRent = BigInt(await base.getMinimumBalanceForRentExemption(MEMBER_MINT_BYTES).send());
 const inFlight = new Map();
@@ -107,7 +108,7 @@ async function commit(mint) {
 	if (waitMs > 0) return { code: 429, body: { error: "TooSoon", mint, retryAfterSeconds: Math.ceil(waitMs / 1000) } };
 	const pet = await read(ephemeral, await program.address(program.seeds.pet(mint)));
 	if (!pet) return { code: 404, body: { error: "NoPet", mint } };
-	const giftOwed = pet.data.readBigUInt64LE(giftOwedAt);
+	const giftOwed = readU64(pet.data, giftOwedAt);
 	if (giftOwed === 0n) return { code: 409, body: { error: "NothingToClaim", mint } };
 	committedAt.set(mint, Date.now());
 	try {
