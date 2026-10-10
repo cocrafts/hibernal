@@ -25,6 +25,8 @@ object VoidNative {
     external fun touch(phase: Int, id: Int, x: Float, y: Float)
     external fun setWallpaperPlaces(home: Boolean, lock: Boolean)
     external fun takeWallpaperPickerRequest(): Boolean
+    external fun setPetNewsAllowed(allowed: Boolean)
+    external fun takePetNewsRequest(): Boolean
     external fun setDeathNoticeSeen(generation: Int)
     external fun takeDeathNoticeMark(): Int
     external fun takeWalletRequest(): Int

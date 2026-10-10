@@ -97,6 +97,7 @@ object VoidRenderer : Choreographer.FrameCallback {
             VoidNative.frame()
             framesSinceLog++
             if (VoidNative.takeWallpaperPickerRequest()) openWallpaperPicker()
+            if (VoidNative.takePetNewsRequest()) (activeOwner as? MainActivity)?.let { it.runOnUiThread(it::allowPetNews) }
             val deathNoticeMark = VoidNative.takeDeathNoticeMark()
             if (deathNoticeMark >= 0) DeathNoticeStore.mark(GameSync.livePet, deathNoticeMark)
             val walletRequest = VoidNative.takeWalletRequest()

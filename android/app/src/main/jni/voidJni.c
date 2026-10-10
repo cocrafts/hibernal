@@ -14,6 +14,8 @@ extern void voidEmbedSetAssetRoot(const char *path);
 extern void hostSetInApp(int inApp);
 extern void hostSetWallpaperPlaces(int home, int lock);
 extern int hostTakeWallpaperPickerRequest(void);
+extern void hostSetPetNewsAllowed(int allowed);
+extern int hostTakePetNewsRequest(void);
 extern void hostSetDeathNoticeSeen(int generation);
 extern int hostTakeDeathNoticeMark(void);
 extern int hostTakeWalletRequest(void);
@@ -102,6 +104,18 @@ JNIEXPORT jboolean JNICALL
 Java_app_hibernal_VoidNative_takeWallpaperPickerRequest(JNIEnv *env, jobject thiz) {
 	(void)env; (void)thiz;
 	return hostTakeWallpaperPickerRequest() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_app_hibernal_VoidNative_setPetNewsAllowed(JNIEnv *env, jobject thiz, jboolean allowed) {
+	(void)env; (void)thiz;
+	hostSetPetNewsAllowed(allowed ? 1 : 0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_app_hibernal_VoidNative_takePetNewsRequest(JNIEnv *env, jobject thiz) {
+	(void)env; (void)thiz;
+	return hostTakePetNewsRequest() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jint JNICALL

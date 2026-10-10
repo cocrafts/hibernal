@@ -1,10 +1,14 @@
 package app.hibernal
 
+import android.Manifest
+import android.app.NotificationManager
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -32,9 +36,34 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         setContentView(view)
     }
 
+    // Android asks at most twice; after that, and when notifications are off in Settings, only Settings can allow them.
+    fun allowPetNews() {
+        val preferences = getPreferences(MODE_PRIVATE)
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val askable = !granted && (!preferences.getBoolean(PET_NEWS_ASKED, false) ||
+            shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))
+        if (askable) {
+            preferences.edit().putBoolean(PET_NEWS_ASKED, true).apply()
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), PET_NEWS_REQUEST)
+            return
+        }
+        startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PET_NEWS_REQUEST) reportPetNews()
+    }
+
+    private fun reportPetNews() {
+        VoidNative.setPetNewsAllowed(getSystemService(NotificationManager::class.java).areNotificationsEnabled())
+    }
+
     override fun onResume() {
         super.onResume()
         reportWallpaperPlaces()
+        reportPetNews()
     }
 
     fun handleWalletRequest(request: Int) {
@@ -75,5 +104,10 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
                 ComponentName(this, VoidWallpaperService::class.java),
             )
         startActivity(intent)
+    }
+
+    private companion object {
+        const val PET_NEWS_ASKED = "petNewsAsked"
+        const val PET_NEWS_REQUEST = 1
     }
 }

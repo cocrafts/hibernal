@@ -27,6 +27,7 @@ object GameOwnerStore {
                 publicKey ?: ByteArray(0),
             )
             GameSync.select(publicKey)
+            if (publicKey != null) PetWatch.schedule(context)
             Log.i(TAG, "Public owner restored: remembered=${publicKey != null}")
         } catch (error: Exception) {
             reportFailure("Read", error)
@@ -49,6 +50,19 @@ object GameOwnerStore {
         if (read(file)?.contentEquals(publicKey) != true) {
             throw IOException("Game owner cache commit failed")
         }
+        PetWatch.schedule(context)
+    }
+
+    // Disconnect logs the owner out: the game stops reading their Pet until a wallet is connected again.
+    @Synchronized
+    fun forget(context: Context) {
+        val file = cache(context)
+        file.delete()
+        if (file.baseFile.exists()) throw IOException("Game owner cache could not be deleted")
+        VoidNative.setGameOwner(UNSELECTED, ByteArray(0))
+        GameSync.select(null)
+        PetWatch.cancel(context)
+        Log.i(TAG, "Public owner forgotten")
     }
 
     @Synchronized
