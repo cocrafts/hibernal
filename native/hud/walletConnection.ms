@@ -1,8 +1,5 @@
-import { Ui, pressable, held } from "../ui/ui";
-import {
-	Kit, PieceLayer, say, pieceSized, INK_MUTED, INK_BRIGHT,
-	HOLO_BLUE, HOLO_GREEN, ALERT_RED, DISABLED_INK,
-} from "./kit";
+import { Ui } from "../ui/ui";
+import { Kit, say, measure, INK_MUTED } from "./kit";
 import { textLink } from "./buttons";
 import {
 	WalletState, walletState, walletAddress,
@@ -10,68 +7,62 @@ import {
 	GameOwnerState, gameOwnerState, gameOwnerAddress,
 } from "../host/host";
 
-const WALLET_ACTION_WIDTH: float32 = 148.0;
+const ADDRESS_ENDS: int32 = 4;
+const LINK_ROW: float32 = 20.0;
+const LINK_GAP: float32 = 16.0;
 
-function walletAction(
-	ui: Ui, kit: Kit, id: int32, x: float32, y: float32,
-	label: string, enabled: boolean, holographic: boolean,
-): boolean {
-	if (!holographic) { return textLink(ui, kit, id, x, y, label, enabled); }
-	const width: float32 = WALLET_ACTION_WIDTH;
-	const tapped: boolean = pressable(ui, id, x, y - 14.0, width, 44.0) && enabled;
-	const down: boolean = enabled && held(ui, id, x, y - 14.0, width, 44.0);
-	pieceSized(kit, id, PieceLayer.Frames, "onboardingWallet", x, y - 8.0, width, 28.0);
-	say(ui, kit, id, label, x + 8.0, y, width - 16.0, 8.0,
-		!enabled ? DISABLED_INK : (down ? INK_BRIGHT : HOLO_BLUE), 0.5);
-	return tapped;
+function shortAddress(address: string): string {
+	if ((address.length as int32) <= ADDRESS_ENDS * 2) { return address; }
+	return address.slice(0, ADDRESS_ENDS) + "..." + address.slice((address.length as int32) - ADDRESS_ENDS);
 }
 
-export function walletConnection(
-	ui: Ui, kit: Kit, id: int32, x: float32, y: float32, width: float32,
-	holographic: boolean = false,
-): void {
+// A remembered owner is enough to summon: the wallet opens to approve the transaction itself.
+export function ownerKnown(): boolean {
+	return walletState() == WalletState.Connected || gameOwnerState() == GameOwnerState.Remembered;
+}
+
+export function walletPending(): boolean {
 	const state: WalletState = walletState();
-	const owner: GameOwnerState = gameOwnerState();
-	const align: float32 = holographic ? 0.5 : 0.0;
-	const actionX: float32 = holographic ? x + (width - WALLET_ACTION_WIDTH) * 0.5 : x;
-	if (state == WalletState.Connected) {
-		say(ui, kit, id, "WALLET CONNECTED", x, y, width, 8.0, HOLO_GREEN, align);
-		say(ui, kit, id + 1, walletAddress(), x, y + 18.0, width, 8.0, INK_MUTED, align);
-		if (walletAction(ui, kit, id + 2, actionX, y + 40.0,
-			"DISCONNECT WALLET", true, holographic)) {
-			requestWalletDisconnect();
-		}
-		if (owner == GameOwnerState.Failed) {
-			say(ui, kit, id + 3, "OWNER COULD NOT BE SAVED ON THIS DEVICE.",
-				x, y + 58.0, width, 8.0, ALERT_RED, align);
-		}
-		return;
-	}
-	const pending: boolean = state == WalletState.Connecting || state == WalletState.Disconnecting;
-	const label: string = match (state) {
-		WalletState.Disconnecting => "DISCONNECTING...",
+	return state == WalletState.Connecting || state == WalletState.Disconnecting;
+}
+
+// The main button's label while no owner is known.
+export function connectLabel(): string {
+	return match (walletState()) {
 		WalletState.Connecting => "OPENING WALLET...",
+		WalletState.Disconnecting => "DISCONNECTING...",
 		_ => "CONNECT WALLET",
 	};
-	const remembered: boolean = owner == GameOwnerState.Remembered;
-	const actionTop: float32 = remembered ? y + 40.0 : y;
-	if (remembered) {
-		say(ui, kit, id, "OWNER REMEMBERED", x, y, width, 8.0, HOLO_GREEN, align);
-		say(ui, kit, id + 1, gameOwnerAddress(), x, y + 18.0, width, 8.0, INK_MUTED, align);
-	}
-	if (walletAction(ui, kit, id + 2, actionX, actionTop, label, !pending, holographic)) {
-		requestWalletConnection();
-	}
-	const detail: string = match (state) {
+}
+
+export function connectWallet(): void {
+	requestWalletConnection();
+}
+
+// What the last wallet request left to say; empty when there is nothing.
+export function walletStatus(): string {
+	if (gameOwnerState() == GameOwnerState.Failed) { return "CONNECT YOUR WALLET AGAIN."; }
+	return match (walletState()) {
 		WalletState.NoWallet => "INSTALL A MOBILE WALLET TO CONNECT.",
 		WalletState.Cancelled => "REQUEST CANCELLED. TAP TO TRY AGAIN.",
 		WalletState.Failed => "WALLET REQUEST FAILED. TAP TO RETRY.",
-		WalletState.Connecting => "CONFIRM IN YOUR WALLET. NO TRANSACTION.",
-		_ => owner == GameOwnerState.Failed ? "OWNER CACHE UNREADABLE. SELECT WALLET AGAIN." : "",
+		WalletState.Connecting => "CONFIRM IN YOUR WALLET. NOTHING IS SENT.",
+		_ => "",
 	};
-	if (detail != "") {
-		say(ui, kit, id + 3, detail, x, actionTop + 18.0, width, 8.0,
-			state == WalletState.Failed || state == WalletState.NoWallet
-				|| owner == GameOwnerState.Failed ? ALERT_RED : INK_MUTED, align);
+}
+
+// The known owner's short address, and under it the links to change or forget it, centred on `centreX`.
+export function walletLine(ui: Ui, kit: Kit, id: int32, centreX: float32, y: float32): void {
+	if (!ownerKnown()) { return; }
+	const connected: boolean = walletState() == WalletState.Connected;
+	const address: string = shortAddress(connected ? walletAddress() : gameOwnerAddress());
+	const addressWidth: float32 = measure(kit, address, 8.0).width;
+	say(ui, kit, id, address, centreX - addressWidth * 0.5, y, addressWidth + 8.0, 8.0, INK_MUTED, 0.0);
+	const switchWidth: float32 = measure(kit, "SWITCH", 8.0).width;
+	const left: float32 = centreX - (switchWidth + LINK_GAP + measure(kit, "DISCONNECT", 8.0).width) * 0.5;
+	say(ui, kit, id + 3, "·", left + switchWidth, y + LINK_ROW, LINK_GAP, 8.0, INK_MUTED, 0.5);
+	if (textLink(ui, kit, id + 1, left, y + LINK_ROW, "SWITCH", !walletPending())) { requestWalletConnection(); }
+	if (textLink(ui, kit, id + 2, left + switchWidth + LINK_GAP, y + LINK_ROW, "DISCONNECT", !walletPending())) {
+		requestWalletDisconnect();
 	}
 }

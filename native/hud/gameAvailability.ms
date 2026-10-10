@@ -1,6 +1,7 @@
 import {
 	GameOwnerState,
 	GameRead,
+	GameReadError,
 	GameReadState,
 	GamePet,
 	OwnerActionOutcome,
@@ -9,6 +10,10 @@ import {
 	noGamePet,
 } from "../host/host";
 import { levelForXp } from "../../rules/level";
+import { EMISSION_START, pendingReward } from "../../rules/emission";
+import { BlockSlot, Pet, stats } from "../../rules/layout";
+import { born, settle } from "../../rules/life";
+import { rewardWeight, Region } from "../../rules/stats";
 
 // GameSync refreshes every 30 s; four missed refreshes is no longer a live read.
 export const LIVE_READ_MAX_AGE_SECONDS: int64 = 120;
@@ -62,48 +67,75 @@ export function currentLivePet(): Result<GamePet, NotLive> {
 
 function petFoundStatus(snapshot: GameRead): string {
 	const live = livePet(snapshot);
-	if (live.ok) { return "PET IS LIVE."; }
+	if (live.ok) { return "YOUR PET IS AWAKE."; }
 	return match (live.error) {
-		NotLive.NoPetRead => "PET STATE IS UNKNOWN.",
-		NotLive.AwaitingDelegation => "PET CLAIMED. WAITING FOR ER DELEGATION.",
-		NotLive.AwaitingPlacement => "PET DELEGATED. WAITING FOR BLOCK PLACEMENT.",
-		NotLive.WorldBehind => "ER WORLD IS BEHIND. PET STATE IS STALE.",
-		NotLive.ReadOld => "NO FRESH CHAIN READ. PET STATE IS STALE.",
+		NotLive.NoPetRead => "LOOKING FOR YOUR PET...",
+		NotLive.AwaitingDelegation => "YOUR PET IS CLAIMED. SUMMON IT TO WAKE IT.",
+		NotLive.AwaitingPlacement => "YOUR PET IS WAITING FOR A BLOCK.",
+		NotLive.WorldBehind => "THE WORLD IS CATCHING UP...",
+		NotLive.ReadOld => "RECONNECTING...",
 		NotLive.Dead => "YOUR PET IS LOST FOR GOOD.",
-		NotLive.Inactive => "PET INACTIVE, NO DEATH RECORD. UNKNOWN.",
-		NotLive.Inconsistent => "PET READ INCONSISTENT. NOT GAME READY.",
+		NotLive.Inactive => "YOUR PET IS ASLEEP. CHECKING AGAIN SOON.",
+		NotLive.Inconsistent => "SOMETHING LOOKS OFF. CHECKING AGAIN SOON.",
 	};
+}
+
+export enum HudScreen {
+	// The campfire alone: nothing read yet says whether the owner has a Pet.
+	Waiting,
+	Home,
+	Onboarding,
+}
+
+// Onboarding only once a read or the owner state says there is no live Pet to show.
+export function hudScreen(read: Result<GameRead, GameReadError>, owner: GameOwnerState, mourned: boolean): HudScreen {
+	if (owner != GameOwnerState.Remembered || mourned) { return HudScreen.Onboarding; }
+	if (!read.ok) { return HudScreen.Waiting; }
+	if (read.value.state == GameReadState.NoPet) { return HudScreen.Onboarding; }
+	const live = livePet(read.value);
+	if (live.ok) { return HudScreen.Home; }
+	return match (live.error) {
+		NotLive.AwaitingDelegation | NotLive.AwaitingPlacement | NotLive.Dead | NotLive.Inactive => HudScreen.Onboarding,
+		NotLive.NoPetRead | NotLive.WorldBehind | NotLive.ReadOld | NotLive.Inconsistent => HudScreen.Waiting,
+	};
+}
+
+// The line under the campfire while waiting.
+export function waitingStatus(read: Result<GameRead, GameReadError>): string {
+	if (!read.ok) { return "LOOKING FOR YOUR PET..."; }
+	if (read.value.state == GameReadState.Unavailable) { return "CONNECTING TO THE NETWORK..."; }
+	return petReadStatus(read.value);
 }
 
 export function unavailablePetStatus(owner: GameOwnerState): string {
 	return match (owner) {
-		GameOwnerState.Unselected => "SELECT AN OWNER. PET STATE IS UNKNOWN.",
-		GameOwnerState.Remembered => "CHAIN CLIENT UNAVAILABLE. PET STATE UNKNOWN.",
-		GameOwnerState.Failed => "OWNER CACHE UNREADABLE. SELECT WALLET AGAIN.",
+		GameOwnerState.Unselected => "CONNECT YOUR WALLET TO FIND YOUR PET.",
+		GameOwnerState.Remembered => "CONNECTING TO THE NETWORK...",
+		GameOwnerState.Failed => "CONNECT YOUR WALLET AGAIN.",
 	};
 }
 
 function noPetAdmissionStatus(snapshot: GameRead): string {
 	if (snapshot.admissionHoldings == 0) {
-		return "NO PET FOUND. NO TOKEN-2022 ADMISSION HELD.";
+		return "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.";
 	}
 	if (snapshot.unclaimedMembers > 0) {
-		return "ADMISSION FOUND. SUMMON TO CLAIM YOUR PET.";
+		return "YOUR PET IS WAITING. SUMMON IT.";
 	}
 	if (snapshot.admissionMembers > 0) {
-		return "ADMISSION CLAIMED. RESUME NEEDS VERIFICATION.";
+		return "YOUR TOKEN IS CLAIMED. LOOKING FOR ITS PET...";
 	}
-	return "NO PET FOUND. NO ADMISSION MEMBER MATCH.";
+	return "NO PET FOR THIS WALLET YET.";
 }
 
 export function petReadStatus(snapshot: GameRead): string {
 	return match (snapshot.state) {
-		GameReadState.Unavailable => "SELECT AN OWNER. PET STATE IS UNKNOWN.",
-		GameReadState.Checking => "CHECKING L1 / ER FOR YOUR PET.",
+		GameReadState.Unavailable => "CONNECT YOUR WALLET TO FIND YOUR PET.",
+		GameReadState.Checking => "LOOKING FOR YOUR PET...",
 		GameReadState.NoPet => noPetAdmissionStatus(snapshot),
 		GameReadState.PetFound => petFoundStatus(snapshot),
-		GameReadState.UnsupportedLayout => "DEPLOYED CONTRACT UNVERIFIED. NOT GAME READY.",
-		GameReadState.Failed => "CHAIN READ FAILED. PET STATE IS UNKNOWN.",
+		GameReadState.UnsupportedLayout => "THE GAME IS UPDATING. TRY AGAIN SOON.",
+		GameReadState.Failed => "NETWORK HICCUP. RETRYING...",
 	};
 }
 
@@ -125,7 +157,7 @@ export function summonStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.Cancelled => "SUMMON CANCELLED. NOTHING SENT.",
 		OwnerActionOutcome.NoWallet => "NO WALLET APP FOUND. NOTHING SENT.",
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
-		OwnerActionOutcome.SentPending => "SUMMON SENT. CONFIRMING ON DEVNET.",
+		OwnerActionOutcome.SentPending => "SUMMON SENT. CONFIRMING...",
 		OwnerActionOutcome.ConfirmedAwaitingRead => "SUMMON CONFIRMED. READING YOUR PET.",
 		OwnerActionOutcome.FailedOnChain => "SUMMON FAILED ON CHAIN.",
 		OwnerActionOutcome.Expired => "SUMMON EXPIRED BEFORE LANDING. RETRY.",
@@ -164,6 +196,33 @@ export enum GiftStep {
 
 export function giftOwedToOwner(pet: GamePet): uint64 {
 	return pet.giftOwed > pet.paidTotal ? pet.giftOwed - pet.paidTotal : 0;
+}
+
+export enum IncomeUnknown {
+	NotPlaced,
+}
+
+// What one full day pays this Pet at today's World, by the rules' own settle and reward share.
+export function dailyIncome(pet: GamePet): Result<uint64, IncomeUnknown> {
+	if (pet.world.genesisTimestamp == 0) { return Result.err(IncomeUnknown.NotPlaced); }
+	const day: uint64 = Math.max(pet.worldDay, pet.world.rewardEpoch);
+	const today = pet.world.settle(day);
+	const tomorrow = pet.world.settle(day + 1);
+	const worker: Pet = {
+		...Pet.born(0, BlockSlot.First, Region.Worker, day, pet.world).pet,
+		level: pet.level as uint16,
+		forage: pet.forage as uint16,
+		might: pet.might as uint16,
+		grit: pet.grit as uint16,
+		maxHearts: pet.maxHearts as uint8,
+		talentKind: (pet.talentKind as int32) as uint8,
+		talentBps: pet.talentBps as uint16,
+		growthMultiplierBps: pet.growthMultiplierBps as uint16,
+		growthMultiplierExpiry: pet.growthMultiplierExpiry,
+		lastTickEpoch: pet.lastTickEpoch,
+		gear: pet.gear,
+	};
+	return Result.ok(pendingReward(worker.stats().rewardWeight(), tomorrow.rewardPerWorkPower, today.rewardPerWorkPower));
 }
 
 export function giftStep(pet: GamePet): GiftStep {
@@ -249,38 +308,38 @@ test "read results never turn a found or unsupported Pet into game ready" {
 		seats: [],
 		fights: [],
 	};
-	assert petReadStatus(snapshot) == "PET CLAIMED. WAITING FOR ER DELEGATION.";
+	assert petReadStatus(snapshot) == "YOUR PET IS CLAIMED. SUMMON IT TO WAKE IT.";
 	snapshot.state = GameReadState.UnsupportedLayout;
-	assert petReadStatus(snapshot) == "DEPLOYED CONTRACT UNVERIFIED. NOT GAME READY.";
+	assert petReadStatus(snapshot) == "THE GAME IS UPDATING. TRY AGAIN SOON.";
 	snapshot.state = GameReadState.NoPet;
 	snapshot.admissionHoldings = 0;
-	assert petReadStatus(snapshot) == "NO PET FOUND. NO TOKEN-2022 ADMISSION HELD.";
+	assert petReadStatus(snapshot) == "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.";
 	snapshot.admissionHoldings = 1;
 	snapshot.admissionMembers = 0;
 	snapshot.unclaimedMembers = 0;
-	assert petReadStatus(snapshot) == "NO PET FOUND. NO ADMISSION MEMBER MATCH.";
+	assert petReadStatus(snapshot) == "NO PET FOR THIS WALLET YET.";
 	snapshot.admissionMembers = 1;
 	snapshot.unclaimedMembers = 1;
-	assert petReadStatus(snapshot) == "ADMISSION FOUND. SUMMON TO CLAIM YOUR PET.";
+	assert petReadStatus(snapshot) == "YOUR PET IS WAITING. SUMMON IT.";
 	snapshot.unclaimedMembers = 0;
-	assert petReadStatus(snapshot) == "ADMISSION CLAIMED. RESUME NEEDS VERIFICATION.";
+	assert petReadStatus(snapshot) == "YOUR TOKEN IS CLAIMED. LOOKING FOR ITS PET...";
 	snapshot.state = GameReadState.Failed;
-	assert petReadStatus(snapshot) == "CHAIN READ FAILED. PET STATE IS UNKNOWN.";
+	assert petReadStatus(snapshot) == "NETWORK HICCUP. RETRYING...";
 }
 
 test "unselected owner is not proof of no Pet" {
 	assert unavailablePetStatus(GameOwnerState.Unselected) ==
-		"SELECT AN OWNER. PET STATE IS UNKNOWN.";
+		"CONNECT YOUR WALLET TO FIND YOUR PET.";
 }
 
 test "remembered owner is not verified Pet or wallet authorization" {
 	assert unavailablePetStatus(GameOwnerState.Remembered) ==
-		"CHAIN CLIENT UNAVAILABLE. PET STATE UNKNOWN.";
+		"CONNECTING TO THE NETWORK...";
 }
 
 test "cache failure is not absence of Pet" {
 	assert unavailablePetStatus(GameOwnerState.Failed) ==
-		"OWNER CACHE UNREADABLE. SELECT WALLET AGAIN.";
+		"CONNECT YOUR WALLET AGAIN.";
 }
 
 function livePetRead(): GameRead {
@@ -323,7 +382,7 @@ test "a placed, delegated, fresh and consistent Pet is live" {
 	const live = livePet(snapshot);
 	assert live.ok;
 	if (live.ok) { assert live.value.xp == 191; }
-	assert petReadStatus(snapshot) == "PET IS LIVE.";
+	assert petReadStatus(snapshot) == "YOUR PET IS AWAKE.";
 	let heir = livePetRead();
 	heir.pet.life = PetLife.HeirActive;
 	assert livePet(heir).ok;
@@ -345,7 +404,7 @@ test "a confirmed Claim is pending, never ready or dead" {
 	assert refusedAs(snapshot, NotLive.AwaitingDelegation);
 	snapshot.pet.delegated = true;
 	assert refusedAs(snapshot, NotLive.AwaitingPlacement);
-	assert petReadStatus(snapshot) == "PET DELEGATED. WAITING FOR BLOCK PLACEMENT.";
+	assert petReadStatus(snapshot) == "YOUR PET IS WAITING FOR A BLOCK.";
 }
 
 test "an alive Pet without delegation, membership or a started Block waits" {
@@ -364,7 +423,7 @@ test "a Block more than a day behind the clock or an old read is stale" {
 	let behind = livePetRead();
 	behind.pet.worldDay = 42;
 	assert refusedAs(behind, NotLive.WorldBehind);
-	assert petReadStatus(behind) == "ER WORLD IS BEHIND. PET STATE IS STALE.";
+	assert petReadStatus(behind) == "THE WORLD IS CATCHING UP...";
 	let old = livePetRead();
 	old.ageSeconds = LIVE_READ_MAX_AGE_SECONDS + 1;
 	assert refusedAs(old, NotLive.ReadOld);
@@ -393,4 +452,40 @@ test "level, XP and hearts that disagree with the rules are not live" {
 	hearts.pet.hearts = 0;
 	hearts.pet.maxHearts = 0;
 	assert refusedAs(hearts, NotLive.Inconsistent);
+}
+
+test "a Pet alone in the World earns the whole day's emission; an unplaced one has no income yet" {
+	assert !dailyIncome(noGamePet()).ok;
+	// Forage 100: work power 10 + 30, reward weight (40 + 50)^2.
+	const alone: GamePet = {
+		...noGamePet(),
+		level: 1,
+		forage: 100,
+		maxHearts: 10,
+		world: { ...noGamePet().world, genesisTimestamp: 1, totalWorkPower: 8100, livingPets: 1, floorSlots: 1 },
+	};
+	const income = dailyIncome(alone);
+	assert income.ok && income.value <= EMISSION_START && income.value + 1 >= EMISSION_START;
+}
+
+test "the campfire waits until a read says whether there is a live Pet" {
+	const live = livePetRead();
+	const remembered = GameOwnerState.Remembered;
+	assert hudScreen(Result.ok(live), remembered, false) == HudScreen.Home;
+	assert hudScreen(Result.ok(live), remembered, true) == HudScreen.Onboarding;
+	assert hudScreen(Result.ok(live), GameOwnerState.Unselected, false) == HudScreen.Onboarding;
+	assert hudScreen(Result.ok(live), GameOwnerState.Failed, false) == HudScreen.Onboarding;
+	assert hudScreen(Result.err(GameReadError.Updating), remembered, false) == HudScreen.Waiting;
+	for (const state of [GameReadState.Unavailable, GameReadState.Checking, GameReadState.UnsupportedLayout,
+		GameReadState.Failed]) {
+		assert hudScreen(Result.ok({ ...live, state: state }), remembered, false) == HudScreen.Waiting;
+	}
+	assert hudScreen(Result.ok({ ...live, state: GameReadState.NoPet }), remembered, false) == HudScreen.Onboarding;
+	assert hudScreen(Result.ok({ ...live, ageSeconds: LIVE_READ_MAX_AGE_SECONDS + 1 }), remembered, false)
+		== HudScreen.Waiting;
+	const unplaced: GameRead = { ...live, pet: { ...live.pet, member: false } };
+	assert hudScreen(Result.ok(unplaced), remembered, false) == HudScreen.Onboarding;
+	const dead: GameRead = { ...live, pet: { ...live.pet, life: PetLife.DeathRecorded } };
+	assert hudScreen(Result.ok(dead), remembered, false) == HudScreen.Onboarding;
+	assert waitingStatus(Result.ok({ ...live, state: GameReadState.Failed })) == "NETWORK HICCUP. RETRYING...";
 }

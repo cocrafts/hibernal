@@ -1,6 +1,6 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, box } from "../ui/ui";
-import { Kit, TextSize, subId, measure, frame, iconTinted, say, INK, INK_MUTED, EMBER_HOT, ALERT_RED, DISABLED_INK, DIMMED,
+import { Ui, box, beginOverlay, endOverlay, DESIGN_W, DESIGN_H } from "../ui/ui";
+import { Kit, TextSize, subId, measure, frame, fill, beginKitOverlay, endKitOverlay, iconTinted, say, INK, INK_MUTED, EMBER_HOT, ALERT_RED, DISABLED_INK, DIMMED,
 	WHITE } from "./kit";
 import { FrameLook } from "./frame";
 import { spinner } from "./buttons";
@@ -10,7 +10,10 @@ const TOAST_FRAMES: int32 = 120;
 const TOAST_FADE_IN_FRAMES: int32 = 8;
 const TOAST_FADE_OUT_FRAMES: int32 = 12;
 const TOAST_HEIGHT: float32 = 36.0;
-const TOAST_STRIP: Color = rgba(0.047, 0.051, 0.063, 0.86);
+// The skill tree's shade: the whole screen steps back behind the line.
+const TOAST_SHADE: Color = rgba(0.0, 0.01, 0.03, 0.7);
+const TOAST_SIZE: float32 = 16.0;
+const TOAST_SMALL_SIZE: float32 = 8.0;
 const PILL_HEIGHT: float32 = 20.0;
 
 export interface Toast {
@@ -53,20 +56,21 @@ function dropShownToast(toasts: Toasts): void {
 	toasts.framesLeft = (rest.length as int32) > 0 ? TOAST_FRAMES : 0;
 }
 
-// A frameless dark strip that fades in and out.
+// The line alone in the middle, over the whole HUD shaded back; both fade in and out. The shade takes no touches.
 export function drawToasts(ui: Ui, kit: Kit, id: int32, toasts: Toasts, x: float32, y: float32, width: float32): void {
 	if ((toasts.queue.length as int32) == 0) {
 		return;
 	}
 	const shown: Toast = toasts.queue[0];
 	const alpha: float32 = toastAlpha(toasts);
-	box(ui, x, y, width, TOAST_HEIGHT, 0.0, withAlpha(TOAST_STRIP, TOAST_STRIP.a * alpha));
-	if (shown.alert) {
-		box(ui, x, y, 2.0, TOAST_HEIGHT, 0.0, withAlpha(ALERT_RED, alpha));
-	}
+	beginOverlay(ui);
+	beginKitOverlay(kit);
+	fill(kit, subId(id, 1), 0.0, 0.0, DESIGN_W, DESIGN_H, withAlpha(TOAST_SHADE, TOAST_SHADE.a * alpha));
 	const ink: Color = shown.alert ? ALERT_RED : INK;
-	say(ui, kit, id, shown.line, x + 8.0, centredY(kit, shown.line, 8.0, y, TOAST_HEIGHT), width - 16.0, 8.0,
-		withAlpha(ink, alpha), 0.5);
+	const size: float32 = measure(kit, shown.line, TOAST_SIZE).width <= width ? TOAST_SIZE : TOAST_SMALL_SIZE;
+	say(ui, kit, id, shown.line, x, centredY(kit, shown.line, size, y, TOAST_HEIGHT), width, size, withAlpha(ink, alpha), 0.5);
+	endKitOverlay(kit);
+	endOverlay(ui);
 	toasts.framesLeft -= 1;
 	if (toasts.framesLeft <= 0) {
 		dropShownToast(toasts);

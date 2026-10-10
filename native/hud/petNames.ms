@@ -39,9 +39,13 @@ export function petName(nameId: uint8): string {
 	return PET_NAMES[nameId as int32];
 }
 
-export function petNameStep(nameId: uint8, forward: boolean): uint8 {
-	const step: int32 = forward ? 1 : PET_NAME_COUNT - 1;
-	return (((nameId as int32) + step) % PET_NAME_COUNT) as uint8;
+export const NO_PET_NAME: int32 = -1;
+
+// Any of the 256 names but the one shown, so every press changes it.
+export function randomPetName(shown: int32): uint8 {
+	const choices: int32 = shown == NO_PET_NAME ? PET_NAME_COUNT : PET_NAME_COUNT - 1;
+	const pick: int32 = Math.min(Math.floor(Math.random() * (choices as float64)) as int32, choices - 1);
+	return (shown != NO_PET_NAME && pick >= shown ? pick + 1 : pick) as uint8;
 }
 
 const NUMERAL_VALUES: int32[13] = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
@@ -80,16 +84,18 @@ test "every byte selects a unique nonempty Pet name with a stable mapping" {
 	assert petName(255) == "Nix";
 }
 
-test "name picker wraps across all 256 IDs" {
-	assert petNameStep(0, false) == 255;
-	assert petNameStep(255, true) == 0;
-	assert petNameStep(0, true) == 1;
-	let selected: uint8 = 0;
-	for (let index: int32 = 0; index < PET_NAME_COUNT; index += 1) {
-		assert selected == (index as uint8);
-		selected = petNameStep(selected, true);
+test "a random name is always a new one, and over many presses reaches far across the 256" {
+	let shown: uint8 = randomPetName(NO_PET_NAME);
+	let low: int32 = PET_NAME_COUNT;
+	let high: int32 = -1;
+	for (let press: int32 = 0; press < 2000; press += 1) {
+		const next: uint8 = randomPetName(shown as int32);
+		assert next != shown;
+		low = Math.min(low, next as int32);
+		high = Math.max(high, next as int32);
+		shown = next;
 	}
-	assert selected == 0;
+	assert low < 16 && high > PET_NAME_COUNT - 17;
 }
 
 test "first-life names omit I and later lives keep Roman lineage" {

@@ -5,19 +5,21 @@ import {
 	initLab, frameLab, setLabHud, setPetLevel, setPetPreview, setPetPreviewGrey, petHead, sceneSeconds,
 } from "./scene/campfireScene";
 import { embedRegister } from "@metascript/void/src/sokol/gpu";
-import { initHud, frameHud, drawHud } from "./hud/hud";
+import { initHud, frameHud, drawHud, currentHudScreen } from "./hud/hud";
 import { STAND_IN_LEVEL } from "./hud/home";
 import { inApp } from "./host/host";
-import { currentLivePet } from "./hud/gameAvailability";
+import { HudScreen } from "./hud/gameAvailability";
 import { PET_PREVIEW_X, PET_PREVIEW_Y } from "./hud/onboarding";
 import { mournedPet } from "./hud/mourning";
 
 function frameAndroid(): void {
-	const live = currentLivePet();
+	const screen: HudScreen = inApp() ? currentHudScreen() : HudScreen.Home;
 	const mourned: boolean = mournedPet().ok;
-	setPetPreview(inApp() && (!live.ok || mourned), PET_PREVIEW_X, PET_PREVIEW_Y);
+	// On the wallpaper a dead Pet stands grey where the death screen shows it, instead of walking.
+	const wallpaperMourning: boolean = !inApp() && mourned;
+	setPetPreview(screen == HudScreen.Onboarding || wallpaperMourning, PET_PREVIEW_X, PET_PREVIEW_Y);
 	setPetPreviewGrey(mourned);
-	frameLab();
+	frameLab(true, screen != HudScreen.Waiting && !wallpaperMourning);
 }
 
 // After the scene placed the Pet, so the HUD draws over its head this frame.

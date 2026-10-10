@@ -4,7 +4,7 @@
 import { Pubkey } from "std/solana/pubkey";
 import { TalentKind } from "../../rules/talent";
 import { Combatant, Mod, Region, modsFromMask } from "../../rules/stats";
-import { BlockSlot, Insurance } from "../../rules/layout";
+import { BlockSlot, GlobalConfig, Insurance } from "../../rules/layout";
 import { OwnerItem } from "../../rules/owner";
 import { Gear, Item } from "../../rules/items";
 import { Outcome } from "../../rules/fight";
@@ -15,6 +15,8 @@ import { Outcome } from "../../rules/fight";
 extern function hostInApp(): int32;
 extern function hostWallpaperPlaces(): int32;
 extern function hostRequestWallpaperPicker(): void;
+extern function hostPetNewsAllowed(): int32;
+extern function hostRequestPetNews(): void;
 extern function hostDeathNoticeSeen(): int32;
 extern function hostMarkDeathNoticeSeen(generation: int32): void;
 extern function hostRequestWalletConnect(): void;
@@ -22,7 +24,7 @@ extern function hostRequestWalletDisconnect(): void;
 extern function hostWalletState(): int32;
 extern function hostWalletRevision(): int32;
 extern function hostWalletAddressByte(index: int32): int32;
-extern function hostRequestOwnerAction(action: int32, item: int32, tier: int32): void;
+extern function hostRequestOwnerAction(action: int32, item: int32): void;
 extern function hostOwnerActionState(): int32;
 extern function hostOwnerActionRevision(): int32;
 extern function hostTakeOwnerActionRequest(): int32;
@@ -68,6 +70,14 @@ export function wallpaperPlace(): WallpaperPlace {
 
 export function requestWallpaperPicker(): void {
 	hostRequestWallpaperPicker();
+}
+
+export function petNewsAllowed(): boolean {
+	return hostPetNewsAllowed() != 0;
+}
+
+export function requestPetNews(): void {
+	hostRequestPetNews();
 }
 
 // The highest lineage generation whose death notice this owner has seen for this Pet, -1 for none.
@@ -164,14 +174,15 @@ export enum OwnerActionOutcome {
 }
 
 // Only Buy reads item and tier; other actions pass 0.
-export function requestOwnerAction(action: OwnerAction, item: int32, tier: int32): void {
-	if (item < 0 || item > 255 || tier < 0 || tier > 255) {
-		console.log(
-			"host: owner action item " + item.toString() + " tier " + tier.toString() + " is not a byte",
-		);
+// Claim carries a name id, Buy a packed cart (ownerGoods.ms packedCart): 3 goods of 4 bits.
+export const OWNER_ACTION_ITEM_MAX: int32 = 0xffff;
+
+export function requestOwnerAction(action: OwnerAction, item: int32): void {
+	if (item < 0 || item > OWNER_ACTION_ITEM_MAX) {
+		console.log("host: owner action item " + item.toString() + " does not fit 16 bits");
 		unreachable;
 	}
-	hostRequestOwnerAction(action as int32, item, tier);
+	hostRequestOwnerAction(action as int32, item);
 }
 
 export function ownerActionOutcome(): OwnerActionOutcome {
@@ -202,17 +213,17 @@ export function ownerActionRevision(): int32 {
 
 test "one owner action is in flight until the shell publishes its outcome" {
 	const before = ownerActionRevision();
-	requestOwnerAction(OwnerAction.Buy, 3, 1);
+	requestOwnerAction(OwnerAction.Buy, 0x713);
 	assert ownerActionOutcome() == OwnerActionOutcome.Requested;
 	assert ownerActionRevision() == before + 1;
-	requestOwnerAction(OwnerAction.Bank, 0, 0);
-	assert hostTakeOwnerActionRequest() == (5 | (3 << 8) | (1 << 16));
+	requestOwnerAction(OwnerAction.Bank, 0);
+	assert hostTakeOwnerActionRequest() == (5 | (0x713 << 8));
 	assert hostTakeOwnerActionRequest() == 0;
 	hostSetOwnerAction(OwnerActionOutcome.SentPending as int32);
-	requestOwnerAction(OwnerAction.Bank, 0, 0);
+	requestOwnerAction(OwnerAction.Bank, 0);
 	assert hostTakeOwnerActionRequest() == 0;
 	hostSetOwnerAction(OwnerActionOutcome.ConfirmedAwaitingRead as int32);
-	requestOwnerAction(OwnerAction.ClaimReward, 0, 0);
+	requestOwnerAction(OwnerAction.ClaimReward, 0);
 	assert hostTakeOwnerActionRequest() == 8;
 	hostSetOwnerAction(13);
 	assert ownerActionOutcome() == OwnerActionOutcome.Unknown;
@@ -325,6 +336,16 @@ enum GamePetField {
 	Skin,
 	SkrBalance,
 	ItemsInTransit,
+	WorldGenesisTimestamp,
+	WorldRewardPerWorkPower,
+	WorldRewardEpoch,
+	WorldTotalWorkPower,
+	WorldRecycledPending,
+	WorldTreasury,
+	WorldItemReserve,
+	WorldEmitted,
+	WorldLivingPets,
+	WorldFloorSlots,
 	HeadRarity,
 	HeadStat,
 	HeadWear,
@@ -387,6 +408,8 @@ export struct GamePet {
 	skin: uint8;
 	skrBalance: uint64;
 	itemsInTransit: int32;
+	// The ER World as of this read; all zero when the Pet is not placed on the ER.
+	world: GlobalConfig;
 	gear: Gear;
 }
 
@@ -567,6 +590,18 @@ export function noGamePet(): GamePet {
 		skin: 0,
 		skrBalance: 0,
 		itemsInTransit: 0,
+		world: {
+			genesisTimestamp: 0,
+			rewardPerWorkPower: 0,
+			rewardEpoch: 0,
+			totalWorkPower: 0,
+			recycledPending: 0,
+			treasury: 0,
+			itemReserve: 0,
+			emitted: 0,
+			livingPets: 0,
+			floorSlots: 0,
+		},
 		gear: Gear.bare(),
 	};
 }
@@ -591,9 +626,15 @@ function petFlag(field: GamePetField): Result<boolean, GameReadError> {
 }
 
 // Head, body, hands, feet from GamePetField.HeadRarity on, ITEM_FIELDS each, as a seat publishes them.
+// A worn item always carries the stat it raises; one without is a corrupt read.
+function wornItem(item: Item): Result<Item, GameReadError> {
+	if (item.rarity != 0 && item.stat == (TalentKind.None as uint8)) { return Result.err(GameReadError.InvalidState); }
+	return Result.ok(item);
+}
+
 function petItem(slot: int32): Result<Item, GameReadError> {
 	const first = (GamePetField.HeadRarity as int32) + slot * ITEM_FIELDS;
-	return Result.ok({
+	return wornItem({
 		rarity: (try petBounded((first as GamePetField), 0, 5)) as uint8,
 		stat: (try petBounded(((first + 1) as GamePetField), 0, 3)) as uint8,
 		wear: (try petBounded(((first + 2) as GamePetField), 0, 255)) as uint8,
@@ -647,6 +688,18 @@ function publishedPet(): Result<GamePet, GameReadError> {
 		skin: (try petBounded(GamePetField.Skin, 0, 255)) as uint8,
 		skrBalance: petUnsigned(GamePetField.SkrBalance),
 		itemsInTransit: try petBounded(GamePetField.ItemsInTransit, 0, 2147483647),
+		world: {
+			genesisTimestamp: petUnsigned(GamePetField.WorldGenesisTimestamp),
+			rewardPerWorkPower: petUnsigned(GamePetField.WorldRewardPerWorkPower),
+			rewardEpoch: petUnsigned(GamePetField.WorldRewardEpoch),
+			totalWorkPower: petUnsigned(GamePetField.WorldTotalWorkPower),
+			recycledPending: petUnsigned(GamePetField.WorldRecycledPending),
+			treasury: petUnsigned(GamePetField.WorldTreasury),
+			itemReserve: petUnsigned(GamePetField.WorldItemReserve),
+			emitted: petUnsigned(GamePetField.WorldEmitted),
+			livingPets: (try petBounded(GamePetField.WorldLivingPets, 0, 2147483647)) as uint32,
+			floorSlots: (try petBounded(GamePetField.WorldFloorSlots, 0, 2147483647)) as uint32,
+		},
 		gear: { head: try petItem(0), body: try petItem(1), hands: try petItem(2), feet: try petItem(3) },
 	});
 }
@@ -680,7 +733,7 @@ function seatUnsigned(seat: int32, field: GameSeatField): uint64 {
 
 function publishedItem(seat: int32, slot: int32): Result<Item, GameReadError> {
 	const first = (GameSeatField.HeadRarity as int32) + slot * ITEM_FIELDS;
-	return Result.ok({
+	return wornItem({
 		rarity: (try seatBounded(seat, first, 0, 5)) as uint8,
 		stat: (try seatBounded(seat, first + 1, 0, 3)) as uint8,
 		wear: (try seatBounded(seat, first + 2, 0, 255)) as uint8,
@@ -916,6 +969,7 @@ function blockSeats(selfSeat: int32): int64[] {
 	seats[7 * SEAT_FIELDS + (GameSeatField.BlockGrudgeRobber as int32)] = 4;
 	seats[7 * SEAT_FIELDS + (GameSeatField.BlockGrudgeEpoch as int32)] = 41;
 	seats[7 * SEAT_FIELDS + (GameSeatField.HeadRarity as int32) + 5] = 3;
+	seats[7 * SEAT_FIELDS + (GameSeatField.HeadRarity as int32) + 6] = TalentKind.Grit as int64;
 	return seats;
 }
 
@@ -946,10 +1000,16 @@ test "the shell's Block seats and fight ring reach the core only whole" {
 		assert read.value.seats[2].kind == SeatKind.Empty;
 		assert read.value.seats[9].might == 69 && read.value.seats[7].blockGrudgeRobber == 4;
 		assert read.value.seats[7].gear.body.rarity == 3;
+		assert read.value.seats[7].gear.body.stat == (TalentKind.Grit as uint8);
 		assert read.value.fights[0].defenderSeat == 7 && read.value.fights[0].loot == 900;
 		assert read.value.fights[0].outcome == Outcome.AttackerWins;
 		assert read.value.fights[0].defender.might == 66;
 	}
+	const statless = blockSeats(4);
+	statless[7 * SEAT_FIELDS + (GameSeatField.HeadRarity as int32) + 6] = TalentKind.None as int64;
+	assert publishedRead(statless, BLOCK_SEATS * SEAT_FIELDS, fight, FIGHT_FIELDS) == 1;
+	const refused = gameRead();
+	assert !refused.ok && refused.error == GameReadError.InvalidState;
 	const wholeSeats = BLOCK_SEATS * SEAT_FIELDS;
 	for (const seatValues of [wholeSeats - 1, wholeSeats + 1, SEAT_FIELDS]) {
 		assert publishedRead(blockSeats(4), seatValues, fight, FIGHT_FIELDS) == 1;

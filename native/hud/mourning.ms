@@ -8,6 +8,7 @@ import {
 	noGamePet,
 } from "../host/host";
 import { NotLive, livePet } from "./gameAvailability";
+import { petDisplayName } from "./petNames";
 
 export enum Mourning {
 	// Starved or beaten: the Pet is gone and no heir will hatch.
@@ -41,6 +42,9 @@ export function mourning(snapshot: GameRead, seen: int32): Result<MournedPet, No
 	const live = livePet(snapshot);
 	if (!live.ok) {
 		if (live.error == NotLive.Dead) { return Result.ok({ pet: snapshot.pet, mourning: Mourning.Lost }); }
+		// Died during the day: the chain records it at dusk (program/day.ms dusked), and rules/life.ms
+		// agedOut already says how it ends: out of hearts is lost, old with hearts left leaves an heir.
+		if (live.error == NotLive.Inactive) { return dying(snapshot.pet, seen); }
 		const unplaced: boolean = live.error == NotLive.AwaitingPlacement || live.error == NotLive.AwaitingDelegation;
 		const heir: GamePet = snapshot.pet;
 		if (!unplaced || heir.lineageGeneration == 0) { return Result.err(NotMourning.NotDead); }
@@ -52,6 +56,27 @@ export function mourning(snapshot: GameRead, seen: int32): Result<MournedPet, No
 		return Result.err(NotMourning.NoticeSeen);
 	}
 	return Result.ok({ pet: heir, mourning: Mourning.HeirArrived });
+}
+
+// The mourned Pet's own name, generation included: `pet` is the heir unless the Pet was lost.
+export function mournedName(mourned: MournedPet): string {
+	const generation: int32 = mourned.pet.lineageGeneration - (mourned.mourning == Mourning.Lost ? 0 : 1);
+	return petDisplayName(mourned.pet.nameId, generation as uint16);
+}
+
+export function mournedLine(mourning: Mourning): string {
+	return match (mourning) {
+		Mourning.Lost => "LOST FOR GOOD",
+		Mourning.HeirWaiting => "DIED OF OLD AGE / ITS HEIR IS ON ITS WAY",
+		Mourning.HeirArrived => "DIED OF OLD AGE / ITS HEIR HAS HATCHED",
+	};
+}
+
+function dying(pet: GamePet, seen: int32): Result<MournedPet, NotMourning> {
+	if (pet.hearts == 0) { return Result.ok({ pet: pet, mourning: Mourning.Lost }); }
+	const heir: GamePet = { ...pet, lineageGeneration: pet.lineageGeneration + 1 };
+	if (heir.lineageGeneration <= seen) { return Result.err(NotMourning.NoticeSeen); }
+	return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting });
 }
 
 function readOf(life: PetLife, lineageGeneration: int32): GameRead {
@@ -106,4 +131,22 @@ test "a lost Pet is mourned for good; an old one from its heir's hatching until 
 	assert !firstLife.ok && firstLife.error == NotMourning.NoticeSeen;
 	const claimed = mourning(unplacedHeirOf(0), -1);
 	assert !claimed.ok && claimed.error == NotMourning.NotDead;
+}
+
+test "a Pet that died today is mourned before dusk records it" {
+	const read = readOf(PetLife.InactiveWithoutDeathRecord, 0);
+	const starved = mourning({ ...read, pet: { ...read.pet, hearts: 0 } }, -1);
+	assert starved.ok && starved.value.mourning == Mourning.Lost;
+	const old = mourning(read, -1);
+	assert old.ok && old.value.mourning == Mourning.HeirWaiting && old.value.pet.lineageGeneration == 1;
+	const oldSeen = mourning(read, 1);
+	assert !oldSeen.ok && oldSeen.error == NotMourning.NoticeSeen;
+}
+
+test "a mourned Pet is named as it lived, not as its heir" {
+	const read = readOf(PetLife.InactiveWithoutDeathRecord, 1);
+	const lost = mourning({ ...read, pet: { ...read.pet, hearts: 0 } }, -1);
+	assert lost.ok && mournedName(lost.value) == petDisplayName(read.pet.nameId, 1) && mournedLine(lost.value.mourning) == "LOST FOR GOOD";
+	const old = mourning(read, -1);
+	assert old.ok && mournedName(old.value) == petDisplayName(read.pet.nameId, 1);
 }

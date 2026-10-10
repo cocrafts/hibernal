@@ -19,6 +19,13 @@ void hostRequestWallpaperPicker(void);
 // 1 once per request, then 0 until the next one.
 int hostTakeWallpaperPickerRequest(void);
 
+// Whether Android lets the Pet's news through as notifications; the shell sets it on resume.
+void hostSetPetNewsAllowed(int allowed);
+int hostPetNewsAllowed(void);
+void hostRequestPetNews(void);
+// 1 once per request, then 0 until the next one.
+int hostTakePetNewsRequest(void);
+
 // The highest lineage generation whose death notice the player has seen, -1 for none. The shell
 // sets it for the selected owner's Pet before that Pet's game read; the core marks a newer one,
 // which the shell takes on the render thread after a frame and persists.
@@ -36,9 +43,9 @@ int hostWalletState(void);
 int hostWalletRevision(void);
 int hostWalletAddressByte(int index);
 
-// Owner action, one in flight: action 0..7 (host.ms OwnerAction), item and tier 0..255 for Buy.
-// Ignored while Requested (1) or SentPending (5). The request is (action + 1) | item << 8 | tier << 16.
-void hostRequestOwnerAction(int action, int item, int tier);
+// Owner action, one in flight: action 0..7 (host.ms OwnerAction), item 0..65535 (Claim's name id,
+// Buy's packed cart). Ignored while Requested (1) or SentPending (5). The request is (action + 1) | item << 8.
+void hostRequestOwnerAction(int action, int item);
 int hostTakeOwnerActionRequest(void);
 // State 0..12 is host.ms OwnerActionOutcome; anything else publishes Unknown (9).
 void hostSetOwnerAction(int state);
@@ -56,7 +63,7 @@ int hostGameOwnerRevision(void);
 int hostGameOwnerKeyByte(int index);
 
 // LivePetRead.Field in the Kotlin shell and GamePetField in host.ms, in that order.
-#define HOST_GAME_PET_FIELDS 57
+#define HOST_GAME_PET_FIELDS 67
 // LivePetRead.SeatField in the Kotlin shell and GameSeatField in host.ms, in that order.
 #define HOST_GAME_SEAT_FIELDS 52
 #define HOST_GAME_SEATS 10

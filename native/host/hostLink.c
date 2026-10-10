@@ -10,6 +10,8 @@
 static atomic_int s_inApp;
 static atomic_int s_wallpaperPlaces;
 static atomic_int s_pickerRequested;
+static atomic_int s_petNewsAllowed;
+static atomic_int s_petNewsRequested;
 static atomic_int s_deathNoticeSeen = -1;
 static atomic_int s_deathNoticeMark = -1;
 static atomic_int s_walletState;
@@ -61,6 +63,11 @@ int hostWallpaperPlaces(void) { return atomic_load(&s_wallpaperPlaces); }
 void hostRequestWallpaperPicker(void) { atomic_store(&s_pickerRequested, 1); }
 int hostTakeWallpaperPickerRequest(void) { return atomic_exchange(&s_pickerRequested, 0); }
 
+void hostSetPetNewsAllowed(int allowed) { atomic_store(&s_petNewsAllowed, allowed ? 1 : 0); }
+int hostPetNewsAllowed(void) { return atomic_load(&s_petNewsAllowed); }
+void hostRequestPetNews(void) { atomic_store(&s_petNewsRequested, 1); }
+int hostTakePetNewsRequest(void) { return atomic_exchange(&s_petNewsRequested, 0); }
+
 void hostSetDeathNoticeSeen(int generation) { atomic_store(&s_deathNoticeSeen, generation); }
 int hostDeathNoticeSeen(void) { return atomic_load(&s_deathNoticeSeen); }
 void hostMarkDeathNoticeSeen(int generation) {
@@ -76,8 +83,10 @@ void hostRequestWalletConnect(void) {
 	atomic_store(&s_walletRequest, 1);
 }
 
+// Disconnect also forgets a remembered owner, so it is honoured from any settled state.
 void hostRequestWalletDisconnect(void) {
-	if (atomic_load(&s_walletState) != 2) return;
+	int state = atomic_load(&s_walletState);
+	if (state == 1 || state == 6) return;
 	atomic_store(&s_walletState, 6);
 	atomic_store(&s_walletRequest, 2);
 }
@@ -110,16 +119,16 @@ int hostWalletAddressByte(int index) {
 	return value;
 }
 
-void hostRequestOwnerAction(int action, int item, int tier) {
+void hostRequestOwnerAction(int action, int item) {
 	int state = atomic_load(&s_ownerActionState);
 	if (state == 1 || state == 5) return;
-	if (action < 0 || action > 7 || item < 0 || item > 255 || tier < 0 || tier > 255) {
+	if (action < 0 || action > 7 || item < 0 || item > 0xffff) {
 		hostSetOwnerAction(9);
 		return;
 	}
 	atomic_store(&s_ownerActionState, 1);
 	atomic_fetch_add(&s_ownerActionRevision, 1);
-	atomic_store(&s_ownerActionRequest, (action + 1) | (item << 8) | (tier << 16));
+	atomic_store(&s_ownerActionRequest, (action + 1) | (item << 8));
 }
 
 int hostTakeOwnerActionRequest(void) { return atomic_exchange(&s_ownerActionRequest, 0); }

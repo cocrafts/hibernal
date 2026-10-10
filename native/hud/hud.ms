@@ -1,9 +1,14 @@
-import { initHudHome, frameHudHome, frameHudOnboarding, frameHudWallpaper } from "./home";
-import { currentLivePet } from "./gameAvailability";
+import { initHudHome, frameHudHome, frameHudOnboarding, frameHudWaiting, frameHudWallpaper } from "./home";
+import { HudScreen, hudScreen, waitingStatus } from "./gameAvailability";
 import { mournedPet } from "./mourning";
+import { gameOwnerState, gameRead } from "../host/host";
 import { PetHead, PetHeadHidden, drawUi } from "../ui/ui";
 import { dropPointerEvents } from "../input/pointer";
 import { inApp } from "../host/host";
+
+export function currentHudScreen(): HudScreen {
+	return hudScreen(gameRead(), gameOwnerState(), mournedPet().ok);
+}
 
 export function initHud(): void {
 	initHudHome();
@@ -14,14 +19,14 @@ export function frameHud(petHead: Result<PetHead, PetHeadHidden>, seconds: float
 	if (!inApp()) {
 		// Touches on the home screen would otherwise reach the app's next frame as presses.
 		dropPointerEvents();
-		frameHudWallpaper();
+		frameHudWallpaper(petHead, seconds);
 		return;
 	}
-	if (currentLivePet().ok && !mournedPet().ok) {
-		frameHudHome(petHead, seconds);
-		return;
-	}
-	frameHudOnboarding();
+	match (currentHudScreen()) {
+		HudScreen.Home => { frameHudHome(petHead, seconds); },
+		HudScreen.Onboarding => { frameHudOnboarding(); },
+		HudScreen.Waiting => { frameHudWaiting(waitingStatus(gameRead())); },
+	};
 }
 
 export function drawHud(): void {

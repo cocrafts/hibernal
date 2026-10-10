@@ -1,37 +1,40 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
-import { Ui, PetHead, PetHeadHidden, box, createUi, beginUi, endUi, held, pressable, DESIGN_W, DESIGN_H } from "../ui/ui";
 import {
-	Kit, PieceLayer, createKit, beginKit, endKit, fill, iconTinted, measure, pieceSized, pieceHeight, plainLook, pressedLook, say, subId, INK_BRIGHT, INK_MUTED, HOLO_BLUE,
+	Ui, PetHead, PetHeadHidden, box, createUi, beginUi, endUi, beginOverlay, endOverlay, held, pressable, DESIGN_W, DESIGN_H,
+} from "../ui/ui";
+import {
+	Kit, PieceLayer, createKit, beginKit, endKit, beginKitOverlay, endKitOverlay, fill, iconTinted, measure, pieceSized, pieceHeight, plainLook, pressedLook, say, subId, INK_BRIGHT, INK_MUTED, HOLO_BLUE,
 	HOLO_GREEN, ALERT_RED, STACKED_ROW_HEIGHT,
 } from "./kit";
 import { Toasts, emptyToasts, pushToast, drawToasts } from "./notices";
 import {
 	HOTBAR_HEIGHT, HOTBAR_SLOTS, PET_SLOTS, EMPTY_SLOT, NO_SLOT, HotbarTap, HotbarTapKind, hotbar,
-	hotbarLeft, hotbarRight, hotbarTopEdge, hotbarSlotCentreX,
+	hotbarTopEdge, hotbarSlotCentreX,
 } from "./hotbar";
-import { ItemCard, CARD_HEIGHT, NO_ROW, itemCard, itemPeek, gearCard, gearSummary, slotName } from "./itemCard";
-import {
-	ShopStripTap, ShopStripTapKind, shopStrip, stripHeight, goodCard, goodIcon, goodTiers, takesOwnerSlot, cartTotal,
-} from "./shopStrip";
-import { ShopGood, SHOP_GOODS, NOT_IN_CART, NO_GOOD, cartCode, ownedGood } from "./ownerGoods";
+import { ItemCard, itemPeek, gearCard, gearSummary, slotName } from "./itemCard";
+import { NoticeKind, ShopNotice, ShopTap, ShopTapKind, goodCard, goodIcon, shopPanel } from "./shopStrip";
+import { CartGood, ShopGood, ShopLock, SKR_UNIT, ownedGood, packedCart, shopLock, sulking } from "./ownerGoods";
 import { Gear, Item, GearSlot, ItemSkill, at, isEmpty } from "../../rules/items";
 import { OwnerItem, GIFT_BONDING } from "../../rules/owner";
 import { Banner, BannerArt, BannerWord, BANNER_STEP, banner, banners, bannersHeight } from "./banners";
-import { petDisplayName } from "./petNames";
+import { gearIcon } from "./gearIcons";
+import { NO_PET_NAME, petDisplayName, randomPetName } from "./petNames";
 import {
 	Character, NoLeaning, STAT_COLUMN_HEIGHT, characterLeaning, characterStats, leaning, regionColour, regionName, statColumn,
 	skillRing, skillPreview,
 } from "./character";
 import { toggleRow } from "./toggles";
 import { Talent, TalentKind, TalentGrade } from "../../rules/talent";
-import { requestWallpaperPicker, wallpaperPlace, WallpaperPlace } from "../host/host";
+import { petNewsAllowed, requestPetNews, requestWallpaperPicker, wallpaperPlace, WallpaperPlace } from "../host/host";
 import { INFO_PANEL_HEIGHT } from "./shapes";
 import { ActivityLog, activityLogState, activityLog } from "./activityLog";
 import { NO_NEIGHBOUR, PetActivity, STAND_IN_ACTIVITIES } from "./activity";
-import { onboarding } from "./onboarding";
+import { onboarding, waitingLine } from "./onboarding";
+import { mournedLine, mournedName, mournedPet } from "./mourning";
+import { Gesture, Taps, noTaps, gestureOf } from "./gestures";
 import { groupedAmount, hbrnAmount, heartShare, HeartCountError, levelProgress } from "./gameNumbers";
 import {
-	GiftStep, buyStatus, currentLivePet, giftOwedToOwner, giftStatus, giftStep, summonInFlight,
+	GiftStep, IncomeUnknown, buyStatus, currentLivePet, dailyIncome, giftOwedToOwner, giftStatus, giftStep, summonInFlight,
 } from "./gameAvailability";
 import { NeighbourBlock, currentNeighbourBlock, fightActivities } from "./neighbours";
 import {
@@ -40,7 +43,7 @@ import {
 } from "./neighbourVisit";
 import { BPS } from "../../rules/units";
 import { Region } from "../../rules/stats";
-import { GameNeighbour, GamePet, OwnerAction, OwnerActionOutcome, ownerActionOutcome, requestOwnerAction } from "../host/host";
+import { GameNeighbour, GamePet, PetLife, noGamePet, OwnerAction, OwnerActionOutcome, ownerActionOutcome, requestOwnerAction } from "../host/host";
 
 interface Home {
 	ui: Ui;
@@ -48,6 +51,9 @@ interface Home {
 	toasts: Toasts;
 	activityLog: ActivityLog;
 	visit: NeighbourVisit;
+	taps: Taps;
+	// This frame's swipe or double tap on the empty middle of the screen, for visitButtons.
+	pageGesture: Gesture;
 	// The owner action outcome is shared with Summon and Buy; show it only after CLAIM asked.
 	giftAsked: boolean;
 	hearts: int32;
@@ -58,12 +64,14 @@ interface Home {
 	shopOpen: boolean;
 	treeShown: boolean;
 	selectedSkill: int32;
-	shopCart: int32[];
-	shopFocus: int32;
+	shopCart: CartGood[];
+	// The last refused tap, at most one; cleared by the next change to the cart.
+	shopRefusal: ShopLock[];
 	inventory: string[];
 	skrBalance: int32;
 	buyAsked: boolean;
 	buyOutcome: OwnerActionOutcome;
+	giftOutcome: OwnerActionOutcome;
 	onboardingNameId: uint8;
 	// The last live Pet read, at most one; the chain keeps no record of gear or level changes, so the app logs those it sees.
 	seen: SeenPet[];
@@ -91,6 +99,8 @@ export function initHudHome(): void {
 		toasts: emptyToasts(),
 		activityLog: activityLogState(),
 		visit: neighbourVisitState(),
+		taps: noTaps(),
+		pageGesture: Gesture.None,
 		giftAsked: false,
 		seen: [],
 		petChanges: [],
@@ -102,13 +112,14 @@ export function initHudHome(): void {
 		shopOpen: false,
 		treeShown: false,
 		selectedSkill: -1,
-		shopCart: [NOT_IN_CART, NOT_IN_CART, NOT_IN_CART, NOT_IN_CART],
-		shopFocus: NO_GOOD,
-		inventory: STAND_IN_INVENTORY,
+		shopCart: [],
+		shopRefusal: [],
+		inventory: previewInventory(),
 		skrBalance: STAND_IN_SKR_BALANCE,
 		buyAsked: false,
 		buyOutcome: OwnerActionOutcome.Idle,
-		onboardingNameId: 0,
+		giftOutcome: OwnerActionOutcome.Idle,
+		onboardingNameId: randomPetName(NO_PET_NAME),
 	};
 	homes.push(home);
 }
@@ -124,13 +135,11 @@ const STAND_IN_GEAR: Item[] = [
 ];
 // rules/items.ms GearSlot order, the order the rules fill an empty Pet's gear in.
 const GEAR_SLOTS: GearSlot[] = [GearSlot.Head, GearSlot.Body, GearSlot.Hands, GearSlot.Feet];
-const GEAR_ICONS: string[] = ["shotgun", "pistol", "sword", "core"];
-const STAND_IN_INVENTORY: string[] = ["shotgun", "pistol", "sword", "core", "battery", EMPTY_SLOT];
 const STAND_IN_OWNER_GOOD: ShopGood = ShopGood.Growth;
 const STAND_IN_OWNER_TIER: int32 = 1;
 const ITEM_CARD_ID: int32 = 330;
 const ITEM_CARD_LEFT: float32 = 18.0;
-const SHOP_STRIP_GAP: float32 = 4.0;
+const SHOP_GAP: float32 = 4.0;
 const ITEM_CARD_GAP: float32 = 4.0;
 
 const HOTBAR_ID: int32 = 300;
@@ -147,6 +156,7 @@ const TITLE_HEIGHT: float32 = TITLE_ROW + 18.0;
 const COLUMNS_TOP: float32 = TITLE_TOP + TITLE_HEIGHT;
 const COLUMN_RIGHT_PADDING: float32 = 8.0;
 const WALLPAPER_ACTION_ID: int32 = 340;
+const PET_NEWS_ID: int32 = 2972;
 const BANNERS_ID: int32 = 350;
 const PET_NAME_ID: int32 = 395;
 const PET_REGION_ID: int32 = 398;
@@ -184,11 +194,14 @@ const NAME_GAP: float32 = 6.0;
 const NAME_FIELD_LEFT: float32 = VISIT_LEFT + VISIT_BUTTON + NAME_GAP;
 const NAME_FIELD_WIDTH: float32 = DESIGN_W - NAME_FIELD_LEFT * 2.0;
 const NEXT_BUTTON_X: float32 = DESIGN_W - VISIT_LEFT - VISIT_BUTTON;
+const HARVEST_ROW: int32 = 1;
+const INCOME_ID: int32 = 2952;
+const PAGE_GESTURE_ID: int32 = 2970;
+const GROWTH_ID: int32 = 2971;
+const BURROW_ROW: int32 = 0;
 const GIFT_ROW: int32 = 2;
 const CLAIM_ID: int32 = 2950;
 const CLAIM_GAP: float32 = 4.0;
-const CLAIM_STATUS_ID: int32 = 2951;
-const CLAIM_STATUS_SIZE: float32 = 8.0;
 const HEAD_HEARTS_ID: int32 = 2962;
 // In the scene's pixels, so the bar reads as part of the pixel-art scene.
 const HEAD_BAR_GAP: int32 = 5;
@@ -207,6 +220,7 @@ const STAND_IN_CHARACTER: Character = {
 	talent: { kind: TalentKind.Forage, multiplierBps: 13400 },
 };
 const WALLPAPER_LABEL: string = "SET AS WALLPAPER";
+const PET_NEWS_LABEL: string = "ALLOW PET NOTIFICATIONS";
 // Hearts over the Pet's head by bonding's share of GIFT_BONDING: from DEVOTED_SHARE on the Pet is
 // about to gift.
 const FOND_SHARE: float32 = 0.5;
@@ -267,37 +281,10 @@ function homeNumbers(home: Home): HomeNumbers {
 	};
 }
 
-function freeOwnerSlots(home: Home): int32 {
-	let free: int32 = 0;
-	for (let slot: int32 = PET_SLOTS; slot < HOTBAR_SLOTS; slot += 1) {
-		if (home.inventory[slot] == EMPTY_SLOT) { free += 1; }
-	}
-	const pet = currentLivePet();
-	return pet.ok ? Math.max(free - pet.value.itemsInTransit, 0) : free;
-}
-
-function ownerSlotsInCart(home: Home): int32 {
-	let taken: int32 = 0;
-	for (let good: int32 = 0; good < SHOP_GOODS; good += 1) {
-		if (home.shopCart[good] != NOT_IN_CART && takesOwnerSlot(good as ShopGood)) { taken += 1; }
-	}
-	return taken;
-}
-
 function closeShop(home: Home): void {
 	home.shopOpen = false;
-	home.shopFocus = NO_GOOD;
-	for (let good: int32 = 0; good < SHOP_GOODS; good += 1) { home.shopCart[good] = NOT_IN_CART; }
-}
-
-// Puts `good` in the cart at `tier`, unless it needs an owner slot and none is left.
-function addToCart(home: Home, good: int32, tier: int32): void {
-	const needsSlot: boolean = home.shopCart[good] == NOT_IN_CART && takesOwnerSlot(good as ShopGood);
-	if (needsSlot && ownerSlotsInCart(home) >= freeOwnerSlots(home)) {
-		pushToast(home.toasts, "OWNER SLOTS 5 AND 6 ARE FULL", true);
-		return;
-	}
-	home.shopCart[good] = tier;
+	home.shopCart = [];
+	home.shopRefusal = [];
 }
 
 function ownerSlotItem(pet: GamePet, slot: int32): OwnerItem {
@@ -307,8 +294,29 @@ function ownerSlotItem(pet: GamePet, slot: int32): OwnerItem {
 function gearIcons(gear: Gear): string[] {
 	const slots: string[] = [];
 	for (let slot: int32 = 0; slot < PET_SLOTS; slot += 1) {
-		slots.push(gear.at(GEAR_SLOTS[slot]).rarity == 0 ? EMPTY_SLOT : GEAR_ICONS[slot]);
+		const icon = gearIcon(GEAR_SLOTS[slot], gear.at(GEAR_SLOTS[slot]));
+		slots.push(icon.ok ? icon.value : EMPTY_SLOT);
 	}
+	return slots;
+}
+
+// The preview Pet wears STAND_IN_GEAR and holds a growth dose in slot 5.
+function previewGear(): Gear {
+	return { head: STAND_IN_GEAR[0], body: STAND_IN_GEAR[1], hands: STAND_IN_GEAR[2], feet: STAND_IN_GEAR[3] };
+}
+
+// Item.rarity per hotbar slot; owner slots hold goods, not graded items.
+function slotRarities(gear: Gear): int32[] {
+	const rarities: int32[] = [];
+	for (const slot of GEAR_SLOTS) { rarities.push(gear.at(slot).rarity as int32); }
+	for (let slot: int32 = PET_SLOTS; slot < HOTBAR_SLOTS; slot += 1) { rarities.push(0); }
+	return rarities;
+}
+
+function previewInventory(): string[] {
+	const slots: string[] = gearIcons(previewGear());
+	slots.push("battery");
+	slots.push(EMPTY_SLOT);
 	return slots;
 }
 
@@ -339,12 +347,12 @@ function slotCard(home: Home, slot: int32): ItemCard {
 			console.log("Home slot " + slot.toString() + " card asked for an empty owner slot");
 			unreachable;
 		}
-		return goodCard(owned.value.good, owned.value.tier, true);
+		return goodCard(owned.value.good, owned.value.tier);
 	}
 	if (slot < PET_SLOTS) {
 		return gearCard(home.inventory[slot], GEAR_SLOTS[slot], STAND_IN_GEAR[slot], false);
 	}
-	const card: ItemCard = goodCard(STAND_IN_OWNER_GOOD, STAND_IN_OWNER_TIER, true);
+	const card: ItemCard = goodCard(STAND_IN_OWNER_GOOD, STAND_IN_OWNER_TIER);
 	return { ...card, icon: home.inventory[slot], tag: "PREVIEW" };
 }
 
@@ -355,48 +363,86 @@ function onHotbarSlot(home: Home, slot: int32): void {
 	home.shopOpen = !home.shopOpen;
 }
 
-function onShopTap(home: Home, tap: ShopStripTap): void {
+function withoutOne(cart: CartGood[], good: CartGood): CartGood[] {
+	const left: CartGood[] = [];
+	let removed: boolean = false;
+	for (const held of cart) {
+		if (!removed && held.good == good.good && held.tier == good.tier) { removed = true; } else { left.push(held); }
+	}
+	return left;
+}
+
+function onShopTap(home: Home, pet: GamePet, live: boolean, tap: ShopTap): void {
 	match (tap.kind) {
-		ShopStripTapKind.Nothing => {},
-		ShopStripTapKind.Good => {
-			if (home.shopFocus == tap.good && home.shopCart[tap.good] != NOT_IN_CART) {
-				home.shopCart[tap.good] = NOT_IN_CART;
+		ShopTapKind.Nothing => {},
+		ShopTapKind.Add => {
+			const lock = shopLock(pet, home.shopCart, tap.good);
+			if (lock.ok) {
+				home.shopCart.push(tap.good);
+				home.shopRefusal = [];
 			} else {
-				home.shopFocus = tap.good;
-				if (home.shopCart[tap.good] == NOT_IN_CART) { addToCart(home, tap.good, 0); }
+				home.shopRefusal = [lock.error];
 			}
 		},
-		ShopStripTapKind.Cancel => { closeShop(home); },
-		ShopStripTapKind.Purchase => {
-			if (cartTotal(home.shopCart) == 0) { return; }
-			if (!currentLivePet().ok) {
+		ShopTapKind.Remove => {
+			home.shopCart = withoutOne(home.shopCart, tap.good);
+			home.shopRefusal = [];
+		},
+		ShopTapKind.Clear => {
+			home.shopCart = [];
+			home.shopRefusal = [];
+		},
+		ShopTapKind.Close => { closeShop(home); },
+		ShopTapKind.Purchase => {
+			if (!live) {
 				pushToast(home.toasts, "PREVIEW SHOP. SUMMON A PET TO BUY.", true);
 				return;
 			}
 			home.buyAsked = true;
-			requestOwnerAction(OwnerAction.Buy, cartCode(home.shopCart), 0);
+			requestOwnerAction(OwnerAction.Buy, packedCart(home.shopCart));
 			closeShop(home);
 		},
 	};
 }
 
+function refusalLine(lock: ShopLock): string {
+	return match (lock) {
+		ShopLock.PetLost => "YOUR PET IS LOST FOR GOOD.",
+		ShopLock.ComingSoon => "SKINS ARE COMING SOON.",
+		ShopLock.CartFull => "THE CART HOLDS 3 ITEMS.",
+		ShopLock.InsuranceUsed => "INSURANCE WAS USED IN THIS LIFE.",
+		ShopLock.InsuranceBought => "INSURANCE IS ALREADY BOUGHT.",
+		ShopLock.NoFreeSlot => "OWNER SLOTS 5 AND 6 ARE FULL.",
+		ShopLock.NotEnoughSkr => "NOT ENOUGH SKR FOR THIS CART.",
+	};
+}
+
+function shopNotice(home: Home, pet: GamePet, live: boolean): ShopNotice {
+	const lost = shopLock(pet, [], { good: ShopGood.Food, tier: 0 });
+	if (!lost.ok && lost.error == ShopLock.PetLost) { return { kind: NoticeKind.Dead, line: refusalLine(ShopLock.PetLost) }; }
+	if (home.shopRefusal.length > 0) { return { kind: NoticeKind.Error, line: refusalLine(home.shopRefusal[0]) }; }
+	if (!live) { return { kind: NoticeKind.Warning, line: "PREVIEW SHOP. SUMMON A PET TO BUY." }; }
+	if (sulking(pet)) { return { kind: NoticeKind.Warning, line: "YOUR PET IS SULKING. ITEMS WAIT UNTIL IT CALMS DOWN." }; }
+	return { kind: NoticeKind.None, line: "" };
+}
+
+// On the overlay, so the Home widgets under the panel take no taps while it is open.
 function shop(home: Home, barTop: float32): void {
-	const left: float32 = hotbarLeft();
-	const width: float32 = hotbarRight(home.kit) - left;
-	const stripTop: float32 = barTop + hotbarTopEdge() - SHOP_STRIP_GAP - stripHeight(width);
-	const pet = currentLivePet();
-	// SKR has HBRN's 6 decimals.
-	const balance: string = !pet.ok ? "PREVIEW " + groupedAmount(home.skrBalance as uint64) + " SKR"
-		: hbrnAmount(pet.value.skrBalance) + " SKR" + (pet.value.itemsInTransit > 0
-			? " / " + pet.value.itemsInTransit.toString() + " ON THE WAY" : "");
-	onShopTap(home, shopStrip(home.ui, home.kit, SHOP_ID, left, stripTop, width, home.shopCart, home.shopFocus, balance));
-	if (home.shopFocus == NO_GOOD) { return; }
-	const tier: int32 = home.shopCart[home.shopFocus];
-	const card: ItemCard = goodCard(home.shopFocus as ShopGood, tier == NOT_IN_CART ? NO_ROW : tier, false);
-	const row: int32 = itemCard(home.ui, home.kit, ITEM_CARD_ID, ITEM_CARD_LEFT, stripTop - ITEM_CARD_GAP - CARD_HEIGHT, card);
-	if (row != NO_ROW && row < goodTiers(home.shopFocus as ShopGood)) {
-		addToCart(home, home.shopFocus, row);
-	}
+	const live = currentLivePet();
+	const pet: GamePet = live.ok ? live.value : { ...noGamePet(), life: PetLife.FirstLifeActive,
+		skrBalance: (home.skrBalance as uint64) * SKR_UNIT };
+	beginOverlay(home.ui);
+	beginKitOverlay(home.kit);
+	const tap: ShopTap = shopPanel(home.ui, home.kit, SHOP_ID, {
+		pet: pet,
+		cart: home.shopCart,
+		notice: shopNotice(home, pet, live.ok),
+		buying: home.buyAsked && summonInFlight(ownerActionOutcome()),
+		bottom: barTop + hotbarTopEdge() - SHOP_GAP,
+	});
+	endKitOverlay(home.kit);
+	endOverlay(home.ui);
+	onShopTap(home, pet, live.ok, tap);
 }
 
 const WEALTH_ROWS: int32 = 2;
@@ -411,14 +457,13 @@ function wealth(home: Home, numbers: HomeNumbers, top: float32, more: Banner[]):
 	] : [
 		{ text: "PREVIEW HARVEST", colour: HOLO_BLUE },
 		{ text: groupedAmount(numbers.harvest), colour: INK_BRIGHT },
-		{ text: "+" + groupedAmount(STAND_IN_HARVEST_PER_DAY), colour: HOLO_GREEN },
 	];
 	const rows: Banner[] = [
-		{ words: harvest },
 		{ words: [
 			{ text: numbers.live ? "BURROW" : "PREVIEW BURROW", colour: HOLO_BLUE },
 			{ text: numbers.live ? hbrnAmount(numbers.burrow) : groupedAmount(numbers.burrow), colour: INK_BRIGHT },
 		] },
+		{ words: harvest },
 	];
 	for (const row of more) { rows.push(row); }
 	return banners(home.ui, home.kit, BANNERS_ID, BANNERS_LEFT_PADDING, top, rows);
@@ -430,25 +475,34 @@ function growthActive(pet: GamePet): boolean {
 }
 
 function petBanners(pet: GamePet): Banner[] {
-	const rows: Banner[] = [{ words: [
+	return [{ words: [
 		{ text: "GIFT", colour: HOLO_BLUE },
 		{ text: hbrnAmount(giftOwedToOwner(pet)), colour: INK_BRIGHT },
 	] }];
-	if (growthActive(pet)) {
-		rows.push({ words: [
-			{ text: "GROWTH", colour: HOLO_BLUE },
-			{ text: "+" + (((pet.growthMultiplierBps - BPS) / 100) as int32).toString() + "%", colour: HOLO_GREEN },
-		] });
-	}
-	return rows;
+}
+
+// Right of the BURROW row while a growth dose is working.
+function growthBanner(home: Home, pet: GamePet, left: float32): void {
+	if (!growthActive(pet)) { return; }
+	banner(home.ui, home.kit, GROWTH_ID, BannerArt.Display, left, COLUMNS_TOP + BANNER_STEP * (BURROW_ROW as float32), [
+		{ text: "GROWTH", colour: HOLO_BLUE },
+		{ text: "+" + (((pet.growthMultiplierBps - BPS) / 100) as int32).toString() + "%", colour: HOLO_GREEN },
+	]);
+}
+
+// Right of the HARVEST row: what one full day pays at today's World.
+function incomeBanner(home: Home, amount: string, left: float32): void {
+	banner(home.ui, home.kit, INCOME_ID, BannerArt.Display, left, COLUMNS_TOP + BANNER_STEP * (HARVEST_ROW as float32), [
+		{ text: "INCOME", colour: HOLO_BLUE },
+		{ text: "+" + amount, colour: HOLO_GREEN },
+	]);
 }
 
 // Right of the GIFT row, only while there is a gift to take or a claim to report on; orange while it can be pressed.
 function claimBanner(home: Home, pet: GamePet, left: float32, y: float32): void {
 	const step: GiftStep = giftStep(pet);
 	const outcome: OwnerActionOutcome = ownerActionOutcome();
-	const status: string = home.giftAsked ? giftStatus(outcome) : "";
-	if (step == GiftStep.Nothing && status == "") { return; }
+	if (step == GiftStep.Nothing) { return; }
 	const enabled: boolean = step != GiftStep.Nothing && !(home.giftAsked && summonInFlight(outcome));
 	const label: string = match (step) {
 		GiftStep.Nothing => "CLAIM",
@@ -462,11 +516,7 @@ function claimBanner(home: Home, pet: GamePet, left: float32, y: float32): void 
 	const height: float32 = pieceHeight(home.kit, "bannerBody");
 	if (pressable(home.ui, subId(CLAIM_ID, 15), left, y, right - left, height) && enabled) {
 		home.giftAsked = true;
-		requestOwnerAction(OwnerAction.ClaimReward, 0, 0);
-	}
-	if (status != "") {
-		say(home.ui, home.kit, CLAIM_STATUS_ID, status, BANNERS_LEFT_PADDING + 8.0, y + height + 2.0, DESIGN_W * 0.6,
-			CLAIM_STATUS_SIZE, HOLO_BLUE, 0.0);
+		requestOwnerAction(OwnerAction.ClaimReward, 0);
 	}
 }
 
@@ -588,21 +638,48 @@ function liveActivities(home: Home, block: NeighbourBlock): PetActivity[] {
 	return [{ day: 0, glyph: "lock", line: "NO FIGHTS OR CHANGES SEEN YET", amount: 0, slot: NO_NEIGHBOUR }];
 }
 
+function toastOutcome(home: Home, outcome: OwnerActionOutcome, status: string): void {
+	if (status == "") { return; }
+	pushToast(home.toasts, status, outcome != OwnerActionOutcome.SentPending && outcome != OwnerActionOutcome.Requested
+		&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead);
+}
+
+function settled(outcome: OwnerActionOutcome): boolean {
+	return outcome != OwnerActionOutcome.Requested && outcome != OwnerActionOutcome.SentPending;
+}
+
 // Each change of the Buy outcome after a Purchase tap is told once, as a toast.
 function followPurchase(home: Home): void {
 	const outcome = ownerActionOutcome();
 	if (!home.buyAsked || outcome == home.buyOutcome) { return; }
 	home.buyOutcome = outcome;
-	const status: string = buyStatus(outcome);
-	if (status != "") {
-		pushToast(home.toasts, status, outcome != OwnerActionOutcome.SentPending && outcome != OwnerActionOutcome.Requested
-			&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead);
-	}
-	if (outcome != OwnerActionOutcome.Requested && outcome != OwnerActionOutcome.SentPending) { home.buyAsked = false; }
+	toastOutcome(home, outcome, buyStatus(outcome));
+	if (settled(outcome)) { home.buyAsked = false; }
+}
+
+// The same for a gift Claim tap.
+function followGift(home: Home): void {
+	const outcome = ownerActionOutcome();
+	if (!home.giftAsked || outcome == home.giftOutcome) { return; }
+	home.giftOutcome = outcome;
+	toastOutcome(home, outcome, giftStatus(outcome));
+	if (settled(outcome)) { home.giftAsked = false; }
+}
+
+// Registered before the widgets over the area, so a press that starts on one of them belongs to it.
+function pageGesture(home: Home, top: float32, bottom: float32): Gesture {
+	if (!pressable(home.ui, PAGE_GESTURE_ID, 0.0, top, DESIGN_W, bottom - top)) { return Gesture.None; }
+	const ui = home.ui;
+	return gestureOf(home.taps, ui.pressX, ui.pressY, ui.releaseX, ui.releaseY, performance.now() / 1000.0);
 }
 
 function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds: float32): void {
 	const block = currentNeighbourBlock();
+	const gesturesTop: float32 = TITLE_TOP + TITLE_ROW + VISIT_REACH;
+	const gesturesBottom: float32 = DESIGN_H - HOTBAR_HEIGHT - HOTBAR_BOTTOM_PADDING + hotbarTopEdge();
+	home.pageGesture = block.ok && canVisit(block.value) && !home.shopOpen && !home.treeShown
+		? pageGesture(home, gesturesTop, gesturesBottom)
+		: Gesture.None;
 	if (block.ok) {
 		const visiting = visitedNeighbour(home.visit, block.value);
 		if (visiting.ok) {
@@ -611,9 +688,11 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 		}
 	}
 	const live = currentLivePet();
-	home.inventory = live.ok ? liveInventory(live.value) : STAND_IN_INVENTORY;
+	home.inventory = live.ok ? liveInventory(live.value) : previewInventory();
 	if (live.ok) { notePetChanges(home, live.value); }
 	followPurchase(home);
+	followGift(home);
+	home.ui.blockBase = home.shopOpen;
 	const numbers: HomeNumbers = homeNumbers(home);
 	const heartMeterShare: Result<float32, HeartCountError> = heartShare(numbers.hearts, numbers.maxHearts);
 	if (!heartMeterShare.ok) {
@@ -622,13 +701,11 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	}
 	const barTop: float32 = DESIGN_H - HOTBAR_HEIGHT - HOTBAR_BOTTOM_PADDING;
 	const tapped: HotbarTap = hotbar(home.ui, home.kit, HOTBAR_ID, barTop, numbers.level, numbers.xp, numbers.xpToNext,
-		home.inventory, true);
+		home.inventory, slotRarities(live.ok ? live.value.gear : previewGear()), true);
 	const heldItem: int32 = tapped.held != NO_SLOT && home.inventory[tapped.held] != EMPTY_SLOT ? tapped.held : NO_SLOT;
 	if (heldItem != NO_SLOT) {
 		itemPeek(home.ui, home.kit, ITEM_CARD_ID, hotbarSlotCentreX(home.kit, heldItem), barTop + hotbarTopEdge() - ITEM_CARD_GAP,
 			slotCard(home, heldItem));
-	} else if (home.shopOpen) {
-		shop(home, barTop);
 	}
 	match (tapped.kind) {
 		HotbarTapKind.Nothing => {},
@@ -636,14 +713,19 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	};
 	if (!home.treeShown) { aboveHead(home, petHead, heartMeterShare.value, numbers.bonding, seconds); }
 	characterStats(home.ui, home.kit, CHARACTER_ID, DESIGN_W - COLUMN_RIGHT_PADDING, COLUMNS_TOP, numbers.character);
-	const wallpaperTop: float32 = COLUMNS_TOP + STAT_COLUMN_HEIGHT + CHARACTER_STATS_GAP;
+	const treeToggleTop: float32 = COLUMNS_TOP + STAT_COLUMN_HEIGHT + CHARACTER_STATS_GAP;
+	const wallpaperTop: float32 = treeToggleTop + STACKED_ROW_HEIGHT;
 	// One action for both: the system picker asks for the home screen, the lock screen or both.
 	if (toggleRow(home.ui, home.kit, WALLPAPER_ACTION_ID, DESIGN_W - COLUMN_RIGHT_PADDING, wallpaperTop, STACKED_ROW_HEIGHT,
 		WALLPAPER_LABEL, wallpaperPlace() != WallpaperPlace.Off, true)) {
 		requestWallpaperPicker();
 	}
+	// Gone once Android lets the news through; turning it off again is Android's Settings.
+	if (numbers.live && !petNewsAllowed() && toggleRow(home.ui, home.kit, PET_NEWS_ID, DESIGN_W - COLUMN_RIGHT_PADDING,
+		wallpaperTop + STACKED_ROW_HEIGHT, STACKED_ROW_HEIGHT, PET_NEWS_LABEL, false, true)) {
+		requestPetNews();
+	}
 	if (home.treeShown) { skillTree(home, numbers.character, barTop, numbers.live); }
-	const treeToggleTop: float32 = wallpaperTop + STACKED_ROW_HEIGHT;
 	const treeLabel: string = numbers.live ? "SKILL TREE" : TREE_LABEL;
 	if (toggleRow(home.ui, home.kit, TREE_TOGGLE_ID, DESIGN_W - COLUMN_RIGHT_PADDING, treeToggleTop, STACKED_ROW_HEIGHT, treeLabel,
 		home.treeShown, true)) {
@@ -653,6 +735,13 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	titleName(home, numbers.name.toUpperCase(), characterLeaning(numbers.character));
 	const none: Banner[] = [];
 	const rights: float32[] = wealth(home, numbers, COLUMNS_TOP, live.ok ? petBanners(live.value) : none);
+	if (!home.treeShown) {
+		const income: Result<uint64, IncomeUnknown> = live.ok ? dailyIncome(live.value) : Result.ok(STAND_IN_HARVEST_PER_DAY);
+		if (income.ok) {
+			incomeBanner(home, live.ok ? hbrnAmount(income.value) : groupedAmount(income.value), rights[HARVEST_ROW] + CLAIM_GAP);
+		}
+		if (live.ok) { growthBanner(home, live.value, rights[BURROW_ROW] + CLAIM_GAP); }
+	}
 	if (live.ok && !home.treeShown) {
 		claimBanner(home, live.value, rights[GIFT_ROW] + CLAIM_GAP, COLUMNS_TOP + BANNER_STEP * (GIFT_ROW as float32));
 	}
@@ -665,6 +754,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 			ACTIVITY_LOG_X, logBottom, ACTIVITY_LOG_WIDTH, seconds,
 		);
 	}
+	if (home.shopOpen && heldItem == NO_SLOT) { shop(home, barTop); }
 	drawToasts(home.ui, home.kit, 60, home.toasts, 16.0, TOASTS_Y, 328.0);
 }
 
@@ -703,12 +793,16 @@ function arrowButton(home: Home, id: int32, art: string, x: float32): boolean {
 	return visitPress(home, id, x, VISIT_BUTTON);
 }
 
-// < and > walk the owner's home and the living neighbours' homes; a tap on a neighbour's name goes back home.
+// < and > walk the owner's home and the living neighbours' homes, as a swipe on the empty middle does; a tap on a
+// neighbour's name or a double tap there goes back home.
 function visitButtons(home: Home, block: NeighbourBlock): void {
 	if (!canVisit(block)) { return; }
-	const backHome: boolean = home.visit.seat != HOME_SEAT && visitPress(home, VISIT_HOME_ID, NAME_FIELD_LEFT, NAME_FIELD_WIDTH);
-	const previous: boolean = arrowButton(home, VISIT_PREVIOUS_ID, "onboardingPrevious", VISIT_LEFT);
-	const next: boolean = arrowButton(home, VISIT_NEXT_ID, "onboardingNext", NEXT_BUTTON_X);
+	const gesture: Gesture = home.pageGesture;
+	const backHome: boolean = (home.visit.seat != HOME_SEAT && visitPress(home, VISIT_HOME_ID, NAME_FIELD_LEFT, NAME_FIELD_WIDTH))
+		|| gesture == Gesture.DoubleTap;
+	const previous: boolean = arrowButton(home, VISIT_PREVIOUS_ID, "onboardingPrevious", VISIT_LEFT)
+		|| gesture == Gesture.SwipeRight;
+	const next: boolean = arrowButton(home, VISIT_NEXT_ID, "onboardingNext", NEXT_BUTTON_X) || gesture == Gesture.SwipeLeft;
 	if (!backHome && !previous && !next) { return; }
 	if (backHome) { visitHome(home.visit); } else { stepVisit(home.visit, block, next); }
 	closeShop(home);
@@ -731,7 +825,8 @@ function neighbourFrame(home: Home, block: NeighbourBlock, seat: GameNeighbour, 
 	const barTop: float32 = DESIGN_H - HOTBAR_HEIGHT - HOTBAR_BOTTOM_PADDING;
 	const inventory: string[] = neighbourInventory(seat);
 	// The Pet account keeps no XP to the next level for a neighbour's bar to show.
-	const tapped: HotbarTap = hotbar(home.ui, home.kit, HOTBAR_ID, barTop, seat.level, 0, 0, inventory, false);
+	const tapped: HotbarTap = hotbar(home.ui, home.kit, HOTBAR_ID, barTop, seat.level, 0, 0, inventory,
+		slotRarities(seat.gear), false);
 	const heldItem: int32 = tapped.held != NO_SLOT && inventory[tapped.held] != EMPTY_SLOT ? tapped.held : NO_SLOT;
 	if (heldItem != NO_SLOT) {
 		itemPeek(home.ui, home.kit, ITEM_CARD_ID, hotbarSlotCentreX(home.kit, heldItem), barTop + hotbarTopEdge() - ITEM_CARD_GAP,
@@ -768,7 +863,14 @@ function neighbourFrame(home: Home, block: NeighbourBlock, seat: GameNeighbour, 
 
 
 // The wallpaper and the lock screen: the scene and the harvest and burrow, nothing to tap.
-export function frameHudWallpaper(): void {
+const WALLPAPER_TITLE_WIDTH: float32 = 300.0;
+const WALLPAPER_LEVEL_SIZE: float32 = 11.0;
+const WALLPAPER_LEVEL_ROW: float32 = 12.0;
+// Where onboarding puts a dead Pet's name and line under its hologram.
+const MOURNED_NAME_Y: float32 = 463.0;
+const MOURNED_LINE_Y: float32 = 504.0;
+
+export function frameHudWallpaper(petHead: Result<PetHead, PetHeadHidden>, seconds: float32): void {
 	if ((homes.length as int32) == 0) {
 		return;
 	}
@@ -777,14 +879,46 @@ export function frameHudWallpaper(): void {
 	if (live.ok) { notePetChanges(home, live.value); }
 	beginUi(home.ui);
 	beginKit(home.kit);
+	// A dead Pet shows as the app's death screen does: grey under its name, no stand-in numbers.
+	const mourned = mournedPet();
+	if (mourned.ok) {
+		say(home.ui, home.kit, PET_NAME_ID, mournedName(mourned.value).toUpperCase(), 0.0, MOURNED_NAME_Y, DESIGN_W, 16.0,
+			INK_BRIGHT, 0.5);
+		say(home.ui, home.kit, PET_REGION_ID, mournedLine(mourned.value.mourning), 0.0, MOURNED_LINE_Y, DESIGN_W, 8.0,
+			HOLO_BLUE, 0.5);
+		endKit(home.kit);
+		endUi(home.ui);
+		return;
+	}
 	const numbers: HomeNumbers = homeNumbers(home);
-	const top: float32 = (DESIGN_H - TITLE_HEIGHT - bannersHeight(home.kit, WEALTH_ROWS)) * 0.5;
+	const titleHeight: float32 = TITLE_HEIGHT + WALLPAPER_LEVEL_ROW;
+	const top: float32 = (DESIGN_H - titleHeight - bannersHeight(home.kit, WEALTH_ROWS)) * 0.5;
 	if (numbers.name != "") {
-		say(home.ui, home.kit, PET_NAME_ID, numbers.name.toUpperCase(), BANNERS_LEFT_PADDING + 8.0, top + PET_NAME_Y, 240.0,
-			PET_NAME_SIZE, INK_BRIGHT, 0.0);
+		const name: string = numbers.name.toUpperCase();
+		const natural: float32 = measure(home.kit, name, PET_NAME_SIZE).width;
+		const size: float32 = natural > WALLPAPER_TITLE_WIDTH ? PET_NAME_SIZE * WALLPAPER_TITLE_WIDTH / natural : PET_NAME_SIZE;
+		say(home.ui, home.kit, PET_NAME_ID, name, BANNERS_LEFT_PADDING + 8.0, top + PET_NAME_Y, WALLPAPER_TITLE_WIDTH + 2.0,
+			size, INK_BRIGHT, 0.0);
+		say(home.ui, home.kit, PET_REGION_ID, "LEVEL " + numbers.level.toString(), BANNERS_LEFT_PADDING + 8.0,
+			top + PET_NAME_Y + PET_NAME_SIZE * 1.1, WALLPAPER_TITLE_WIDTH, WALLPAPER_LEVEL_SIZE, INK_BRIGHT, 0.0);
 	}
 	const none: Banner[] = [];
-	wealth(home, numbers, top + TITLE_HEIGHT, none);
+	wealth(home, numbers, top + titleHeight, none);
+	const hearts: Result<float32, HeartCountError> = heartShare(numbers.hearts, numbers.maxHearts);
+	if (live.ok && hearts.ok) { aboveHead(home, petHead, hearts.value, numbers.bonding, seconds); }
+	endKit(home.kit);
+	endUi(home.ui);
+}
+
+export function frameHudWaiting(status: string): void {
+	if ((homes.length as int32) == 0) {
+		return;
+	}
+	const home: Home = homes[0];
+	beginUi(home.ui);
+	beginKit(home.kit);
+	home.ui.blockBase = false;
+	waitingLine(home.ui, home.kit, 3000, status);
 	endKit(home.kit);
 	endUi(home.ui);
 }
