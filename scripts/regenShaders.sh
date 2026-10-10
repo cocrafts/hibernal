@@ -13,4 +13,5 @@ case "$(uname -s)-$(uname -m)" in
 esac
 [ -x "$SHDC" ] || { echo "regenShaders.sh: no sokol-shdc at $SHDC (scripts/fetchVoid.sh fetches void)" >&2; exit 1; }
 
+"$SHDC" -i vendor/void/src/void3d/pixelArt3d.glsl -o vendor/void/src/void3d/pixelArt3d.glsl.h -l "metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5" -f sokol
 "$SHDC" -i native/hud/hudPost.glsl -o native/hud/hudPost.glsl.h -l "metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5" -f sokol

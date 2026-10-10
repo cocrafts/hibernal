@@ -6,17 +6,15 @@ Subject: [PATCH 2/2] feat(void3d): ramp programs with fire falloff, wind and
 
 ---
  scripts/regen-shaders.sh       |   1 +
- src/test/programMapCheck.ms    |   6 +-
  src/void3d/draw.ms             |   8 +
  src/void3d/gpu3d.c             |  21 +-
- src/void3d/gpu3d.h             |   4 +-
- src/void3d/gpu3d.ms            |   7 +-
- src/void3d/pixelArt3d.glsl     |  74 +++++
- src/void3d/pixelArtRenderer.ms |  27 +-
- src/void3d/ramp3d.glsl         | 499 +++++++++++++++++++++++++++++++++
+ src/void3d/gpu3d.h             |   2 +-
+ src/void3d/gpu3d.ms            |   2 +
+ src/void3d/pixelArt3d.glsl     |  86 ++++++-
+ src/void3d/pixelArtRenderer.ms |  27 ++-
+ src/void3d/ramp3d.glsl         | 499 +++++++++++++++++++++++++++++++++++++++++
  src/void3d/shader3dBlocks.glsl |  17 ++
- 10 files changed, 655 insertions(+), 9 deletions(-)
- create mode 100644 src/void3d/ramp3d.glsl
+ 9 files changed, 656 insertions(+), 7 deletions(-)
 
 diff --git a/scripts/regen-shaders.sh b/scripts/regen-shaders.sh
 index 865d254..eef8b35 100755
@@ -30,35 +28,11 @@ index 865d254..eef8b35 100755
  "$SHDC" -i tests/integration/gpuCopy.glsl -o tests/integration/gpuCopy.glsl.h -l "$LANGS_IOS" -f sokol
  
  echo "OK: shader headers regenerated"
-diff --git a/src/test/programMapCheck.ms b/src/test/programMapCheck.ms
-index 1879e1c..1386984 100644
---- a/src/test/programMapCheck.ms
-+++ b/src/test/programMapCheck.ms
-@@ -61,6 +61,8 @@ const EVERY_PROGRAM: Vec<Program> = [
- 	Program.PixelArtBlit,
- 	Program.LitTextured,
- 	Program.PixelArtLitTextured,
-+	Program.LitRamp,
-+	Program.BillboardRamp,
- ];
- 
- function drawnAs(map: ProgramMap, named: Program): Program {
-@@ -135,7 +137,9 @@ test "the pixel-art preset draws its own programs in place of the ones materials
- 	assert drawnAs(preset, Program.Particle) == Program.PixelArtParticle;
- 	assert drawnAs(preset, Program.Billboard) == Program.PixelArtBillboard;
- 	assert drawnAs(preset, Program.LitTextured) == Program.PixelArtLitTextured;
--	assert namedCount(preset) == 4;
-+	assert drawnAs(preset, Program.LitRamp) == Program.LitRamp;
-+	assert drawnAs(preset, Program.BillboardRamp) == Program.BillboardRamp;
-+	assert namedCount(preset) == 6;
- 	assert !preset.draws(Program.PixelArtLit) && !preset.draws(Program.Copy);
- 	assert !preset.draws(Program.PixelArtBillboard);
- }
 diff --git a/src/void3d/draw.ms b/src/void3d/draw.ms
-index fe2a019..dffee15 100644
+index e52eb7a..f3f9607 100644
 --- a/src/void3d/draw.ms
 +++ b/src/void3d/draw.ms
-@@ -417,6 +417,14 @@ export function billboards(
+@@ -418,6 +418,14 @@ export function billboards(
  	return quadMesh(VertexLayout.Billboard, instanceBuffer, instanceCount, 0, EXTERNAL_GENERATION);
  }
  
@@ -74,7 +48,7 @@ index fe2a019..dffee15 100644
  	return mesh.vertexBuffer == 0 && mesh.vertexCount == QUAD_VERTEX_COUNT &&
  		(mesh.instanceBuffer != 0 || mesh.instanceCount == 0);
 diff --git a/src/void3d/gpu3d.c b/src/void3d/gpu3d.c
-index ea79ecd..20573fe 100644
+index 0c5c7f1..a079958 100644
 --- a/src/void3d/gpu3d.c
 +++ b/src/void3d/gpu3d.c
 @@ -3,6 +3,7 @@
@@ -85,17 +59,17 @@ index ea79ecd..20573fe 100644
  #include <stdio.h>
  #include <stdlib.h>
  
-@@ -22,6 +23,8 @@ static const ShaderDescription PROGRAMS[] = {
- 	pixelArt_blit_shader_desc,
- 	litTextured_shader_desc,
+@@ -24,6 +25,8 @@ static const ShaderDescription PROGRAMS[] = {
  	pixelArt_litTextured_shader_desc,
+ 	unlitTextured_shader_desc,
+ 	pixelArt_unlitTextured_shader_desc,
 +	ramp_lit_shader_desc,
 +	ramp_billboard_shader_desc,
  };
  
  // ---- vertex layouts, one per VertexLayout member ----
-@@ -51,6 +54,8 @@ static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {
- 	LAYOUT_FULLSCREEN,
+@@ -55,6 +58,8 @@ static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {
+ 	LAYOUT_LIT_TEXTURED,
  	LAYOUT_LIT_TEXTURED,
  	LAYOUT_LIT_TEXTURED,
 +	LAYOUT_LIT,
@@ -103,7 +77,7 @@ index ea79ecd..20573fe 100644
  };
  
  static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
-@@ -96,8 +101,10 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
+@@ -100,8 +105,10 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
  _Static_assert(sizeof(PROGRAMS) / sizeof(PROGRAMS[0]) == GPU3D_PROGRAM_TABLE_LENGTH,
  	"PROGRAMS must match Program in gpu3d.ms");
  _Static_assert(ATTR_pixelArt_lit_position == ATTR_lit_position && ATTR_pixelArt_lit_normal == ATTR_lit_normal
@@ -116,7 +90,7 @@ index ea79ecd..20573fe 100644
  	"every Particle-layout program must declare the core particle attributes");
  _Static_assert(ATTR_pixelArt_billboard_position == ATTR_billboard_position
  	&& ATTR_pixelArt_billboard_size == ATTR_billboard_size && ATTR_pixelArt_billboard_anchor == ATTR_billboard_anchor
-@@ -129,6 +136,16 @@ _Static_assert(sizeof(pixelArt_vertexParams_t) == sizeof(vertexParams_t)
+@@ -149,6 +156,16 @@ _Static_assert(sizeof(pixelArt_vertexParams_t) == sizeof(vertexParams_t)
  	&& UB_pixelArt_modelParams == UB_modelParams && UB_pixelArt_materialParams == UB_materialParams
  	&& UB_pixelArt_billboardParams == UB_billboardParams,
  	"both shader files must take the blocks of shader3dBlocks.glsl");
@@ -134,57 +108,76 @@ index ea79ecd..20573fe 100644
  static int32_t g_programBase = -1;
  static int32_t g_layoutBase = -1;
 diff --git a/src/void3d/gpu3d.h b/src/void3d/gpu3d.h
-index 4ac05f5..f3d7238 100644
+index 7ad23f0..470c297 100644
 --- a/src/void3d/gpu3d.h
 +++ b/src/void3d/gpu3d.h
 @@ -11,7 +11,7 @@
  #include <stdint.h>
  
  // void3d's programs, in Program's order (gpu3d.ms): what gpu3d.c registers with the door.
--#define GPU3D_PROGRAM_TABLE_LENGTH 11
-+#define GPU3D_PROGRAM_TABLE_LENGTH 13
+-#define GPU3D_PROGRAM_TABLE_LENGTH 13
++#define GPU3D_PROGRAM_TABLE_LENGTH 15
  
  // Bindings: 0 leaves a slot empty. View and sampler slots are the `binding=` numbers in
  // shader3d.glsl and pixelArt3d.glsl.
-@@ -21,7 +21,7 @@ static const int32_t GPU3D_BINDING_VIEW = 3; // four
- static const int32_t GPU3D_BINDING_SAMPLER = 7; // two
- static const int32_t GPU3D_BINDING_LENGTH = 9;
- 
--// Registers void3d's five layouts and eleven programs with the door on first call and answers
-+// Registers void3d's five layouts and thirteen programs with the door on first call and answers
- // the first id of each. Called once at module load (gpu3d.ms); ids depend on registration
- // order, so nothing may assume they start at 0.
- int32_t gpu3dProgramBase(void);
 diff --git a/src/void3d/gpu3d.ms b/src/void3d/gpu3d.ms
-index 27a5174..6bcf921 100644
+index 94928cb..bbf191c 100644
 --- a/src/void3d/gpu3d.ms
 +++ b/src/void3d/gpu3d.ms
-@@ -48,8 +48,9 @@ export function doorLayout(layout: VertexLayout): int32 {
- 	return layoutBase + (layout as int32);
- }
- 
--// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in the
--// order gpu3d.c registers them. Materials name Lit, Particle, Billboard and LitTextured.
-+// One per @program in shader3d.glsl (the core's), pixelArt3d.glsl (the preset's) and
-+// ramp3d.glsl, in the order gpu3d.c registers them. Materials name Lit, Particle, Billboard,
-+// LitTextured, LitRamp and BillboardRamp.
- export enum Program {
- 	Lit,
- 	Particle,
-@@ -62,6 +63,8 @@ export enum Program {
- 	PixelArtBlit,
- 	LitTextured,
+@@ -62,6 +62,8 @@ export enum Program {
  	PixelArtLitTextured,
+ 	UnlitTextured,
+ 	PixelArtUnlitTextured,
 +	LitRamp,
 +	BillboardRamp,
  }
  
  // Vertex buffer layouts gpu3d.c describes (describeLayout).
 diff --git a/src/void3d/pixelArt3d.glsl b/src/void3d/pixelArt3d.glsl
-index f3db5d1..1bdde7c 100644
+index 6763f34..510dd7d 100644
 --- a/src/void3d/pixelArt3d.glsl
 +++ b/src/void3d/pixelArt3d.glsl
-@@ -195,8 +195,15 @@ layout(binding=0) uniform postParams {
+@@ -23,11 +23,13 @@ out vec3 worldPosition;
+ out vec3 worldNormal;
+ out vec4 baseColor;
+ out float depth01;
++out vec3 viewDirection;
+ void main() {
+     vec4 world = model * vec4(position, 1.0);
+     worldPosition = world.xyz;
+     worldNormal = mat3(normalModel) * normal;
+     baseColor = color;
++    viewDirection = normalize(cross(cameraRight.xyz, cameraUp.xyz));
+     gl_Position = viewProj * world;
+     // PENDING3D: pixel-art-depth-orthographic
+     depth01 = gl_Position.z;
+@@ -45,17 +47,23 @@ in vec3 worldPosition;
+ in vec3 worldNormal;
+ in vec4 baseColor;
+ in float depth01;
++in vec3 viewDirection;
+ layout(location=0) out vec4 fragColor;
+ layout(location=1) out vec4 fragNormal;
+ void main() {
+     vec3 n = facingNormal(normalize(worldNormal), material.z);
+     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+-    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
++    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert + vec3(max(-material.w, 0.0));
++    vec3 sheen = srgbToLinear(dirColor.rgb) * dirLight.w * step(0.9, dot(n, normalize(dirLight.xyz + viewDirection)));
+     for (int i = 0; i < int(ambient.a + 0.5); i++) {
+         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
++        vec3 toLight = pointLight[i].xyz - worldPosition;
++        float falloff = clamp(1.0 - length(toLight) / pointColor[i].a, 0.0, 1.0);
++        sheen += srgbToLinear(pointColor[i].rgb) * pointLight[i].w * falloff
++            * step(0.9, dot(n, normalize(normalize(toLight) + viewDirection)));
+     }
+     vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
+-    fragColor = vec4(linearToSrgb(surface * light), baseColor.a);
++    fragColor = vec4(linearToSrgb(surface * light + sheen * max(material.w, 0.0)), baseColor.a);
+     fragNormal = vec4(n * 0.5 + 0.5, depth01);
+ }
+ @end
+@@ -237,8 +245,15 @@ layout(binding=0) uniform postParams {
      vec4 features;
      vec4 depthUnpack;
      vec4 colorAdjust;
@@ -200,7 +193,7 @@ index f3db5d1..1bdde7c 100644
  
  vec4 fetchNormal(ivec2 p, ivec2 size) {
      return texelFetch(sampler2D(normalTexture, pointSampler), clamp(p, ivec2(0, 0), size - ivec2(1, 1)), 0);
-@@ -223,6 +230,69 @@ vec3 paletteColor(vec3 rgb) {
+@@ -265,6 +280,69 @@ vec3 paletteColor(vec3 rgb) {
      return texelFetch(sampler2D(paletteTexture, pointSampler), cell, 0).rgb;
  }
  
@@ -270,7 +263,7 @@ index f3db5d1..1bdde7c 100644
  void main() {
      ivec2 size = textureSize(sampler2D(colorTexture, pointSampler), 0);
      ivec2 p = ivec2(gl_FragCoord.xy);
-@@ -251,6 +321,10 @@ void main() {
+@@ -293,6 +371,10 @@ void main() {
      }
      float haze = smoothstep(fog.x, fog.y, centerDepth) * fog.z;
      rgb = mix(rgb, fogColor.rgb, haze);
@@ -282,7 +275,7 @@ index f3db5d1..1bdde7c 100644
      if (features.y > 0.5) {
          rgb = paletteColor(rgb);
 diff --git a/src/void3d/pixelArtRenderer.ms b/src/void3d/pixelArtRenderer.ms
-index 676317d..b304537 100644
+index 4355dad..8fca154 100644
 --- a/src/void3d/pixelArtRenderer.ms
 +++ b/src/void3d/pixelArtRenderer.ms
 @@ -86,9 +86,12 @@ export const RAMP_LEVELS: int32 = 0;
@@ -299,18 +292,18 @@ index 676317d..b304537 100644
  
  // What the scene pass draws for the programs materials name.
  export function pixelArtPrograms(): ProgramMap {
-@@ -96,7 +99,9 @@ export function pixelArtPrograms(): ProgramMap {
- 		.drawing(Program.Lit, Program.PixelArtLit)
+@@ -97,7 +100,9 @@ export function pixelArtPrograms(): ProgramMap {
  		.drawing(Program.Particle, Program.PixelArtParticle)
  		.drawing(Program.Billboard, Program.PixelArtBillboard)
--		.drawing(Program.LitTextured, Program.PixelArtLitTextured);
-+		.drawing(Program.LitTextured, Program.PixelArtLitTextured)
+ 		.drawing(Program.LitTextured, Program.PixelArtLitTextured)
+-		.drawing(Program.UnlitTextured, Program.PixelArtUnlitTextured);
++		.drawing(Program.UnlitTextured, Program.PixelArtUnlitTextured)
 +		.drawing(Program.LitRamp, Program.LitRamp)
 +		.drawing(Program.BillboardRamp, Program.BillboardRamp);
  }
  
  // The preset's passes, in the order a frame runs them.
-@@ -193,6 +198,7 @@ export interface PixelArtRenderer {
+@@ -194,6 +199,7 @@ export interface PixelArtRenderer {
  	blitBlock: UniformBlock;
  	postValues: Vec<float32>;
  	blitValues: Vec<float32>;
@@ -318,7 +311,7 @@ index 676317d..b304537 100644
  	postMaterial: MaterialId;
  	blitMaterial: MaterialId;
  	// The view the last frame drew.
-@@ -236,6 +242,8 @@ const NO_VIEW: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offse
+@@ -237,6 +243,8 @@ const NO_VIEW: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offse
  const POST_FEATURES: int32 = 12;
  const POST_DEPTH_UNPACK: int32 = 16;
  const POST_COLOR_ADJUST: int32 = 20;
@@ -327,7 +320,7 @@ index 676317d..b304537 100644
  
  // Hibernal's numbers are the defaults: 360 texels across the short side (360x800 at 3x on
  // 1080x2400), outline on, palette off until one is set.
-@@ -369,6 +377,7 @@ export function create(
+@@ -370,6 +378,7 @@ export function create(
  		blitBlock: blitBlock,
  		postValues: new Array(POST_UNIFORM_LENGTH),
  		blitValues: new Array(BLIT_UNIFORM_LENGTH),
@@ -335,12 +328,12 @@ index 676317d..b304537 100644
  		postMaterial: post.value,
  		blitMaterial: blit.value,
  		view: NO_VIEW,
-@@ -383,6 +392,15 @@ export function setSettings(renderer: PixelArtRenderer, settings: PixelArtSettin
+@@ -384,6 +393,15 @@ export function setSettings(renderer: PixelArtRenderer, settings: PixelArtSettin
  	renderer.core.changed = true;
  }
  
 +// GLOW_LENGTH floats in postFs order: glow, glowShape, glowColor, glowMist, glowVeil, glowFlat.
-+export function setGlow(renderer: PixelArtRenderer, values: Span<float32>): void {
++export function setGlow(renderer: PixelArtRenderer, values: Readonly<Span<float32>>): void {
 +	if (renderer.closed) { stopOnClosed("setGlow"); }
 +	for (let i = 0; i < GLOW_LENGTH; i++) {
 +		renderer.glow[i] = values[i];
@@ -351,16 +344,16 @@ index 676317d..b304537 100644
  export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
  	if (renderer.closed) { stopOnClosed("setLook"); }
  	renderer.look = look;
-@@ -550,6 +568,8 @@ function rampsHaveLevels(
- 			Program.PixelArtPost => true,
- 			Program.PixelArtBlit => true,
+@@ -553,6 +571,8 @@ function rampsHaveLevels(
  			Program.LitTextured => true,
+ 			Program.UnlitTextured => true,
+ 			Program.PixelArtUnlitTextured => true,
 +			Program.LitRamp => true,
 +			Program.BillboardRamp => true,
  		};
  		if (!held) { return false; }
  	}
-@@ -602,6 +622,9 @@ export function prepareFrame(
+@@ -605,6 +625,9 @@ export function prepareFrame(
  		depthZeroToOne(),
  		renderer.postValues,
  	);
@@ -876,10 +869,10 @@ index 0000000..6a9d43a
 +@program lit litRampVs litRampFs
 +@program billboard billboardRampVs billboardRampFs
 diff --git a/src/void3d/shader3dBlocks.glsl b/src/void3d/shader3dBlocks.glsl
-index 96adbfb..ab8534c 100644
+index 0d1a8d4..583b58f 100644
 --- a/src/void3d/shader3dBlocks.glsl
 +++ b/src/void3d/shader3dBlocks.glsl
-@@ -94,3 +94,20 @@ layout(binding=1) uniform lightParams {
+@@ -107,3 +107,20 @@ layout(binding=1) uniform lightParams {
  };
  
  @end
@@ -900,6 +893,3 @@ index 96adbfb..ab8534c 100644
 +    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 +}
 +@end
--- 
-2.53.0
-

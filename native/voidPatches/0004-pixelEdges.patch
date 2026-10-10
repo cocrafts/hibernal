@@ -1,0 +1,225 @@
+From: Hibernal <hibernal@localhost>
+Subject: [PATCH 4/4] feat(void3d): coherent toon shading and convex pixel edges
+
+---
+diff --git a/src/void3d/pixelEdgeGeometry.ms b/src/void3d/pixelEdgeGeometry.ms
+new file mode 100644
+--- /dev/null
++++ b/src/void3d/pixelEdgeGeometry.ms
+@@ -0,0 +1,80 @@
++import { vec3, length } from "../math/math3d";
++
++export const EDGE_GEOMETRY_UNIFORM_LENGTH: int32 = 16;
++
++export function writeEdgeGeometry(
++	camera: Readonly<Span<float32>>,
++	lights: Readonly<Span<float32>>,
++	targetWidth: int32,
++	topLeft: boolean,
++	out: Span<float32>,
++): void {
++	const across = vec3(camera[0], camera[4], camera[8]);
++	const depth = vec3(camera[2], camera[6], camera[10]);
++	const acrossScale: float32 = across.length();
++	const depthScale: float32 = depth.length();
++	const orthographic: boolean = camera[3] == 0.0 && camera[7] == 0.0 &&
++		camera[11] == 0.0 && camera[15] == 1.0;
++	const worldPerTexel: float32 = orthographic && acrossScale > 0.0
++		? 2.0 / ((targetWidth as float32) * acrossScale) : 0.0;
++	const worldPerDepth: float32 = orthographic && depthScale > 0.0
++		? 1.0 / depthScale : 0.0;
++	out[0] = camera[16];
++	out[1] = camera[17];
++	out[2] = camera[18];
++	out[3] = worldPerTexel;
++	out[4] = camera[20];
++	out[5] = camera[21];
++	out[6] = camera[22];
++	out[7] = worldPerDepth;
++	out[8] = depth.x * worldPerDepth;
++	out[9] = depth.y * worldPerDepth;
++	out[10] = depth.z * worldPerDepth;
++	out[11] = topLeft ? -1.0 : 1.0;
++	out[12] = lights[4];
++	out[13] = lights[5];
++	out[14] = lights[6];
++	out[15] = lights[7];
++}
++
++function testCamera(): Vec<float32> {
++	return [
++		1.0 / 240.0, 0.0, 0.0, 0.0,
++		0.0, 1.0 / 534.0, 0.0, 0.0,
++		0.0, 0.0, 1.0 / 120.0, 0.0,
++		0.0, 0.0, 0.5, 1.0,
++		1.0, 0.0, 0.0, 0.0,
++		0.0, 1.0, 0.0, 0.0,
++	];
++}
++
++test "outline geometry derives world texel and depth units from orthographic projection" {
++	const camera = testCamera();
++	const lights: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.8];
++	let values: Vec<float32> = new Array(EDGE_GEOMETRY_UNIFORM_LENGTH);
++	writeEdgeGeometry(camera, lights, 240, false, values);
++	assert Math.abs(values[3] - 2.0) < 0.0001;
++	assert Math.abs(values[7] - 120.0) < 0.0001;
++	assert Math.abs(values[10] - 1.0) < 0.0001;
++	assert values[11] == 1.0;
++	assert values[13] == 1.0;
++	assert values[15] == 0.8;
++	writeEdgeGeometry(camera, lights, 240, true, values);
++	assert values[11] == -1.0;
++}
++
++test "outline geometry rotates with camera and never treats perspective as orthographic" {
++	let camera = testCamera();
++	const lights: Vec<float32> = new Array(8);
++	let values: Vec<float32> = new Array(EDGE_GEOMETRY_UNIFORM_LENGTH);
++	camera[2] = 0.6 / 120.0;
++	camera[6] = 0.8 / 120.0;
++	camera[10] = 0.0;
++	writeEdgeGeometry(camera, lights, 240, false, values);
++	assert Math.abs(values[8] - 0.6) < 0.0001;
++	assert Math.abs(values[9] - 0.8) < 0.0001;
++	camera[11] = 1.0;
++	writeEdgeGeometry(camera, lights, 240, false, values);
++	assert values[3] == 0.0;
++	assert values[7] == 0.0;
++}
+diff --git a/src/void3d/pixelArtRenderer.ms b/src/void3d/pixelArtRenderer.ms
+--- a/src/void3d/pixelArtRenderer.ms
++++ b/src/void3d/pixelArtRenderer.ms
+@@ -13,6 +13,7 @@
+ // Every GPU object it holds is rebuilt from CPU data when the core reports a new context.
+ 
+ import { Vec4 } from "../math/math3d";
++import { EDGE_GEOMETRY_UNIFORM_LENGTH, writeEdgeGeometry } from "./pixelEdgeGeometry";
+ import {
+ 	Program,
+ 	BILLBOARD_LIGHT,
+@@ -86,7 +87,7 @@
+ export const BILLBOARD_RAMP_LEVELS: int32 = 4;
+ export const BILLBOARD_LIGHT_HEIGHT: int32 = 6;
+ export const POST_UNIFORM_SLOT: int32 = 0;
+-export const POST_UNIFORM_LENGTH: int32 = 48;
++export const POST_UNIFORM_LENGTH: int32 = 48 + EDGE_GEOMETRY_UNIFORM_LENGTH;
+ export const BLIT_UNIFORM_SLOT: int32 = 0;
+ export const BLIT_UNIFORM_LENGTH: int32 = 4;
+ export const RAMP_UNIFORM_SLOT: int32 = 3;
+@@ -244,6 +245,7 @@
+ const POST_DEPTH_UNPACK: int32 = 16;
+ const POST_COLOR_ADJUST: int32 = 20;
+ const POST_GLOW: int32 = 24;
++const POST_EDGE_GEOMETRY: int32 = 48;
+ export const GLOW_LENGTH: int32 = 24;
+ 
+ // Hibernal's numbers are the defaults: 360 texels across the short side (360x800 at 3x on
+@@ -628,6 +630,10 @@
+ 	for (let i = 0; i < GLOW_LENGTH; i++) {
+ 		renderer.postValues[POST_GLOW + i] = renderer.glow[i];
+ 	}
++	writeEdgeGeometry(
++		camera, lights, view.width, originTopLeft(),
++		renderer.postValues[POST_EDGE_GEOMETRY..POST_UNIFORM_LENGTH],
++	);
+ 	view.writeBlitParams(renderer.blitValues);
+ 	const post: Result<int32, UniformError> =
+ 		writeUniforms(context, renderer.postBlock, renderer.postValues);
+diff --git a/src/void3d/pixelArt3d.glsl b/src/void3d/pixelArt3d.glsl
+--- a/src/void3d/pixelArt3d.glsl
++++ b/src/void3d/pixelArt3d.glsl
+@@ -2,13 +2,17 @@
+ @include shader3dBlocks.glsl
+ 
+ @block toonPointLight
++float toonBand(float energy, float levels) {
++    return floor(energy * levels + 0.35) / levels;
++}
++
+ vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight, float levels) {
+     vec3 toLight = pointLight[i].xyz - position;
+     float distance = length(toLight);
+     float falloff = clamp(1.0 - distance / pointColor[i].a, 0.0, 1.0);
+     float facing = mix(1.0, max(dot(normal, toLight / max(distance, 0.0001)), 0.0), normalWeight);
+     float energy = falloff * falloff * facing * pointLight[i].w;
+-    float level = floor(energy * levels + 0.35) / levels;
++    float level = toonBand(energy, levels);
+     return srgbToLinear(pointColor[i].rgb) * level;
+ }
+ @end
+@@ -52,14 +56,15 @@
+ layout(location=1) out vec4 fragNormal;
+ void main() {
+     vec3 n = facingNormal(normalize(worldNormal), material.z);
+-    float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
++    float lambert = toonBand(max(dot(n, dirLight.xyz), 0.0), material.x) * dirLight.w;
+     vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert + vec3(max(-material.w, 0.0));
+     vec3 sheen = srgbToLinear(dirColor.rgb) * dirLight.w * step(0.9, dot(n, normalize(dirLight.xyz + viewDirection)));
+     for (int i = 0; i < int(ambient.a + 0.5); i++) {
+         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
+         vec3 toLight = pointLight[i].xyz - worldPosition;
+         float falloff = clamp(1.0 - length(toLight) / pointColor[i].a, 0.0, 1.0);
+-        sheen += srgbToLinear(pointColor[i].rgb) * pointLight[i].w * falloff
++        sheen += srgbToLinear(pointColor[i].rgb)
++            * toonBand(pointLight[i].w * falloff, material.x)
+             * step(0.9, dot(n, normalize(normalize(toLight) + viewDirection)));
+     }
+     vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
+@@ -110,7 +115,7 @@
+ void main() {
+     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+     vec3 n = facingNormal(normalize(worldNormal), material.z);
+-    float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
++    float lambert = toonBand(max(dot(n, dirLight.xyz), 0.0), material.x) * dirLight.w;
+     vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
+     for (int i = 0; i < int(ambient.a + 0.5); i++) {
+         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
+@@ -251,6 +256,10 @@
+     vec4 glowMist;
+     vec4 glowVeil;
+     vec4 glowFlat;
++    vec4 outlineRight;
++    vec4 outlineUp;
++    vec4 outlineForward;
++    vec4 outlineLight;
+ };
+ out vec4 fragColor;
+ @include_block noiseFunctions
+@@ -362,8 +371,22 @@
+                 depthEdge = 1.0;
+             }
+             vec3 nq = neighbor.xyz * 2.0 - 1.0;
+-            if (abs(depthDelta) < edge.x && dot(n, nq) < edge.y && n.y > nq.y + 0.1) {
+-                normalEdge = 1.0;
++            if (outlineRight.w > 0.0 && abs(depthDelta) < edge.x && dot(n, nq) < edge.y) {
++                vec2 screenStep = vec2(offsets[i]) * outlineRight.w;
++                vec3 delta = outlineRight.xyz * screenStep.x
++                    + outlineUp.xyz * screenStep.y * outlineForward.w
++                    + outlineForward.xyz * depthDelta * outlineUp.w;
++                float curvature = dot(normalize(nq - n), normalize(delta));
++                vec3 lightDirection = length(outlineLight.xyz) > 0.0
++                    ? normalize(outlineLight.xyz) : vec3(0.0);
++                float centerLight = max(dot(n, lightDirection), 0.0);
++                float neighborLight = max(dot(nq, lightDirection), 0.0);
++                float convex = smoothstep(0.05, 0.25, curvature);
++                float litSide = step(neighborLight + 0.05, centerLight);
++                float coverage = texelFetch(sampler2D(colorTexture, pointSampler),
++                    clamp(p + offsets[i], ivec2(0), size - 1), 0).a;
++                normalEdge = max(normalEdge, convex * litSide * coverage
++                    * step(0.0001, outlineLight.w));
+             }
+         }
+         rgb = mix(rgb, rgb * edge.z, depthEdge * color.a);
+diff --git a/src/void3d/gpu3d.c b/src/void3d/gpu3d.c
+--- a/src/void3d/gpu3d.c
++++ b/src/void3d/gpu3d.c
+@@ -165,7 +165,7 @@
+ _Static_assert(sizeof(ramp_rampParams_t) == 32 * 4, "rampParams must match RAMP_UNIFORM_LENGTH in pixelArtRenderer.ms");
+ _Static_assert(sizeof(ramp_spriteRampParams_t) == 84 * 4,
+ 	"spriteRampParams must match SPRITE_RAMP_UNIFORM_LENGTH in pixelArtRenderer.ms");
+-_Static_assert(sizeof(pixelArt_postParams_t) == 48 * 4, "postParams must match POST_UNIFORM_LENGTH in pixelArtRenderer.ms");
++_Static_assert(sizeof(pixelArt_postParams_t) == 64 * 4, "postParams must match POST_UNIFORM_LENGTH in pixelArtRenderer.ms");
+ 
+ static int32_t g_programBase = -1;
+ static int32_t g_layoutBase = -1;

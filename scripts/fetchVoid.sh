@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASE="a0bab020f1dadd4faec178b3bd15fe53278e6ea2"
+BASE="6c4daf28f034ca4506bb10e3922983112d085c4a"
 YOGA_BASE="ce52e2ecd8b148410ce4c08669fd74d483ab99df"
 VOID_URL="${VOID_URL:-https://github.com/metascriptlang/void.git}"
 YOGA_URL="${YOGA_URL:-https://github.com/metascriptlang/yoga.git}"

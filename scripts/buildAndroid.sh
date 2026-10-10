@@ -1,7 +1,13 @@
 #!/bin/bash
 # Build the Hibernal APK: native/androidEntry.ms (the campfire scene + the HUD) into android/.
 # void comes from scripts/fetchVoid.sh (vendor/void); ANDROID_HOME or ANDROID_NDK finds the NDK.
+# `buildAndroid.sh release` signs with the key named in android/app/build.gradle.kts.
 set -euo pipefail
+case "${1:-debug}" in
+	debug) VARIANT=Debug ;;
+	release) VARIANT=Release ;;
+	*) echo "buildAndroid.sh: unknown variant ${1} (debug | release)" >&2; exit 1 ;;
+esac
 cd "$(dirname "$0")/.."
 
 [ -d vendor/void ] || bash scripts/fetchVoid.sh
@@ -22,5 +28,5 @@ msc build native/androidEntry.ms --release --os=android --app=lib --cc="$CC" --o
 "$CC" -shared -fPIC android/app/src/main/jni/voidJni.c -L"$DEST" -lVoidAndroid -landroid -llog -o "$DEST/libVoidJni.so"
 # libVoidAndroid.so links libc++_shared.so, which is not on the device: ship the NDK's copy.
 "$TOOLCHAIN/bin/llvm-strip" --strip-unneeded -o "$DEST/libc++_shared.so" "$TOOLCHAIN/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
-(cd android && ./gradlew assembleDebug -q)
-echo "OK: android/app/build/outputs/apk/debug/app-debug.apk"
+(cd android && ./gradlew "assemble$VARIANT" -q)
+echo "OK: android/app/build/outputs/apk/${1:-debug}/app-${1:-debug}.apk"

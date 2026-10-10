@@ -1,0 +1,258 @@
+From: Hibernal <hibernal@localhost>
+Subject: [PATCH 3/3] fix(void): keep mutated value arrays writable
+
+---
+diff --git a/src/void2d/boxStyle.ms b/src/void2d/boxStyle.ms
+index 518d706..80cd65d 100644
+--- a/src/void2d/boxStyle.ms
++++ b/src/void2d/boxStyle.ms
+@@ -101,7 +101,7 @@ export function castInsetShadow(this s: BoxStyle, color: Color, blur: float32):
+ }
+ 
+ export let boxStyles: Vec<BoxStyle> = [];
+-const freeBoxStyles: Vec<int32> = [];
++let freeBoxStyles: Vec<int32> = [];
+ 
+ export function allocateBoxStyle(style: BoxStyle): int32 {
+ 	const freeCount: int32 = freeBoxStyles.length as int32;
+diff --git a/src/void2d/font.ms b/src/void2d/font.ms
+index 9756e96..a057cbe 100644
+--- a/src/void2d/font.ms
++++ b/src/void2d/font.ms
+@@ -77,10 +77,10 @@ struct Fallback {
+ 	scale: float32;
+ }
+ 
+-const registered: Vec<RegisteredFace> = [];
+-const loadedPaths: Vec<LoadedPath> = [];
+-const synthetics: Vec<Synthetic> = [];
+-const fonts: Vec<FontEntry> = [];
++let registered: Vec<RegisteredFace> = [];
++let loadedPaths: Vec<LoadedPath> = [];
++let synthetics: Vec<Synthetic> = [];
++let fonts: Vec<FontEntry> = [];
+ let fallbacks: Vec<Fallback> = [];
+ let resolved: Map<uint64, int32> = new Map<uint64, int32>();
+ let fallbackLoads: int32 = 0;
+@@ -248,7 +248,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
+ 		return Result.err(best.error);
+ 	}
+ 	const primary: int32 = best.value;
+-	const fallbackMatches: Vec<int32> = new Array(0);
++	let fallbackMatches: Vec<int32> = new Array(0);
+ 	for (const family of font.fallbacks) {
+ 		const matched = bestFace(family, font.weight, font.style);
+ 		if (!matched.ok) {
+diff --git a/src/void2d/glyphAtlas.ms b/src/void2d/glyphAtlas.ms
+index 2629f6e..31cb251 100644
+--- a/src/void2d/glyphAtlas.ms
++++ b/src/void2d/glyphAtlas.ms
+@@ -206,7 +206,7 @@ function reclaimPage(atlas: GlyphAtlas): Result<GlyphPage, AtlasError> {
+ 				atlas.freeTiles.push(i);
+ 			}
+ 		}
+-		const kept: Vec<Shelf> = new Array(0);
++		let kept: Vec<Shelf> = new Array(0);
+ 		for (const shelf of atlas.shelves) {
+ 			if (shelf.page != page) { kept.push(shelf); }
+ 		}
+diff --git a/src/void2d/imageStyle.ms b/src/void2d/imageStyle.ms
+index 2a7e78b..b6ff0a9 100644
+--- a/src/void2d/imageStyle.ms
++++ b/src/void2d/imageStyle.ms
+@@ -101,7 +101,7 @@ export function fitImage(t: Tile, boxW: float32, boxH: float32, fit: ObjectFit):
+ }
+ 
+ export let imageStyles: Vec<ImageStyle> = [];
+-const freeImageStyles: Vec<int32> = [];
++let freeImageStyles: Vec<int32> = [];
+ 
+ export function allocateImageStyle(style: ImageStyle): int32 {
+ 	const freeCount: int32 = freeImageStyles.length as int32;
+diff --git a/src/void2d/labelText.ms b/src/void2d/labelText.ms
+index bd208bd..bd2e149 100644
+--- a/src/void2d/labelText.ms
++++ b/src/void2d/labelText.ms
+@@ -105,7 +105,7 @@ export const CURSOR_BLINK_TIME: float32 = 0.5;
+ 
+ export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
+ export let labelTexts: Vec<LabelText> = [];
+-const freeLabelTexts: Vec<int32> = [];
++let freeLabelTexts: Vec<int32> = [];
+ let refusedGlyphs: int32 = 0;
+ let refusalReports: int32 = 0;
+ 
+@@ -329,14 +329,14 @@ function lineDecorations(
+ }
+ 
+ export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): void {
+-	const kept: Vec<TextRun> = new Array(0);
++	let kept: Vec<TextRun> = new Array(0);
+ 	for (const run of runs) { kept.push(run); }
+ 	labelTexts[index].runs = kept;
+ 	labelTexts[index].reshape = true;
+ }
+ 
+ export function setLabelShapingBreaks(index: int32, breaks: Readonly<Span<int32>>): void {
+-	const kept: Vec<int32> = new Array(0);
++	let kept: Vec<int32> = new Array(0);
+ 	for (const at of breaks) { kept.push(at); }
+ 	labelTexts[index].shapingBreaks = kept;
+ 	labelTexts[index].reshape = true;
+@@ -431,7 +431,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
+ 	const devicePerLocal: float32 = linear * scale;
+ 	const fracX: float32 = fraction(world.tx * scale);
+ 	const fracY: float32 = fraction(world.ty * scale);
+-	const placed: Vec<PlacedGlyph> = new Array(0);
++	let placed: Vec<PlacedGlyph> = new Array(0);
+ 	let refused: int32 = 0;
+ 	let refusal: string = "";
+ 	if (devicePerLocal > 0.0) {
+diff --git a/src/void2d/lineBreak.ms b/src/void2d/lineBreak.ms
+index cf57c23..52e917b 100644
+--- a/src/void2d/lineBreak.ms
++++ b/src/void2d/lineBreak.ms
+@@ -276,10 +276,10 @@ function unitBreak(units: Readonly<Span<Unit>>, j: int32, count: int32): boolean
+ // Whether a line may break before each codepoint (UAX #14, UCD 18.0.0); never before the first.
+ export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
+ 	const count: int32 = codepoints.length as int32;
+-	const original: Vec<LineClass> = new Array(0);
+-	const absorbed: Vec<boolean> = new Array(0);
+-	const unitOf: Vec<int32> = new Array(0);
+-	const units: Vec<Unit> = new Array(0);
++	let original: Vec<LineClass> = new Array(0);
++	let absorbed: Vec<boolean> = new Array(0);
++	let unitOf: Vec<int32> = new Array(0);
++	let units: Vec<Unit> = new Array(0);
+ 	for (let i = 0; i < count; i++) {
+ 		const p: LineProperty = lineProperty(codepoints[i]);
+ 		const combining: boolean = p.cls == LineClass.CM || p.cls == LineClass.ZWJ;
+@@ -294,7 +294,7 @@ export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
+ 		}
+ 		unitOf.push((units.length as int32) - 1);
+ 	}
+-	const breaks: Vec<boolean> = new Array(0);
++	let breaks: Vec<boolean> = new Array(0);
+ 	const unitCount: int32 = units.length as int32;
+ 	for (let i = 0; i < count; i++) {
+ 		if (i == 0) {
+diff --git a/src/void2d/textLayout.ms b/src/void2d/textLayout.ms
+index 420f8f2..0d66d67 100644
+--- a/src/void2d/textLayout.ms
++++ b/src/void2d/textLayout.ms
+@@ -145,9 +145,9 @@ enum GraphemeCoverage {
+ }
+ 
+ function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
+-	const out: Vec<Codepoint> = new Array(0);
++	let out: Vec<Codepoint> = new Array(0);
+ 	let index: int32 = 0;
+-	const bytes: Span<char> = text;
++	const bytes: Readonly<Span<char>> = text;
+ 	const total: int32 = bytes.length as int32;
+ 	let i: int32 = 0;
+ 	while (i < total) {
+@@ -457,7 +457,7 @@ export function shapeText(
+ 	assignFaces(cps);
+ 	const stop: float32 = hasTab(cps) ? style.tabStop() : 0.0;
+ 	let glyphs: Vec<LaidGlyph> = new Array(0);
+-	const values: Vec<int32> = new Array(0);
++	let values: Vec<int32> = new Array(0);
+ 	let pen: float32 = 0.0;
+ 	let previous: int32 = NO_GLYPH;
+ 	let previousFace: int32 = -1;
+@@ -623,7 +623,7 @@ function pushTruncated(
+ 	pushLine(shaped, from, to, lineIndex, out);
+ 	const full: float32 = lineWidthOf(out, first);
+ 	if (full <= room || to <= from) { return; }
+-	const line: Vec<LaidGlyph> = new Array(0);
++	let line: Vec<LaidGlyph> = new Array(0);
+ 	for (let k = first; k < (out.length as int32); k++) { line.push(out[k]); }
+ 	while ((out.length as int32) > first) { out.pop(); }
+ 	const dots: float32 = ellipsisGlyph(shaped).advance;
+@@ -857,8 +857,8 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
+ 			break;
+ 		}
+ 	}
+-	const left: Vec<LaidGlyph> = new Array(0);
+-	const right: Vec<LaidGlyph> = new Array(0);
++	let left: Vec<LaidGlyph> = new Array(0);
++	let right: Vec<LaidGlyph> = new Array(0);
+ 	const origin: float32 = cut < line.firstGlyph + line.glyphCount ? l.glyphs[cut].x : 0.0;
+ 	for (let k = line.firstGlyph; k < line.firstGlyph + line.glyphCount; k++) {
+ 		if (k < cut) {
+@@ -882,9 +882,9 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
+ 		charStart: line.charStart + (left.length as int32), indexStart: leftEnd,
+ 		byteStart: leftByteEnd,
+ 	};
+-	const leftLines: Vec<LineBox> = new Array(0);
++	let leftLines: Vec<LineBox> = new Array(0);
+ 	leftLines.push(leftLine);
+-	const rightLines: Vec<LineBox> = new Array(0);
++	let rightLines: Vec<LineBox> = new Array(0);
+ 	rightLines.push(rightLine);
+ 	return [
+ 		{ ...l, glyphs: left, lines: leftLines, width: leftWidth },
+diff --git a/src/void3d/gltf.ms b/src/void3d/gltf.ms
+index d8084f1..a938f6b 100644
+--- a/src/void3d/gltf.ms
++++ b/src/void3d/gltf.ms
+@@ -463,7 +463,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
+ 		}
+ 		local.scale = vec3(x.value, y.value, z.value);
+ 	}
+-	const children: Vec<int32> = [];
++	let children: Vec<int32> = [];
+ 	const childField: JsonValue = fieldOf(node, "children");
+ 	if (!isNull(childField)) {
+ 		if (childField.kind != JsonKind.Array) {
+@@ -676,7 +676,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
+ export function validateGltfGraph(data: GltfData): Result<int32, GltfError> {
+ 	let states: Vec<int32> = new Array(data.nodes.length as int32);
+ 	for (let i = 0; i < (states.length as int32); i++) { states[i] = 0; }
+-	const stack: Vec<int32> = [];
++	let stack: Vec<int32> = [];
+ 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
+ 		stack.push(data.sceneRoots[i]);
+ 	}
+diff --git a/src/void3d/gltfScene.ms b/src/void3d/gltfScene.ms
+index 475bbf1..99f6cd7 100644
+--- a/src/void3d/gltfScene.ms
++++ b/src/void3d/gltfScene.ms
+@@ -265,8 +265,8 @@ export function addGltfNodes(
+ 	}
+ 	const valid = validateGltfGraph(data);
+ 	if (!valid.ok) { return Result.err(GltfSceneError.InvalidData); }
+-	const nodes: Vec<int32> = [];
+-	const parents: Vec<NodeId3D> = [];
++	let nodes: Vec<int32> = [];
++	let parents: Vec<NodeId3D> = [];
+ 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
+ 		nodes.push(data.sceneRoots[i]);
+ 		parents.push(parent);
+diff --git a/src/void3d/pixelArtRenderer.ms b/src/void3d/pixelArtRenderer.ms
+index 8fca154..d8e7dd4 100644
+--- a/src/void3d/pixelArtRenderer.ms
++++ b/src/void3d/pixelArtRenderer.ms
+@@ -268,7 +268,7 @@ export function preview(this typeof PixelArtSettings): PixelArtSettings {
+ 
+ // The stages a frame runs, in order. Allocates: called when the settings change.
+ export function planStages(settings: PixelArtSettings): Vec<Stage> {
+-	const stages: Vec<Stage> = [Stage.Scene];
++	let stages: Vec<Stage> = [Stage.Scene];
+ 	if (settings.postPass) { stages.push(Stage.Post); }
+ 	stages.push(Stage.Blit);
+ 	return stages;
+diff --git a/src/void3d/scene.ms b/src/void3d/scene.ms
+index f3a0d87..c5f9b22 100644
+--- a/src/void3d/scene.ms
++++ b/src/void3d/scene.ms
+@@ -735,7 +735,7 @@ export function findByName(
+ 	name: string,
+ ): Result<NodeId3D, SceneError> {
+ 	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
+-	const stack: Vec<int32> = [from.index];
++	let stack: Vec<int32> = [from.index];
+ 	while ((stack.length as int32) > 0) {
+ 		const last: int32 = (stack.length as int32) - 1;
+ 		const index: int32 = stack[last];
