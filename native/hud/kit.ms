@@ -73,11 +73,13 @@ export const ICON_NAMES: string[] = ["heart", "bag", "lock", "warning", "winter"
 export const PIECE_NAMES: string[] = ["panel", "xpFrame", "slot", "plusSlot", "levelPlate", "endCap", "tab", "hatch", "dot",
 	"sword", "pistol", "shotgun", "core", "rifle", "statFrame", "statBadge", "statFillRedEnd", "statFillRedBody",
 	"statFillBlueEnd", "statFillBlueBody", "statFillGreenEnd", "statFillGreenBody", "statFillOrangeEnd", "statFillOrangeBody",
-	"statHeart", "statGift", "statGrowth", "medkit", "battery", "ammo", "shield", "drone", "shopFrame", "shopHologram", "shopCart", "shopCheck", "shopCell",
-	"shopCellSelected", "shopCellPlus", "shopCellDisabled", "shopTag", "shopBalance", "shopPurchase",
-	"shopCancel", "shopGem", "shopSword", "shopPistol", "shopShotgun", "shopCore", "shopMedkit", "shopBattery", "shopAmmo",
-	"shopShield", "shopDrone", "toggleOff", "toggleOn", "toggleHeld", "toggleDisabled",
-	"wallpaperButton", "wallpaperButtonHeld", "wallpaperGlyph", "bannerStart", "bannerBody", "bannerEnd"];
+	"statHeart", "statGift", "statGrowth", "medkit", "battery", "ammo", "shield", "drone", "shopSword", "shopPistol",
+	"shopShotgun", "shopCore", "shopMedkit", "shopBattery", "shopAmmo", "shopShield", "shopDrone", "toggleOff", "toggleOn",
+	"toggleHeld", "toggleDisabled", "bannerStart", "bannerBody", "bannerEnd", "plusSlotOrange",
+	"bannerStartOrange", "bannerBodyOrange", "bannerEndOrange",
+	"onboardingCreate", "onboardingName", "onboardingPrevious", "onboardingNext",
+	"onboardingHologram", "onboardingWallet", "onboardingHologramDead", "onboardingNameDead", "itemCard", "shopStrip",
+];
 
 export interface Texture {
 	view: uint32;
@@ -117,6 +119,17 @@ export interface Kit {
 	sprites: KeptSprite[];
 	textures: KitTextures;
 	overlay: boolean;
+	// Multiplies every tint's alpha: below 1 while a press's look draws (pressedLook).
+	fade: float32;
+	presses: PressFade[];
+	// performance.now() seconds at the last beginKit, and the time since the one before.
+	frameAt: float64;
+	frameSeconds: float32;
+}
+
+export interface PressFade {
+	id: int32;
+	level: float32;
 }
 
 export interface TextSize {
@@ -203,6 +216,10 @@ export function createKit(ui: Ui): Kit {
 		sprites: [],
 		textures: sharedTextures[0],
 		overlay: false,
+		fade: 1.0,
+		presses: [],
+		frameAt: -1.0,
+		frameSeconds: 0.0,
 	};
 	const root: NodeRef = ui.sc.refOf(ui.sc.root);
 	root.addChildAt(kit.frames, 0);
@@ -221,6 +238,10 @@ export function subId(id: int32, part: int32): int32 {
 }
 
 export function beginKit(kit: Kit): void {
+	const now: float64 = performance.now() / 1000.0;
+	const passed: float64 = kit.frameAt < 0.0 ? 0.0 : now - kit.frameAt;
+	kit.frameAt = now;
+	kit.frameSeconds = Math.max(0.0, Math.min(passed, LONGEST_FADE_STEP)) as float32;
 	for (const kept of kit.sprites) {
 		kept.used = false;
 	}
@@ -270,7 +291,7 @@ function place(kit: Kit, layer: NodeRef, key: string, view: uint32, x: float32, 
 	kept.node.setTile(tile(view, width, height));
 	kept.node.setSize(width, height);
 	kept.node.setPosition(x, y);
-	kept.node.setColor(tint);
+	kept.node.setColor(faded(tint, kit.fade));
 	kept.used = true;
 }
 
@@ -409,9 +430,43 @@ export function measureWrapped(kit: Kit, line: string, size: float32, maxWidth: 
 }
 
 // ui.text in Silkscreen; sizes 8 and 16 stay crisp.
+const PRESSED_FADE: float32 = 0.55;
+// As TouchableOpacity: quick to fade under the finger, slower back on release.
+const FADE_IN_SECONDS: float32 = 0.12;
+const FADE_OUT_SECONDS: float32 = 0.25;
+const LONGEST_FADE_STEP: float64 = 0.1;
+
+function faded(colour: Color, fade: float32): Color {
+	return fade < 1.0 ? rgba(colour.r, colour.g, colour.b, colour.a * fade) : colour;
+}
+
+function pressFade(kit: Kit, id: int32): PressFade {
+	for (const press of kit.presses) {
+		if (press.id == id) { return press; }
+	}
+	const press: PressFade = { id: id, level: 1.0 };
+	kit.presses.push(press);
+	return press;
+}
+
+// React Native's TouchableOpacity: what press `id` draws between pressedLook and plainLook fades out
+// while the finger holds it and back in after, over FADE_IN_SECONDS and FADE_OUT_SECONDS.
+export function pressedLook(kit: Kit, id: int32, down: boolean): void {
+	const press: PressFade = pressFade(kit, id);
+	const span: float32 = 1.0 - PRESSED_FADE;
+	press.level = down
+		? Math.max(PRESSED_FADE, press.level - span * kit.frameSeconds / FADE_IN_SECONDS)
+		: Math.min(1.0, press.level + span * kit.frameSeconds / FADE_OUT_SECONDS);
+	kit.fade = press.level;
+}
+
+export function plainLook(kit: Kit): void {
+	kit.fade = 1.0;
+}
+
 export function say(ui: Ui, kit: Kit, id: int32, line: string, x: float32, y: float32, width: float32, size: float32,
 	color: Color, align: float32): void {
-	text(ui, id, line, x, y, width, size, color, align);
+	text(ui, id, line, x, y, width, size, faded(color, kit.fade), align);
 	for (let index: int32 = 0; index < ui.labelIds.length; index += 1) {
 		if (ui.labelIds[index] === id) {
 			ui.labelNodes[index].setFont(kit.textures.font);

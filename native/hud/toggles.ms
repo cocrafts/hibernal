@@ -3,7 +3,7 @@
 // right edge share the boxes' column.
 
 import { Ui, pressable, held } from "../ui/ui";
-import { Kit, PieceLayer, TextSize, INK, DISABLED_INK, piece, pieceWidth, pieceHeight, say, measure, subId }
+import { Kit, plainLook, pressedLook, PieceLayer, TextSize, INK, DISABLED_INK, piece, pieceWidth, pieceHeight, say, measure, subId }
 	from "./kit";
 
 const LABEL_SIZE: float32 = 8.0;
@@ -29,8 +29,10 @@ export function toggleRow(ui: Ui, kit: Kit, id: int32, right: float32, y: float3
 	const width: float32 = right - left;
 	const tapped: boolean = pressable(ui, subId(id, 0), left, y, width, height) && enabled;
 	const down: boolean = held(ui, subId(id, 0), left, y, width, height);
+	pressedLook(kit, subId(id, 0), down && enabled);
 	piece(kit, subId(id, 1), PieceLayer.Icons, lookOf(on, down, enabled), boxLeft, boxTop);
 	say(ui, kit, subId(id, 2), label, left, y + height * 0.5 - LABEL_SIZE * 0.625, text.width + 2.0, LABEL_SIZE,
 		enabled ? INK : DISABLED_INK, 0.0);
+	plainLook(kit);
 	return tapped;
 }

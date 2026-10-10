@@ -1,7 +1,3 @@
-// Draw the content shifted up by scrollArea's offset. A drag never taps a widget, and presses
-// outside the area are not taken by base-layer widgets; what spills over the area's edges is
-// the caller's to cover (screens.ms scrollChrome).
-
 import { rgba } from "@metascript/void/src/void2d/types";
 import { Ui, box, cancelPress } from "../ui/ui";
 
