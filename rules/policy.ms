@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { STAKE_LEVELS, EconomyAction } from "./actions";
 import { Food } from "./emission";
 

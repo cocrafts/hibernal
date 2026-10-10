@@ -21,3 +21,7 @@ export * from "./items";
 export * from "./market";
 export * from "./observe";
 export * from "./resort";
+
+when (testBuild) {
+	import * as arithmeticRegression from "./arithmetic";
+}

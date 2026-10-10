@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { Combatant, noMods } from "./stats";
 import { BPS } from "./units";
 import { Tree } from "./tree";
@@ -181,7 +181,7 @@ function petWith(fighter: Combatant, harvest: uint64, burrow: uint64, bornEpoch:
 		scars: 0,
 		lineageGeneration: 0,
 		bonding: 0,
-		talksToday: 0,
+		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
 		ownerBankedAt: 0,

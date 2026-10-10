@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 export const LOG2_FRACTION_BITS: int32 = 5;
 export const LOG2_ONE: int32 = 32;
 

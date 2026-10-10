@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS } from "./units";
 import { Mod, Region, Stats, Combatant } from "./stats";
 import { Tree, built } from "./tree";
@@ -8,7 +8,6 @@ import { Pantry } from "./pantry";
 import { Talent, TalentKind } from "./talent";
 import { Gear, statBonusBps } from "./items";
 
-export const GRACE_EPOCHS: uint64 = 7;
 export const BLOCK_SLOTS: int32 = 10;
 export const FIGHT_RING: int32 = 32;
 
@@ -32,53 +31,58 @@ export enum BlockSlot {
 }
 
 export struct Pet {
-	blockId: uint32;
-	slot: uint8;
-	alive: boolean;
-	region: uint8;
-	hearts: uint8;
-	maxHearts: uint8;
-	forage: uint16;
-	might: uint16;
-	grit: uint16;
-	level: uint16;
-	pointsUnspent: uint8;
-	xp: uint32;
 	tree: Tree;
-	foodBps: int32;
-	experienceBps: int32;
-	lootBps: int32;
-	biteGuardBps: int32;
-	mods: BitSet<Mod>;
 	harvest: uint64;
 	burrow: uint64;
 	rewardSnapshot: uint64;
 	bornEpoch: uint64;
 	lastTickEpoch: uint64;
+	fightDay: uint64;
+	growthMultiplierExpiry: uint64;
+	giftOwed: uint64;
+	ownerBankedAt: uint64;
+	rageEpoch: uint64;
+	blockId: uint32;
+	xp: uint32;
+	foodBps: int32;
+	experienceBps: int32;
+	lootBps: int32;
+	biteGuardBps: int32;
+	forage: uint16;
+	might: uint16;
+	grit: uint16;
+	level: uint16;
+	slotsAttackedToday: BitSet<BlockSlot>;
+	growthMultiplierBps: uint16;
+	talentBps: uint16;
+	lineageGeneration: uint16;
+	slot: uint8;
+	alive: boolean;
+	region: uint8;
+	hearts: uint8;
+	maxHearts: uint8;
+	pointsUnspent: uint8;
+	mods: BitSet<Mod>;
 	fightsOutToday: uint8;
 	fightsInToday: uint8;
 	bitesInToday: uint8;
-	slotsAttackedToday: BitSet<BlockSlot>;
-	fightDay: uint64;
-	growthMultiplierBps: uint16;
-	growthMultiplierExpiry: uint64;
 	minHearts: uint8;
 	pantry: Pantry;
 	foodBoughtToday: uint8;
 	talentKind: uint8;
-	talentBps: uint16;
 	insurance: uint8;
 	scars: uint8;
-	lineageGeneration: uint16;
 	bonding: int8;
-	talksToday: uint8;
+	engagedToday: uint8;
 	ownerFedToday: uint8;
-	giftOwed: uint64;
-	ownerBankedAt: uint64;
 	gear: Gear;
 	grudgeSlot: uint8;
 	rage: uint8;
-	rageEpoch: uint64;
+	ownerFirst: uint8;
+	ownerSecond: uint8;
+	skin: uint8;
+	wild: boolean;
+	engagedRound: uint8;
 }
 
 export struct GlobalConfig {
@@ -87,8 +91,9 @@ export struct GlobalConfig {
 	rewardEpoch: uint64;
 	totalWorkPower: uint64;
 	recycledPending: uint64;
-	protocolPending: uint64;
-	burned: uint64;
+	treasury: uint64;
+	itemReserve: uint64;
+	emitted: uint64;
 	livingPets: uint32;
 	floorSlots: uint32;
 }
@@ -96,14 +101,16 @@ export struct GlobalConfig {
 export struct FightRecord {
 	epoch: uint64;
 	seed: uint64;
-	attackerSlot: int32;
-	defenderSlot: int32;
-	attacker: Combatant;
-	defender: Combatant;
 	stake: uint64;
 	loot: uint64;
-	outcome: Outcome;
+	attackerSlot: int32;
+	defenderSlot: int32;
 	rounds: int32;
+	attacker: Combatant;
+	defender: Combatant;
+	outcome: uint8;
+	pad: uint8;
+	pad2: uint16;
 }
 
 export function ownStats(this pet: Pet): Stats {
@@ -137,11 +144,19 @@ export function withTree(this pet: Pet, tree: Tree): Pet {
 	return planted.withTreeBonuses(Stats.built(tree, pet.level as int32, pet.talent()));
 }
 
+export function growthBoosted(this pet: Pet): boolean {
+	return pet.lastTickEpoch + 1 == pet.growthMultiplierExpiry;
+}
+
+export function growthBonusBps(this pet: Pet): int32 {
+	return pet.growthBoosted() ? (pet.growthMultiplierBps as int32) - BPS : 0;
+}
+
 export function stats(this pet: Pet): Stats {
 	const gear = pet.gear;
 	return {
 		...pet.ownStats(),
-		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage)),
+		forage: geared(pet.forage, gear.statBonusBps(TalentKind.Forage) + pet.growthBonusBps()),
 		might: geared(pet.might, gear.statBonusBps(TalentKind.Might)),
 		grit: geared(pet.grit, gear.statBonusBps(TalentKind.Grit)),
 	};
@@ -196,6 +211,10 @@ export function wallet(this pet: Pet): uint64 {
 export function charged(this pet: Pet, amount: uint64): Pet {
 	const fromHarvest = Math.min(pet.harvest, amount);
 	return { ...pet, harvest: pet.harvest - fromHarvest, burrow: pet.burrow - (amount - fromHarvest) };
+}
+
+export function fightOutcome(this record: FightRecord): Outcome {
+	return (record.outcome as int32) as Outcome;
 }
 
 export function startRegion(this pet: Pet): Region {

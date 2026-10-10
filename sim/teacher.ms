@@ -7,6 +7,9 @@ import {
 	KEYSTONE_PACIFIST,
 	KEYSTONE_GLASS_CANNON,
 	KEYSTONE_CANNIBAL,
+	KEYSTONE_TYCOON,
+	KEYSTONE_BERSERKER,
+	KEYSTONE_BULWARK,
 	HBRN_UNIT,
 	BlockSlot,
 	NodeKind,
@@ -46,11 +49,6 @@ import {
 	Pet,
 	Stats,
 } from "../rules/index";
-// C emits PantryEq, GearEq and ItemEq for `Pet ==` only where each struct is imported
-// (msc v0.2.55); remove with
-// ~/metascript/.inbox/compiler/2026-09-22-struct-equality-on-js.md, second sighting.
-import { Pantry } from "../rules/pantry";
-import { Gear, Item } from "../rules/items";
 import {
 	ACTS_PER_EPOCH,
 	NO_KEYSTONE,
@@ -136,11 +134,11 @@ export function teachEconomy(this world: World, index: int32, masks: Masks): Eco
 
 export const ITEM_REPLACE_WEAR: int32 = 50;
 
-export function keystoneOf(kind: PersonaKind): int32 {
+export function keystoneOf(kind: PersonaKind, start: Region): int32 {
 	return match (kind) {
-		PersonaKind.Cautious => KEYSTONE_PACIFIST,
-		PersonaKind.Greedy => KEYSTONE_GLASS_CANNON,
-		PersonaKind.Vengeful => KEYSTONE_CANNIBAL,
+		PersonaKind.Cautious => start == Region.Survivor ? KEYSTONE_BULWARK : KEYSTONE_PACIFIST,
+		PersonaKind.Greedy => start == Region.Worker ? KEYSTONE_TYCOON : KEYSTONE_GLASS_CANNON,
+		PersonaKind.Vengeful => start == Region.Fighter ? KEYSTONE_BERSERKER : KEYSTONE_CANNIBAL,
 	};
 }
 
@@ -154,7 +152,8 @@ function targetCluster(start: Region, keystone: int32): int32 {
 
 export function buildTargetOf(this world: World, index: int32): int32 {
 	const target = world.buildTargets[index];
-	return target == PERSONA_BUILD ? keystoneOf(world.personaOf(index)) : target;
+	if (target != PERSONA_BUILD) { return target; }
+	return keystoneOf(world.personaOf(index), world.pets[index].startRegion());
 }
 
 export function nodeRank(id: int32, start: Region, keystone: int32): int32 {
@@ -351,7 +350,7 @@ test "a greedy pet goes for the biggest harvest it can win" {
 	assert choice / STAKE_LEVELS == (BlockSlot.Ninth as int32);
 }
 
-test "the teacher takes only its persona's keystone" {
+test "the teacher takes only the keystone of its persona and start" {
 	const world = armedBlock();
 	const pets = world.pets;
 	for (let index = 0; index < BLOCK_SLOTS; index++) {
@@ -364,7 +363,7 @@ test "the teacher takes only its persona's keystone" {
 	}
 	for (let index = 0; index < BLOCK_SLOTS; index++) {
 		const pet = world.pets[index];
-		const mine = keystoneOf(world.personaOf(index));
+		const mine = keystoneOf(world.personaOf(index), pet.startRegion());
 		assert pet.tree.has(mine) == keystoneTouches(mine, pet.startRegion());
 		for (let keystone = KEYSTONE_GLASS_CANNON; keystone < TREE_NODES; keystone++) {
 			if (keystone != mine) { assert !pet.tree.has(keystone); }
@@ -378,7 +377,9 @@ test "a short episode is legal, deterministic and has fights" {
 	assert first.stats.illegal == 0;
 	assert first.stats.fights > 0;
 	assert first.stats.fights == second.stats.fights;
-	assert first.global.burned == second.global.burned;
+	assert first.global.treasury == second.global.treasury;
+	assert first.global.itemReserve == second.global.itemReserve;
+	assert first.global.emitted == second.global.emitted;
 	for (let index = 0; index < first.pets.length; index++) {
 		assert first.pets[index] == second.pets[index];
 	}

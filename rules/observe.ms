@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS, ACTS_PER_EPOCH } from "./units";
 import { Combatant, Mod, Stats, asCombatant } from "./stats";
 import {

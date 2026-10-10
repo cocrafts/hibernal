@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { HBRN_UNIT } from "./units";
 import { Pet } from "./layout";
 

@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { REWARD_WEIGHT_OFFSET, Combatant, Mod, Region, Stats, aged } from "./stats";
 import { revived } from "./owner";
@@ -61,7 +61,8 @@ import {
 	PetAndGlobal,
 	genesis,
 	withSpend,
-	withProtocolFee,
+	withItemReserve,
+	withTreasuryIncome,
 	withWorkPower,
 	withDeath,
 	born,
@@ -104,6 +105,7 @@ export enum EconomyError {
 	NoFood,
 	NoGear,
 	NeedsMarket,
+	TreasuryShort,
 }
 
 export struct NodeMask {
@@ -171,6 +173,11 @@ export function allowingAttack(
 	level: StakeLevel,
 ): AttackMask {
 	return { bits: mask.bits | bitOf(attackChoice(slot, level)) };
+}
+
+export function overtimeBanked(this pet: Pet): Pet {
+	if (!pet.alive || pet.harvest == 0 || !pet.mods.has(Mod.Overtime)) { return pet; }
+	return { ...pet, harvest: 0, burrow: pet.burrow + pet.harvest };
 }
 
 export function bank(this pet: Pet, global: GlobalConfig): Result<PetAndGlobal, EconomyError> {
@@ -257,7 +264,7 @@ export function mintItem(
 	return Result.ok({
 		pet: geared,
 		global: global
-			.withSpend(Split.ofSpend(spent))
+			.withItemReserve(spent)
 			.withWorkPower(pet.stats().rewardWeight(), geared.stats().rewardWeight()),
 	});
 }
@@ -268,14 +275,16 @@ export function soldItem(this pet: Pet, global: GlobalConfig): Result<PetAndGlob
 	if (!found.ok) { return Result.err(EconomyError.NoGear); }
 	const slot = found.value;
 	const price = pet.gear.at(slot).sellPrice();
+	if (global.itemReserve < price) { return Result.err(EconomyError.TreasuryShort); }
 	const bare: Pet = {
 		...pet,
 		burrow: pet.burrow + price,
 		gear: pet.gear.with(slot, Item.none()),
 	};
+	const paid: GlobalConfig = { ...global, itemReserve: global.itemReserve - price };
 	return Result.ok({
 		pet: bare,
-		global: global.withWorkPower(pet.stats().rewardWeight(), bare.stats().rewardWeight()),
+		global: paid.withWorkPower(pet.stats().rewardWeight(), bare.stats().rewardWeight()),
 	});
 }
 
@@ -439,6 +448,123 @@ export function attacksOn(
 	return allowed;
 }
 
+export struct FightOpening {
+	attackerToday: Pet;
+	defenderToday: Pet;
+	committed: Pet;
+	struck: Pet;
+	record: FightRecord;
+}
+
+export function openingAgainst(this attacker: Pet, defender: Pet, stake: uint64, epoch: uint64, seed: uint64): FightOpening {
+	const attackerToday = attacker.onFightDay(epoch);
+	const defenderToday = defender.onFightDay(epoch);
+	const attackerCombatant = attackerToday.combatantFacing(defenderToday);
+	const defenderCombatant = defenderToday.combatantFacing(attackerToday);
+	const result = attackerCombatant.fight(defenderCombatant, seed);
+	return {
+		attackerToday: attackerToday,
+		defenderToday: defenderToday,
+		committed: {
+			...attackerToday,
+			burrow: attackerToday.burrow - stake,
+			fightsOutToday: ((attackerToday.fightsOutToday as int32) + 1) as uint8,
+			slotsAttackedToday: attackerToday.slotsAttackedToday.incl(defender.blockSlot()),
+		},
+		struck: {
+			...defenderToday,
+			fightsInToday: ((defenderToday.fightsInToday as int32) + 1) as uint8,
+		},
+		record: {
+			epoch: epoch,
+			seed: seed,
+			attackerSlot: attacker.slot as int32,
+			defenderSlot: defender.slot as int32,
+			attacker: attackerCombatant,
+			defender: defenderCombatant,
+			stake: stake,
+			loot: 0,
+			outcome: result.outcome as uint8,
+			rounds: result.rounds,
+		},
+	};
+}
+
+export function attackerWon(this opening: FightOpening, global: GlobalConfig, epoch: uint64): FightSettlement {
+	const attackerToday = opening.attackerToday;
+	const defenderToday = opening.defenderToday;
+	const stake = opening.record.stake;
+	const harvestBefore = defenderToday.harvest;
+	const baseLoot = opening.record.defender.lootFor(
+		opening.record.attacker,
+		stake,
+		harvestBefore,
+		defenderToday.fightsInToday as int32,
+	);
+	const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
+	const boosted = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
+	const loot = defenderToday.gear.wardedLoot(boosted);
+	const [winnings, fee] = stakeSplit(loot);
+	const bites = guardedBite(
+		biteHearts(
+			stake,
+			loot,
+			attackerToday.stats().power(),
+			defenderToday.stats().power(),
+			defenderToday.maxHearts as int32,
+			defenderToday.bitesInToday as int32,
+		),
+		defenderToday.stats().biteGuardBps + defenderToday.gear.damageGuardBps(),
+	);
+	const defender = opening.struck.bittenBy(attackerToday, loot, bites, epoch, global);
+	const [remains, devoured] = defender.pet.devouredBy(attackerToday.stats().mods.has(Mod.Cannibal));
+	const paidOut: Pet = {
+		...opening.committed,
+		burrow: opening.committed.burrow + stake + winnings + devoured,
+	};
+	const paid = defender.global.withTreasuryIncome(fee);
+	return {
+		attacker: paidOut.calmedAgainst(defenderToday).gainXp(raidXp(loot)),
+		defender: remains.gainXp(DEFENSE_LOSS_XP),
+		global: remains.alive ? paid : paid.withDeath(remains.stats().rewardWeight()),
+		record: { ...opening.record, loot: loot },
+	};
+}
+
+export function bittenBy(this struck: Pet, attackerToday: Pet, loot: uint64, bites: int32, epoch: uint64, global: GlobalConfig): PetAndGlobal {
+	const hearts = Math.max((struck.hearts as int32) - bites, 0);
+	const struckDown: Pet = {
+		...struck,
+		alive: hearts > 0,
+		hearts: hearts as uint8,
+		harvest: struck.harvest - loot,
+		bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
+	};
+	const hurt = loot > 0 || bites > 0;
+	const robbed = hurt ? struckDown.robbedBy(attackerToday, epoch) : struckDown;
+	const [survivor, insuredGlobal] = robbed.revived(global);
+	return { pet: survivor, global: insuredGlobal };
+}
+
+export function defenderHeld(this opening: FightOpening, global: GlobalConfig): FightSettlement {
+	const committed = opening.committed;
+	const [keptStake, fee] = stakeSplit(opening.record.stake);
+	const defeat = defeatHearts(committed.maxHearts as int32);
+	const lost = guardedBite(defeat, committed.gear.damageGuardBps());
+	const hearts = Math.max((committed.hearts as int32) - lost, 0);
+	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
+	const [beaten, insuredGlobal] = fallen.revived(global);
+	const kept: Pet = { ...opening.struck, burrow: opening.struck.burrow + keptStake };
+	const holder = kept.calmedAgainst(opening.attackerToday);
+	const paid = insuredGlobal.withTreasuryIncome(fee);
+	return {
+		attacker: beaten,
+		defender: holder.gainXp(DEFENSE_WIN_XP),
+		global: beaten.alive ? paid : paid.withDeath(beaten.stats().rewardWeight()),
+		record: opening.record,
+	};
+}
+
 export function settleAttack(
 	this attacker: Pet,
 	defender: Pet,
@@ -448,97 +574,11 @@ export function settleAttack(
 	seed: uint64,
 ): Result<FightSettlement, AttackError> {
 	const stake = try attacker.stakeFor(defender, level, epoch);
-	const attackerToday = attacker.onFightDay(epoch);
-	const defenderToday = defender.onFightDay(epoch);
-	const attackerCombatant = attackerToday.combatantFacing(defenderToday);
-	const defenderCombatant = defenderToday.combatantFacing(attackerToday);
-	const result = attackerCombatant.fight(defenderCombatant, seed);
-	const committed: Pet = {
-		...attackerToday,
-		burrow: attackerToday.burrow - stake,
-		fightsOutToday: ((attackerToday.fightsOutToday as int32) + 1) as uint8,
-		slotsAttackedToday: attackerToday.slotsAttackedToday.incl(defender.blockSlot()),
-	};
-	const struck: Pet = {
-		...defenderToday,
-		fightsInToday: ((defenderToday.fightsInToday as int32) + 1) as uint8,
-	};
-	const record: FightRecord = {
-		epoch: epoch,
-		seed: seed,
-		attackerSlot: attacker.slot as int32,
-		defenderSlot: defender.slot as int32,
-		attacker: attackerCombatant,
-		defender: defenderCombatant,
-		stake: stake,
-		loot: 0,
-		outcome: result.outcome,
-		rounds: result.rounds,
-	};
-	if (result.outcome == Outcome.AttackerWins) {
-		const harvestBefore = defenderToday.harvest;
-		const baseLoot = defenderCombatant.lootFor(
-			attackerCombatant,
-			stake,
-			harvestBefore,
-			defenderToday.fightsInToday as int32,
-		);
-		const lootBps = (BPS + attackerToday.stats().lootBps) as uint64;
-		const boosted = Math.min(baseLoot * lootBps / (BPS as uint64), harvestBefore);
-		const loot = defenderToday.gear.wardedLoot(boosted);
-		const [winnings, fee] = stakeSplit(loot);
-		const bites = guardedBite(
-			biteHearts(
-				stake,
-				loot,
-				attackerToday.stats().power(),
-				defenderToday.stats().power(),
-				defenderToday.maxHearts as int32,
-				defenderToday.bitesInToday as int32,
-			),
-			defenderToday.stats().biteGuardBps + defenderToday.gear.damageGuardBps(),
-		);
-		const hearts = Math.max((struck.hearts as int32) - bites, 0);
-		const struckDown: Pet = {
-			...struck,
-			alive: hearts > 0,
-			hearts: hearts as uint8,
-			harvest: struck.harvest - loot,
-			bitesInToday: ((struck.bitesInToday as int32) + (bites > 0 ? 1 : 0)) as uint8,
-		};
-		const hurt = loot > 0 || bites > 0;
-		const robbed = hurt ? struckDown.robbedBy(attackerToday, epoch) : struckDown;
-		const [survivor, insuredGlobal] = robbed.revived(global);
-		const cannibal = attackerToday.stats().mods.has(Mod.Cannibal);
-		const [remains, devoured] = survivor.devouredBy(cannibal);
-		const paidOut: Pet = {
-			...committed,
-			burrow: committed.burrow + stake + winnings + devoured,
-		};
-		const raider = paidOut.calmedAgainst(defenderToday);
-		const paid = insuredGlobal.withProtocolFee(fee);
-		return Result.ok({
-			attacker: raider.gainXp(raidXp(loot)),
-			defender: remains.gainXp(DEFENSE_LOSS_XP),
-			global: remains.alive ? paid : paid.withDeath(remains.stats().rewardWeight()),
-			record: { ...record, loot: loot },
-		});
-	}
-	const [keptStake, fee] = stakeSplit(stake);
-	const defeat = defeatHearts(committed.maxHearts as int32);
-	const lost = guardedBite(defeat, committed.gear.damageGuardBps());
-	const hearts = Math.max((committed.hearts as int32) - lost, 0);
-	const fallen: Pet = { ...committed, alive: hearts > 0, hearts: hearts as uint8 };
-	const [beaten, insuredGlobal] = fallen.revived(global);
-	const kept: Pet = { ...struck, burrow: struck.burrow + keptStake };
-	const holder = kept.calmedAgainst(attackerToday);
-	const paid = insuredGlobal.withProtocolFee(fee);
-	return Result.ok({
-		attacker: beaten,
-		defender: holder.gainXp(DEFENSE_WIN_XP),
-		global: beaten.alive ? paid : paid.withDeath(beaten.stats().rewardWeight()),
-		record: record,
-	});
+	const opening = attacker.openingAgainst(defender, stake, epoch, seed);
+	const settled = opening.record.fightOutcome() == Outcome.AttackerWins
+		? opening.attackerWon(global, epoch)
+		: opening.defenderHeld(global);
+	return Result.ok(settled);
 }
 
 function devouredBy(this victim: Pet, cannibal: boolean): [Pet, uint64] {
@@ -584,14 +624,14 @@ function totalMoney(this duel: Duel): uint64 {
 	return duel.attacker.burrow +
 		duel.defender.harvest +
 		duel.defender.burrow +
-		duel.global.protocolPending;
+		duel.global.treasury;
 }
 
 function totalMoney(this settlement: FightSettlement): uint64 {
 	return settlement.attacker.burrow +
 		settlement.defender.harvest +
 		settlement.defender.burrow +
-		settlement.global.protocolPending;
+		settlement.global.treasury;
 }
 
 function refusalOf(result: Result<uint64, AttackError>): AttackError {
@@ -623,6 +663,17 @@ test "action ids and masks" {
 	assert nodeHoldMask().allowsNode(ALLOCATE_HOLD);
 }
 
+test "overtime banks the whole harvest at dusk, other pets keep it exposed" {
+	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0)).pet;
+	const plain: Pet = { ...newborn, harvest: 700, burrow: 100 };
+	assert plain.overtimeBanked() == plain;
+	const worker: Pet = { ...plain, mods: plain.mods.incl(Mod.Overtime) };
+	const banked = worker.overtimeBanked();
+	assert banked.harvest == 0 && banked.burrow == 800;
+	const dead: Pet = { ...worker, alive: false };
+	assert dead.overtimeBanked() == dead;
+}
+
 test "bank moves harvest, buying needs money and quota, eating needs room and food" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
 	const earner: Pet = { ...newborn.pet, harvest: 500 };
@@ -648,7 +699,7 @@ test "bank moves harvest, buying needs money and quota, eating needs room and fo
 	const spend = bought.value.global;
 	assert bought.value.pet.burrow == cost * 9;
 	assert bought.value.pet.pantry.portions(Food.Medium) == 1;
-	assert spend.recycledPending + spend.burned + spend.protocolPending == cost;
+	assert spend.recycledPending + spend.treasury == cost;
 	const fed = bought.value.pet.eat(Food.Medium, newborn.global);
 	assert fed.ok;
 	if (fed.ok) {
@@ -826,7 +877,7 @@ test "attack settlement conserves money and counts the fight" {
 		assert after.attacker.fightsOutToday == 1;
 		assert after.defender.fightsInToday == 1;
 		assert after.attacker.attackedOn(BlockSlot.Second, DUEL_EPOCH);
-		if (after.record.outcome == Outcome.AttackerWins) {
+		if (after.record.fightOutcome() == Outcome.AttackerWins) {
 			wins += 1;
 			assert after.record.loot == duel.defender.harvest - after.defender.harvest;
 			assert after.attacker.hearts == 5;
@@ -844,7 +895,7 @@ test "a winning attacker that takes back its stake leaves the hearts alone" {
 	let won = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
-		if (after.record.outcome == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
+		if (after.record.fightOutcome() == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
 			assert after.defender.hearts == 5;
 			assert after.defender.bitesInToday == 0;
 			won += 1;
@@ -858,7 +909,7 @@ test "a winning attacker bites an empty harvest" {
 	let bitten = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
-		if (after.record.outcome == Outcome.AttackerWins) {
+		if (after.record.fightOutcome() == Outcome.AttackerWins) {
 			const bite = biteHearts(
 				after.record.stake,
 				after.record.loot,
@@ -892,7 +943,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert !after.defender.alive;
 		assert after.defender.burrow == frail.burrow / 2;
 		assert after.attacker.burrow == cannibal.burrow + frail.burrow / 2;
@@ -908,7 +959,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 			seed,
 		);
 		if (!plain.ok) { unreachable; }
-		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
+		if (plain.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert plain.value.defender.burrow == frail.burrow;
 	}
 }
@@ -929,13 +980,13 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert after.defender.alive;
 		assert after.defender.insurance == (Insurance.Used as uint8);
 		assert after.defender.scars == 1;
 		assert after.defender.burrow == frail.burrow / 2;
 		assert after.attacker.burrow == cannibal.burrow;
-		assert after.global.burned == duel.global.burned + frail.burrow / 2;
+		assert after.global.treasury == duel.global.treasury + frail.burrow / 2;
 		saves += 1;
 	}
 	assert saves > 0;
@@ -960,7 +1011,7 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.outcome != Outcome.AttackerWins) { continue; }
+		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert after.defender.alive;
 		assert after.defender.burrow == charmed.burrow;
 		assert !after.defender.gear.hasSkill(ItemSkill.Revive);
@@ -990,8 +1041,8 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 			seed,
 		);
 		if (!plain.ok || !guarded.ok) { unreachable; }
-		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
-		if (guarded.value.record.outcome != Outcome.AttackerWins) { continue; }
+		if (plain.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (guarded.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
 		assert guarded.value.record.loot < plain.value.record.loot;
 		compared += 1;
 	}
@@ -1025,12 +1076,18 @@ test "a pet sells its weakest item for cash and cannot sell bare" {
 		...duel.defender,
 		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
 	};
-	const sold = geared.soldItem(duel.global);
+	const reserve = common.sellPrice() + epic.sellPrice();
+	const funded: GlobalConfig = { ...duel.global, itemReserve: reserve };
+	const unfunded = geared.soldItem(duel.global);
+	assert !unfunded.ok;
+	if (!unfunded.ok) { assert unfunded.error == EconomyError.TreasuryShort; }
+	const sold = geared.soldItem(funded);
 	assert sold.ok;
 	if (!sold.ok) { return; }
 	assert sold.value.pet.gear.feet.isEmpty();
 	assert !sold.value.pet.gear.head.isEmpty();
 	assert sold.value.pet.burrow == geared.burrow + common.sellPrice();
+	assert sold.value.global.itemReserve == reserve - common.sellPrice();
 	const bare = duel.defender.soldItem(duel.global);
 	assert !bare.ok;
 	if (!bare.ok) { assert bare.error == EconomyError.NoGear; }
@@ -1049,7 +1106,8 @@ test "a pet that cannot pay for the smallest portion sells its weakest item to e
 		foodBoughtToday: 0,
 		gear: Gear.bare().with(GearSlot.Head, epic).with(GearSlot.Feet, common),
 	};
-	const bought = short.buy(Food.Small, duel.global);
+	const funded: GlobalConfig = { ...duel.global, itemReserve: common.sellPrice() };
+	const bought = short.buy(Food.Small, funded);
 	assert bought.ok;
 	if (!bought.ok) { return; }
 	assert bought.value.pet.gear.feet.isEmpty() && !bought.value.pet.gear.head.isEmpty();

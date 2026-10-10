@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS } from "./units";
 import { START_BONUS, BASE_MAX_HEARTS, BASE_STAT, Stats, Region, Mod, grown, talented } from "./stats";
 import { Talent, TalentKind } from "./talent";

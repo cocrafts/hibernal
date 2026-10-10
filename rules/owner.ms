@@ -1,8 +1,8 @@
-import * as arithmetic from "./arithmetic";
-import { BPS, HBRN_UNIT } from "./units";
+import * as arithmetic from "std/solana/arithmetic";
+import { ACTS_PER_EPOCH, BPS, EPOCH_SECONDS, HBRN_UNIT } from "./units";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import { Food, GROWTH_CAP_BPS, foodCost, foodHearts } from "./emission";
-import { Pantry, mealHearts } from "./pantry";
+import { Pantry } from "./pantry";
 import { Tree } from "./tree";
 import { noMods } from "./stats";
 import { TalentKind } from "./talent";
@@ -10,11 +10,10 @@ import { Gear, ItemSkill, hasSkill, spentSkill } from "./items";
 
 export const BONDING_MAX: int32 = 127;
 export const BONDING_DECAY: int32 = 2;
-export const TALK_BONDING: int32 = 3;
-export const TALKS_PER_DAY: int32 = 2;
+export const ENGAGE_BONDING: int32 = 3;
+export const ENGAGES_PER_DAY: int32 = 3;
 export const FEED_BONDING: int32 = 6;
 export const PURCHASE_BONDING: int32 = 15;
-export const OWNER_FOOD_PER_DAY: int32 = 1;
 export const REFUSAL_BONDING: int32 = -40;
 export const GIFT_BONDING: int32 = 60;
 export const GIFT_SHARE_BPS: int32 = 500;
@@ -22,20 +21,45 @@ export const GIFT_RESERVE_DAYS: uint64 = 3;
 export const GROWTH_STEP_BPS: int32 = 500;
 export const GROWTH_STEPS_MAX: int32 = 3;
 export const INSURANCE_REVIVE_BPS: int32 = 3000;
-export const INSURANCE_BURN_PERCENT: uint64 = 50;
+export const INSURANCE_TREASURY_PERCENT: uint64 = 50;
 export const OWNER_BANK_PERCENT: uint64 = 50;
 export const OWNER_BANK_COOLDOWN_SECONDS: uint64 = 8 * 3600;
 
 export enum OwnerError {
 	Dead,
 	Refused,
-	Full,
-	FedToday,
-	TalkedOut,
-	Insured,
+	EngagedOut,
 	NoSuchTier,
 	EmptyHarvest,
 	CoolingDown,
+	SlotsFull,
+	EngagedThisRound,
+}
+
+export enum OwnerItem {
+	None,
+	SmallFood,
+	MediumFood,
+	LargeFood,
+	SmallGrowth,
+	MediumGrowth,
+	LargeGrowth,
+	Insurance,
+}
+
+export struct OwnerSlots {
+	first: OwnerItem;
+	second: OwnerItem;
+}
+
+export struct OwnerMeal {
+	food: Food;
+	left: OwnerSlots;
+}
+
+export struct OwnerDose {
+	steps: int32;
+	left: OwnerSlots;
 }
 
 export function bondedBy(this pet: Pet, amount: int32): Pet {
@@ -43,17 +67,110 @@ export function bondedBy(this pet: Pet, amount: int32): Pet {
 	return { ...pet, bonding: bonding as int8 };
 }
 
-export function ownerFed(this pet: Pet, food: Food): Result<Pet, OwnerError> {
+export function ownerSlots(this pet: Pet): OwnerSlots {
+	return {
+		first: (pet.ownerFirst as int32) as OwnerItem,
+		second: (pet.ownerSecond as int32) as OwnerItem,
+	};
+}
+
+export function withSlots(this pet: Pet, slots: OwnerSlots): Pet {
+	return {
+		...pet,
+		ownerFirst: (slots.first as int32) as uint8,
+		ownerSecond: (slots.second as int32) as uint8,
+	};
+}
+
+export function foodItem(food: Food): OwnerItem {
+	return match (food) {
+		Food.Small => OwnerItem.SmallFood,
+		Food.Medium => OwnerItem.MediumFood,
+		Food.Large => OwnerItem.LargeFood,
+	};
+}
+
+export function growthItem(steps: int32): Result<OwnerItem, OwnerError> {
+	return match (steps) {
+		1 => Result.ok(OwnerItem.SmallGrowth),
+		2 => Result.ok(OwnerItem.MediumGrowth),
+		3 => Result.ok(OwnerItem.LargeGrowth),
+		_ => Result.err(OwnerError.NoSuchTier),
+	};
+}
+
+function foodOf(item: OwnerItem): Result<Food, OwnerError> {
+	return match (item) {
+		OwnerItem.SmallFood => Result.ok(Food.Small),
+		OwnerItem.MediumFood => Result.ok(Food.Medium),
+		OwnerItem.LargeFood => Result.ok(Food.Large),
+		_ => Result.err(OwnerError.NoSuchTier),
+	};
+}
+
+function stepsOf(item: OwnerItem): int32 {
+	return match (item) {
+		OwnerItem.SmallGrowth => 1,
+		OwnerItem.MediumGrowth => 2,
+		OwnerItem.LargeGrowth => 3,
+		_ => 0,
+	};
+}
+
+export function withOwnerItem(this pet: Pet, item: OwnerItem): Result<Pet, OwnerError> {
 	if (!pet.alive) { return Result.err(OwnerError.Dead); }
+	if (item == OwnerItem.None) { return Result.err(OwnerError.NoSuchTier); }
 	if ((pet.bonding as int32) < REFUSAL_BONDING) { return Result.err(OwnerError.Refused); }
-	if ((pet.ownerFedToday as int32) >= OWNER_FOOD_PER_DAY) {
-		return Result.err(OwnerError.FedToday);
+	if (item == OwnerItem.Insurance && pet.insurance == (Insurance.None as uint8)) {
+		return Result.ok({ ...pet, insurance: Insurance.Armed as uint8 });
 	}
-	if (pet.hearts >= pet.maxHearts) { return Result.err(OwnerError.Full); }
-	const restored = mealHearts(food, pet.stats().foodBps);
-	const hearts = Math.min((pet.hearts as int32) + restored, pet.maxHearts as int32);
-	const fed: Pet = { ...pet, hearts: hearts as uint8, ownerFedToday: pet.ownerFedToday + 1 };
-	return Result.ok(fed.bondedBy(FEED_BONDING));
+	const slots = pet.ownerSlots();
+	if (slots.first == OwnerItem.None) {
+		return Result.ok(pet.withSlots({ ...slots, first: item }));
+	}
+	if (slots.second == OwnerItem.None) {
+		return Result.ok(pet.withSlots({ ...slots, second: item }));
+	}
+	return Result.err(OwnerError.SlotsFull);
+}
+
+export function withSkin(this pet: Pet, skin: uint8): Result<Pet, OwnerError> {
+	if (!pet.alive) { return Result.err(OwnerError.Dead); }
+	return Result.ok({ ...pet, skin: skin + 1 });
+}
+
+export function ownerMeal(this slots: OwnerSlots): Result<OwnerMeal, OwnerError> {
+	const first = foodOf(slots.first);
+	if (first.ok) {
+		return Result.ok({ food: first.value, left: { ...slots, first: OwnerItem.None } });
+	}
+	const second = foodOf(slots.second);
+	if (second.ok) {
+		return Result.ok({ food: second.value, left: { ...slots, second: OwnerItem.None } });
+	}
+	return Result.err(OwnerError.NoSuchTier);
+}
+
+export function ownerDose(this slots: OwnerSlots): Result<OwnerDose, OwnerError> {
+	const first = stepsOf(slots.first);
+	if (first > 0) {
+		return Result.ok({ steps: first, left: { ...slots, first: OwnerItem.None } });
+	}
+	const second = stepsOf(slots.second);
+	if (second > 0) {
+		return Result.ok({ steps: second, left: { ...slots, second: OwnerItem.None } });
+	}
+	return Result.err(OwnerError.NoSuchTier);
+}
+
+export function ownerCover(this slots: OwnerSlots): Result<OwnerSlots, OwnerError> {
+	if (slots.first == OwnerItem.Insurance) { return Result.ok({ ...slots, first: OwnerItem.None }); }
+	if (slots.second == OwnerItem.Insurance) { return Result.ok({ ...slots, second: OwnerItem.None }); }
+	return Result.err(OwnerError.NoSuchTier);
+}
+
+export function growthBpsFor(steps: int32): int32 {
+	return Math.min(BPS + steps * GROWTH_STEP_BPS, GROWTH_CAP_BPS);
 }
 
 export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError> {
@@ -71,33 +188,19 @@ export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError>
 	});
 }
 
-export function talkedTo(this pet: Pet): Result<Pet, OwnerError> {
-	if (!pet.alive) { return Result.err(OwnerError.Dead); }
-	if ((pet.talksToday as int32) >= TALKS_PER_DAY) { return Result.err(OwnerError.TalkedOut); }
-	const talked: Pet = { ...pet, talksToday: pet.talksToday + 1 };
-	return Result.ok(talked.bondedBy(TALK_BONDING));
+export function roundOfDay(now: uint64): uint8 {
+	return ((now % EPOCH_SECONDS) / (EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64))) as uint8;
 }
 
-export function grownBy(this pet: Pet, steps: int32, epoch: uint64): Result<Pet, OwnerError> {
+export function engagedAt(this pet: Pet, now: uint64): Result<Pet, OwnerError> {
 	if (!pet.alive) { return Result.err(OwnerError.Dead); }
-	if (steps < 1 || steps > GROWTH_STEPS_MAX) { return Result.err(OwnerError.NoSuchTier); }
-	const active = pet.lastTickEpoch < pet.growthMultiplierExpiry;
-	const current = active ? pet.growthMultiplierBps as int32 : BPS;
-	const multiplier = Math.min(current + steps * GROWTH_STEP_BPS, GROWTH_CAP_BPS);
-	const grown: Pet = {
-		...pet,
-		growthMultiplierBps: multiplier as uint16,
-		growthMultiplierExpiry: epoch + 1,
-	};
-	return Result.ok(grown.bondedBy(PURCHASE_BONDING));
+	if ((pet.engagedToday as int32) >= ENGAGES_PER_DAY) { return Result.err(OwnerError.EngagedOut); }
+	const round = roundOfDay(now);
+	if (pet.engagedToday > 0 && round <= pet.engagedRound) { return Result.err(OwnerError.EngagedThisRound); }
+	const engaged: Pet = { ...pet, engagedToday: pet.engagedToday + 1, engagedRound: round };
+	return Result.ok(engaged.bondedBy(ENGAGE_BONDING));
 }
 
-export function insured(this pet: Pet): Result<Pet, OwnerError> {
-	if (!pet.alive) { return Result.err(OwnerError.Dead); }
-	if (pet.insurance != (Insurance.None as uint8)) { return Result.err(OwnerError.Insured); }
-	const armed: Pet = { ...pet, insurance: Insurance.Armed as uint8 };
-	return Result.ok(armed.bondedBy(PURCHASE_BONDING));
-}
 
 export function reviveHearts(maxHearts: int32): int32 {
 	return Math.max(maxHearts * INSURANCE_REVIVE_BPS / BPS, 1);
@@ -115,18 +218,18 @@ export function revived(this pet: Pet, global: GlobalConfig): [Pet, GlobalConfig
 		return [spared, global];
 	}
 	if (pet.insurance != (Insurance.Armed as uint8)) { return [pet, global]; }
-	const burnedHarvest = pet.harvest * INSURANCE_BURN_PERCENT / 100;
-	const burnedBurrow = pet.burrow * INSURANCE_BURN_PERCENT / 100;
+	const takenHarvest = pet.harvest * INSURANCE_TREASURY_PERCENT / 100;
+	const takenBurrow = pet.burrow * INSURANCE_TREASURY_PERCENT / 100;
 	const saved: Pet = {
 		...pet,
 		alive: true,
 		hearts: reviveHearts(pet.maxHearts as int32) as uint8,
-		harvest: pet.harvest - burnedHarvest,
-		burrow: pet.burrow - burnedBurrow,
+		harvest: pet.harvest - takenHarvest,
+		burrow: pet.burrow - takenBurrow,
 		insurance: Insurance.Used as uint8,
 		scars: pet.scars + 1,
 	};
-	return [saved, { ...global, burned: global.burned + burnedHarvest + burnedBurrow }];
+	return [saved, { ...global, treasury: global.treasury + takenHarvest + takenBurrow }];
 }
 
 export function foodReserve(level: int32, hungerPerDay: int32): uint64 {
@@ -147,61 +250,82 @@ test "bonding moves with owner care and stays inside its range" {
 	const pet: Pet = { ...testPet(), bonding: 120 };
 	assert pet.bondedBy(50).bonding == 127;
 	assert pet.bondedBy(-400).bonding == -127;
-	const talked = testPet().talkedTo();
-	assert talked.ok;
-	if (!talked.ok) { return; }
-	assert (talked.value.bonding as int32) == TALK_BONDING;
-	const twice = talked.value.talkedTo();
-	assert twice.ok;
-	if (!twice.ok) { return; }
-	const thrice = twice.value.talkedTo();
-	assert !thrice.ok;
-	if (!thrice.ok) { assert thrice.error == OwnerError.TalkedOut; }
 }
 
-test "a pet takes one owner meal a day and refuses it when it resents the owner" {
-	const hungry: Pet = { ...testPet(), hearts: 4, maxHearts: 20 };
-	const fed = hungry.ownerFed(Food.Medium);
+test "an owner engages once a round, three times a day at most" {
+	const round = EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64);
+	const day: uint64 = 7 * EPOCH_SECONDS;
+	const first = testPet().engagedAt(day + 10);
+	assert first.ok;
+	if (!first.ok) { return; }
+	assert (first.value.bonding as int32) == ENGAGE_BONDING;
+	const sameRound = first.value.engagedAt(day + round - 1);
+	assert !sameRound.ok;
+	if (!sameRound.ok) { assert sameRound.error == OwnerError.EngagedThisRound; }
+	const second = first.value.engagedAt(day + 2 * round);
+	assert second.ok;
+	if (!second.ok) { return; }
+	const earlier = second.value.engagedAt(day + round);
+	assert !earlier.ok;
+	const third = second.value.engagedAt(day + 3 * round);
+	assert third.ok;
+	if (!third.ok) { return; }
+	assert (third.value.bonding as int32) == 3 * ENGAGE_BONDING;
+	assert third.value.engagedToday == 3;
+	const fourth = third.value.engagedAt(day + EPOCH_SECONDS);
+	assert !fourth.ok;
+	if (!fourth.ok) { assert fourth.error == OwnerError.EngagedOut; }
+	const deadPet: Pet = { ...testPet(), alive: false };
+	const dead = deadPet.engagedAt(day);
+	assert !dead.ok;
+	if (!dead.ok) { assert dead.error == OwnerError.Dead; }
+}
+
+test "owner items fill two slots, insurance arms at once, a resentful pet refuses" {
+	const pet = testPet();
+	const fed = pet.withOwnerItem(foodItem(Food.Medium));
 	assert fed.ok;
 	if (!fed.ok) { return; }
-	assert fed.value.hearts == 10;
-	assert (fed.value.bonding as int32) == FEED_BONDING;
-	const again: Pet = { ...fed.value, hearts: 4 };
-	const second = again.ownerFed(Food.Small);
-	assert !second.ok;
-	if (!second.ok) { assert second.error == OwnerError.FedToday; }
-	const resentful: Pet = { ...hungry, bonding: (REFUSAL_BONDING - 1) as int8 };
-	const refused = resentful.ownerFed(Food.Small);
+	assert fed.value.ownerSlots().first == OwnerItem.MediumFood;
+	const dose = growthItem(2);
+	assert dose.ok;
+	if (!dose.ok) { return; }
+	const both = fed.value.withOwnerItem(dose.value);
+	assert both.ok;
+	if (!both.ok) { return; }
+	assert both.value.ownerSlots().second == OwnerItem.MediumGrowth;
+	const full = both.value.withOwnerItem(foodItem(Food.Small));
+	assert !full.ok;
+	if (!full.ok) { assert full.error == OwnerError.SlotsFull; }
+	const covered = both.value.withOwnerItem(OwnerItem.Insurance);
+	assert covered.ok;
+	if (!covered.ok) { return; }
+	assert covered.value.insurance == (Insurance.Armed as uint8);
+	assert covered.value.ownerSlots() == both.value.ownerSlots();
+	const again = covered.value.withOwnerItem(OwnerItem.Insurance);
+	assert !again.ok;
+	if (!again.ok) { assert again.error == OwnerError.SlotsFull; }
+	const resentful: Pet = { ...pet, bonding: (REFUSAL_BONDING - 1) as int8 };
+	const refused = resentful.withOwnerItem(foodItem(Food.Small));
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == OwnerError.Refused; }
+	assert !growthItem(4).ok;
+	const dead: Pet = { ...pet, alive: false };
+	assert !dead.withOwnerItem(foodItem(Food.Small)).ok;
+	const skinned = pet.withSkin(1);
+	assert skinned.ok && skinned.value.skin == 2;
 }
 
-test "growth stacks to its cap for the next day and insurance is bought once" {
-	const pet = testPet();
-	const once = pet.grownBy(3, 5);
-	assert once.ok;
-	if (!once.ok) { return; }
-	assert once.value.growthMultiplierBps == 11500;
-	assert once.value.growthMultiplierExpiry == 6;
-	const twice = once.value.grownBy(3, 5);
-	assert twice.ok;
-	if (twice.ok) { assert (twice.value.growthMultiplierBps as int32) == GROWTH_CAP_BPS; }
-	assert !pet.grownBy(4, 5).ok;
-	const armed = pet.insured();
-	assert armed.ok;
-	if (!armed.ok) { return; }
-	assert !armed.value.insured().ok;
-}
-
-test "insurance revives once, burns half the wallet and leaves a scar" {
+test "insurance revives once, sends half the wallet to the treasury and leaves a scar" {
 	const global: GlobalConfig = {
 		genesisTimestamp: 0,
 		rewardPerWorkPower: 0,
 		rewardEpoch: 0,
 		totalWorkPower: 0,
 		recycledPending: 0,
-		protocolPending: 0,
-		burned: 7,
+		treasury: 7,
+		itemReserve: 0,
+		emitted: 0,
 		livingPets: 1,
 		floorSlots: 500,
 	};
@@ -220,7 +344,7 @@ test "insurance revives once, burns half the wallet and leaves a scar" {
 	assert saved.harvest == 50 && saved.burrow == 150;
 	assert saved.scars == 1;
 	assert saved.insurance == (Insurance.Used as uint8);
-	assert after.burned == global.burned + 200;
+	assert after.treasury == global.treasury + 200;
 	const spent: Pet = { ...dying, insurance: Insurance.Used as uint8 };
 	const [gone, _same] = spent.revived(global);
 	assert !gone.alive;
@@ -298,7 +422,7 @@ function testPet(): Pet {
 		scars: 0,
 		lineageGeneration: 0,
 		bonding: 0,
-		talksToday: 0,
+		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
 		ownerBankedAt: 0,

@@ -1,4 +1,4 @@
-import * as arithmetic from "./arithmetic";
+import * as arithmetic from "std/solana/arithmetic";
 import { BPS, HBRN_UNIT } from "./units";
 import { Region } from "./stats";
 import { BlockSlot, Pet, GlobalConfig } from "./layout";
@@ -22,18 +22,21 @@ import {
 	none,
 	bare,
 } from "./items";
-import { PetAndGlobal, withWorkPower, born, genesis } from "./life";
+import { PetAndGlobal, withTreasuryIncome, withWorkPower, born, genesis } from "./life";
 
 export const MARKET_FEE_BPS: int32 = 500;
 export const LISTING_DAYS: uint64 = 3;
 export const FAIR_SCORE_BPS: int32 = 360 * ITEM_BONUS_PERCENT / 100;
 
 export struct Listing {
-	item: Item;
 	price: uint64;
-	seller: uint32;
 	sellerBorn: uint64;
 	listedEpoch: uint64;
+	seller: uint32;
+	item: Item;
+	pad: uint8;
+	pad2: uint16;
+	pad3: uint32;
 }
 
 export struct Listed {
@@ -54,6 +57,7 @@ export enum MarketError {
 	OwnListing,
 	NotWanted,
 	Broke,
+	TreasuryShort,
 }
 
 export function focusStat(this pet: Pet): TalentKind {
@@ -138,17 +142,22 @@ export function boughtListing(
 	if (pet.wallet() < listing.price) { return Result.err(MarketError.Broke); }
 	const slot = pet.gear.replacedSlot(pet.focusStat());
 	const displaced = pet.gear.at(slot).sellPrice();
+	const fee = listing.price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);
+	if (global.itemReserve < displaced) { return Result.err(MarketError.TreasuryShort); }
 	const paid = pet.charged(listing.price);
 	const geared: Pet = {
 		...paid,
 		burrow: paid.burrow + displaced,
 		gear: pet.gear.with(slot, listing.item),
 	};
-	const fee = listing.price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);
 	const weighed = global.withWorkPower(pet.stats().rewardWeight(), geared.stats().rewardWeight());
 	return Result.ok({
 		buyer: geared,
-		global: { ...weighed, recycledPending: weighed.recycledPending + fee },
+		global: {
+			...weighed,
+			treasury: weighed.treasury + fee,
+			itemReserve: weighed.itemReserve - displaced,
+		},
 		proceeds: listing.price - fee,
 	});
 }
@@ -168,16 +177,23 @@ export function paidFor(
 	global: GlobalConfig,
 ): PetAndGlobal {
 	if (!listing.sellerOf(seller)) {
-		const pot = global.recycledPending + proceeds;
-		return { pet: seller, global: { ...global, recycledPending: pot } };
+		return { pet: seller, global: global.withTreasuryIncome(proceeds) };
 	}
 	return { pet: { ...seller, burrow: seller.burrow + proceeds }, global: global };
 }
 
-export function boughtBack(this seller: Pet, listing: Listing): Pet {
-	if (!listing.sellerOf(seller)) { return seller; }
+export function boughtBack(
+	this seller: Pet,
+	listing: Listing,
+	global: GlobalConfig,
+): Result<PetAndGlobal, MarketError> {
+	if (!listing.sellerOf(seller)) { return Result.ok({ pet: seller, global: global }); }
 	const price = listing.item.sellPrice();
-	return { ...seller, burrow: seller.burrow + price };
+	if (global.itemReserve < price) { return Result.err(MarketError.TreasuryShort); }
+	return Result.ok({
+		pet: { ...seller, burrow: seller.burrow + price },
+		global: { ...global, itemReserve: global.itemReserve - price },
+	});
 }
 
 test "a pet lists its best item off its main stat at a price that follows the item's score" {
@@ -220,6 +236,7 @@ test "an item bought on the market never sells back to the system for more than 
 
 test "a buyer takes an item on its main stat into its least useful slot and the seller is paid" {
 	const newborn = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0));
+	const funded: GlobalConfig = { ...newborn.global, itemReserve: 5000 * HBRN_UNIT };
 	const rare = Item.minted(TalentGrade.Rare, TalentKind.Forage, ItemSkill.None, 1);
 	const common = Item.minted(TalentGrade.Common, TalentKind.Forage, ItemSkill.None, 1);
 	const legendary = Item.minted(TalentGrade.Legendary, TalentKind.Might, ItemSkill.None, 1);
@@ -242,7 +259,7 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 		listedEpoch: 1,
 	};
 	assert worker.listingGain(listing) == gradeBonusBps(TalentGrade.Epic);
-	const bought = worker.boughtListing(listing, 2, newborn.global);
+	const bought = worker.boughtListing(listing, 2, funded);
 	assert bought.ok;
 	if (!bought.ok) { return; }
 	assert bought.value.buyer.gear.feet == epic;
@@ -250,7 +267,11 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 	assert bought.value.buyer.burrow == worker.burrow - listing.price + refund;
 	const fee = listing.price * (MARKET_FEE_BPS as uint64) / (BPS as uint64);
 	assert bought.value.proceeds == listing.price - fee;
-	assert bought.value.global.recycledPending == newborn.global.recycledPending + fee;
+	assert bought.value.global.treasury == funded.treasury + fee;
+	assert bought.value.global.itemReserve == funded.itemReserve - refund;
+	const unfunded = worker.boughtListing(listing, 2, newborn.global);
+	assert !unfunded.ok;
+	if (!unfunded.ok) { assert unfunded.error == MarketError.TreasuryShort; }
 	const own = worker.boughtListing(listing, 5, newborn.global);
 	if (!own.ok) { assert own.error == MarketError.OwnListing; }
 	const poor: Pet = { ...worker, burrow: 1 };
@@ -266,6 +287,15 @@ test "a buyer takes an item on its main stat into its least useful slot and the 
 	const heir: Pet = { ...seller, bornEpoch: 40 };
 	const orphaned = heir.paidFor(listing, 7, newborn.global);
 	assert orphaned.pet.burrow == 10;
-	assert orphaned.global.recycledPending == newborn.global.recycledPending + 7;
-	assert seller.boughtBack(listing).burrow == 10 + epic.sellPrice();
+	assert orphaned.global.treasury == newborn.global.treasury + 7;
+	const back = seller.boughtBack(listing, funded);
+	assert back.ok;
+	if (back.ok) {
+		assert back.value.pet.burrow == 10 + epic.sellPrice();
+		assert back.value.global.itemReserve == funded.itemReserve - epic.sellPrice();
+	}
+	assert !seller.boughtBack(listing, newborn.global).ok;
+	const gone = heir.boughtBack(listing, newborn.global);
+	assert gone.ok;
+	if (gone.ok) { assert gone.value.pet.burrow == heir.burrow; }
 }
