@@ -93,7 +93,6 @@ export enum BurialError {
 
 export enum HeirError {
 	Alive,
-	Lost,
 	TreasuryShort,
 }
 
@@ -508,7 +507,6 @@ export function heirOf(
 	global: GlobalConfig,
 ): Result<PetAndGlobal, HeirError> {
 	if (dead.alive) { return Result.err(HeirError.Alive); }
-	if (!dead.agedOut()) { return Result.err(HeirError.Lost); }
 	const [heirlooms, proceeds] = dead.gear.heirlooms(HEIRLOOM_SLOTS);
 	if (global.itemReserve < proceeds) { return Result.err(HeirError.TreasuryShort); }
 	const paid: GlobalConfig = { ...global, itemReserve: global.itemReserve - proceeds };
@@ -714,7 +712,7 @@ test "a newborn gets a small ration on each of its three shielded days" {
 	assert rescued.pet.hearts == 3;
 }
 
-test "ticks refuse the dead and the past, and a burial splits the wallet" {
+test "ticks refuse the dead and the past, a burial splits the wallet and the next generation starts with nothing" {
 	const newborn = hatch(Region.Worker, 0, GlobalConfig.genesis(0));
 	const dead: Pet = { ...newborn.pet, alive: false, hearts: 0, harvest: 700, burrow: 301 };
 	const refused = dead.tickTo(newborn.global, 1);
@@ -731,8 +729,11 @@ test "ticks refuse the dead and the past, and a burial splits the wallet" {
 		assert burial.value.pet.harvest == 0 && burial.value.pet.burrow == 0;
 		assert burial.value.global.treasury == 501;
 		const heir = burial.value.pet.heirOf(2, burial.value.global);
-		assert !heir.ok;
-		if (!heir.ok) { assert heir.error == HeirError.Lost; }
+		assert heir.ok;
+		if (heir.ok) {
+			assert heir.value.pet.alive && heir.value.pet.lineageGeneration == dead.lineageGeneration + 1;
+			assert heir.value.pet.burrow == 0 && heir.value.pet.harvest == 0 && heir.value.pet.gear.resaleValue() == 0;
+		}
 	}
 	assert !newborn.pet.bury(3, newborn.global).ok;
 }

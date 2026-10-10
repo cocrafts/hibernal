@@ -152,7 +152,7 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 
 ### Package 3: the world and the teacher — Measured
 
-`sim/world.ms` holds the state (`Pet[]`, `GlobalConfig`, death and level-milestone epochs per slot) and the steps: `beginEpoch` (tick every living pet, hatch an heir into a slot whose pet died at least `GRACE_EPOCHS` ago, lineage +1), one `act` as three head steps `applyEconomy` → `applyNode` → `applyAttack`, and `endEpoch` (bury, split the wallet to block-mates). `sim/teacher.ms` is the heuristic teacher on top of `brain.ms` personas (slot ÷ 3 picks Cautious, Greedy, Vengeful) and `playEpisode(blocks, epochs, seed)`.
+`sim/world.ms` holds the state (`Pet[]`, `GlobalConfig`, death and level-milestone epochs per slot) and the steps: `beginEpoch` (tick every living pet, move newborns to the lowest-level block with `newbornsPlacedLowestLevel`), one `act` as three head steps `applyEconomy` → `applyNode` → `applyAttack`, and `endEpoch` (bury; a natural death hatches the heir at once, lineage +1; any other death gives half the wallet to one living block-mate). `sim/teacher.ms` is the heuristic teacher on top of `brain.ms` personas (slot ÷ 3 picks Cautious, Greedy, Vengeful) and `playEpisode(blocks, epochs, seed)`.
 
 - Each head gets its own mask on the state the previous head left, exactly as the four policies run inside `act`. A single joint mask per `act` was measured wrong: eating lowers the burrow and turns an attack the joint mask allowed into `Broke`. The env in package 4 therefore exposes three observe/step pairs per `act`, not one.
 - A rejected action counts in `stats.illegal` and applies nothing. The teacher runs 200 pets × 120 epochs with `illegal == 0`.
@@ -301,7 +301,7 @@ uv run python ppo.py --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 
 | PPO seed 5 / 6 / 7 | 12,416 / 12,432 / 11,704 | 65 / 173 / 102 / 74 · 62 / 175 / 103 / 74 · 58 / 170 / 97 / 64 | 1–6 · 1–6 · 1–7 | same | same | 0 | 0 |
 
 - Days 1–6 have no fight by design, not by a bug: `World.staggered` gives slot 0 of the 20 blocks days 1–3 and slot 1 days 4–6, so until day 7 no block holds two pets outside the 3-epoch newborn shield (`BRIEF.md` §3.2). The first fights come on day 7 (7 of them, then 14, 20, 34). The "fights every day" condition does not hold for days 1–6, and it is not special-cased.
-- Deaths and heirs do not depend on the controller: every pet ages out (no starved and no bitten death anywhere), and the heir comes back after the 7-epoch grace.
+- Deaths and heirs do not depend on the controller: every pet ages out (no starved and no bitten death anywhere), and the heir comes back after the 7-epoch grace (rules before 2026-10-10; the heir now hatches at the same dusk).
 
 **Behavior cloning**, 16 worlds (1.24M economy, 1.02M node, 381k attack decisions with more than one legal action; collection 222 s, 7 min in all):
 
@@ -426,6 +426,48 @@ Measured on engine `16948401298924711931`, commit `7ab5e6f` (`~/metacraft/hibern
 - The death penalty alone barely moved starvation (PPO seed 5 from `bc24`: 122 at 500, 146 / 145 / 113 at 10k / 30k / 100k; at 100k the critic's explained variance fell to 0.69). In PPO worlds the starved are Workers farmed by PPO robbers: robbed 0.6 times a day against 0.3 for the rest, half their income lost, still minting. The user counts that as competition, not a brain fault. Learned brains still let poor pets starve without money about twice as often as the teacher.
 - On the way, every starvation with money (step26: one; step27: three) was a pet that knew it would not wake up (`DawnHearts` = 0) and did not buy: Fighters eating 45–55% of their hearts a day who lived on the owner's breakfast, and a bled Worker that kept fighting. With the food sale inside `buy`, the appetite ceiling and no reflex, step29 has none.
 - Persona recall of the learned brains (0.71–0.75) sits under the 0.8 the user set; reported, not gated.
+
+### Package 7: the 21M economy, owner slots and thinking wild pets — Measured
+
+The user decided on 2026-10-05 (`docs/BRIEF.md` D3, D4, D23, D37, D40–D42): emission halves every Winter to an exact 21M, nothing is burned and a treasury pays 1% of its balance back each day, the growth drug is a next-day forage boost, Overtime banks the harvest at dusk, owner consumables sit in slots 5–6, wild pets act with the brain in empty seats, and the teacher picks its keystone by persona and start region so all six are taught.
+
+Measured on engine `3052634712731184861`, tree `5281e361189eac9ae2b36ba777bf734a981c735f`, the shared Mac under load 40–70: `bc.py --envs 8 --steps 4000 --studentRounds 2 --name bc30`, `ppo.py --start bc30 --learningRate 1e-3 --passes 4 --iterations 30 --threads 2 --alternate --pool uniform` seeds 5–7 (`p30s5`–`p30s7`, 50 minutes for the three in parallel), `evaluate.py --worlds 16` and `health.py --worlds 8` (seed 9001, fixed blocks, wilds on):
+
+| | Teacher | Clone | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with money for a meal (health) | 0 | 0 | 0 / 0 / 0 |
+| Starved, any, per 8 worlds (health) | 93 | 99 | 66 / 47 / 73 |
+| Early deaths per 100 lives (health) | 3.70 | 6.06 | 3.26 / 1.95 / 3.46 |
+| Own-world wealth, `$HBRN` per pet; deaths | 33,501; 206 | 33,096; 196 | 39,235 / 40,623 / 39,832; 143 / 105 / 178 |
+| Mixed world against the teacher | −1.1% (seat noise) | −0.6% | +52.6 / +27.4 / +54.7% |
+| Food bill at level 20, % of income | 48 | 49 | 34 / 32 / 31 |
+| % of income on mints; on the market | 10.5; 5.8 | 11.1; 6.3 | 8.9–10.0; 4.6–5.2 |
+| Income p90 / p99 / top against the median | 4.3 / 5.9 / 9.1 | 4.2 / 5.6 / 9.1 | 3.6–4.0 / 5.2–5.3 / 6.5–7.7 |
+| Start-region wealth, richest over poorest | 2.5 | 2.2 | 1.4 / 1.1 / 1.2 |
+| Persona told from one log, with revenge | 0.81 | 0.81 | 0.71 / 0.67 / 0.70 |
+
+- With `p30s5` in `out/actProbe/policy.txt`, `program/test/day.ms` replays days 36–120 of a block on the program and in the sim byte for byte (364 fights, 10 deaths, 8 heirs, 21 sales; wilds off, as on chain until the wild page lands), and `tools/chain/dayLiteSvm.mjs` replays the relay day with 0 bytes differing; worst act with a fight 979,254 CU (was 1,002,138). Program 468,216 bytes.
+- HBRN ledger (`msc run sim/ledger.ms`, 200 pets, 400 days, teacher): Σ balances + unsettled shares + pot + treasury + item reserve + dead estates against `emitted` drifts −38,910 base units (per-pet rounding) by day 400. Before the fixes the same harness found three sources minting from nothing, each disabled in a copy to size it: sim wild harvest ~3.5M, item buyback ~1.5M, growth bonus ~0.6M `$HBRN` by day 400; then a retiring wild losing its unpaid day, −991k.
+- 400-day teacher world, seed 7 (old rules → halving without release → final): deaths 756 → 993 → 751, median wallet 46,592 → 1,126 → 48,978 `$HBRN`, median level 20 → 15 → 20; all six keystones held (Tycoon, Berserker and Bulwark were never taken before).
+- Persona recall stays under the user's 0.8, as in package 5f; reported, not gated.
+
+### Package 8: engage instead of talk — Measured
+
+Rules change of 2026-10-06 (person: an app open is one engagement, once a round, three a day; `rules/owner.ms` `engagedAt`) moved the world digest, so the engine is `15072111084034916937` and the `p30s*` brains are refused (`WrongEngine`). Retrained with the Package 7 commands on the shared Mac at load ~6: `bc31`, then `p31s5`–`p31s7` (26 minutes for the three in parallel), `evaluate.py --worlds 16` and `health.py --worlds 8` (seed 9001, fixed blocks, wilds on):
+
+| | Teacher | Clone | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with money for a meal (health) | 0 | 1 | 0 / 0 / 0 |
+| Starved, any, per 8 worlds (health) | 83 | 67 | 78 / 39 / 82 |
+| Early deaths per 100 lives (health) | 3.38 | 4.67 | 3.33 / 1.75 / 2.90 |
+| Own-world wealth, `$HBRN` per pet; deaths | 33,213; 175 | 32,563; 202 | 38,188 / 38,335 / 39,367; 206 / 101 / 166 |
+| Mixed world against the teacher | −1.6% (seat noise) | +2.4% | +31.5 / +35.4 / +48.2% |
+
+- The person chose `p31s5` on 2026-10-06 for play, not survival: persona told from one log with revenge 0.72 (s6 0.65, s7 0.66, teacher 0.80), 51.9 fights a pet (s6 45.9), vengeful pets avenge 7.4% (s6 2.4%), deaths 206 against the teacher's 175. With it in `out/actProbe/policy.txt`, `program/test/day.ms` replays days 36–120 of a block on the program and in the sim byte for byte (366 fights, 10 deaths, 8 heirs, 19 sales), and `tools/chain/dayLiteSvm.mjs` replays the relay day with 0 bytes differing; worst act with a fight 979,194 CU (`p31s6`: 361 fights, 979,178 CU). Program 471,496 bytes (+3,184 for the session-key check in `engage`).
+- Continuation smoke, 2026-10-06, source tree `cd0c708d59589141ae2491d2423b19b65f40048a`, private msc, `msc run sim/episode.ms` (seed 7, 20 blocks, 120 epochs, teacher, fixed blocks): exit 0 in 182 s on the shared Mac; 200 pets, 158 living at the end, 205 deaths, 163 heirs, 11,078 fights, 9,290 attacker wins and 0 illegal actions. Median level 14, median wallet 30,841 HBRN, emitted 12,250,000 HBRN. Aggregate counts prove fights and lifecycle transitions occurred, not daily fight eligibility, stagger timing, `p31s5` re-sort behavior or chain parity.
+- `msc run sim/diary.ms`, same tree/compiler and seed, exited 0 in 177 s. The three followed slots show distinct heir dates: Cautious day 101, Greedy day 110, Vengeful day 119. The Vengeful pet dies of old age on day 112 and its day 119 records an heir born and a gift to the owner. An earlier reading of its day 115 as a lost revenge attack was the wild pet holding the empty seat; `sim/diary.ms` now narrates the dead pet through its grace days instead (2026-10-09). This is teacher diary evidence, not a diary driven by the deployed brain.
 
 ### Package 6: the policy on SBF — Measured (inference), observation open
 

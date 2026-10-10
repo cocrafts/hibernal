@@ -421,7 +421,7 @@ function absorbPet(this digest: Digest, pet: Pet): Digest {
 			((pet.scars as uint64) << 8) |
 			((pet.lineageGeneration as uint64) << 16) |
 			((((pet.bonding as int64) + 128) as uint64) << 32) |
-			((pet.talksToday as uint64) << 40) |
+			((pet.engagedToday as uint64) << 40) |
 			((pet.ownerFedToday as uint64) << 48),
 		)
 		.absorb(pet.giftOwed)
@@ -443,8 +443,9 @@ export function digestOf(pets: Span<Pet>, global: GlobalConfig): uint64 {
 		.absorb(global.rewardEpoch)
 		.absorb(global.totalWorkPower)
 		.absorb(global.recycledPending)
-		.absorb(global.protocolPending)
-		.absorb(global.burned)
+		.absorb(global.treasury)
+		.absorb(global.itemReserve)
+		.absorb(global.emitted)
 		.absorb((global.livingPets as uint64) | ((global.floorSlots as uint64) << 32))
 		.value;
 }

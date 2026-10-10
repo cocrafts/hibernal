@@ -630,7 +630,6 @@ export function endEpoch(this world: World): World {
 			const lucky = world.livingMateAt(index, luckyMateOf(world.seed, index, world.epoch, world.livingMates(index)));
 			pets[lucky] = { ...pets[lucky], harvest: pets[lucky].harvest + burial.value.toMate };
 		}
-		if (!burial.value.pet.agedOut()) { continue; }
 		const heir = burial.value.pet.heirOf(world.epoch + 1, global);
 		if (!heir.ok) { unreachable; }
 		pets[index] = heir.value.pet;
@@ -1009,7 +1008,7 @@ function harvestTotal(pets: Pet[]): uint64 {
 	return total;
 }
 
-test "a dead pet has empty masks and is buried once" {
+test "a dead pet has empty masks, is buried once and hatches the next generation" {
 	let world = World.create(1, 4).beginEpoch(1);
 	const victim = world.pets[2];
 	world.pets[2] = { ...victim, alive: false, hearts: 0, burrow: 900, harvest: 100 };
@@ -1019,9 +1018,9 @@ test "a dead pet has empty masks and is buried once" {
 	assert masks.attacks.bits == 0;
 	const matesBefore = harvestTotal(world.pets) - 100;
 	world = world.endEpoch();
-	assert world.stats.deaths == 1;
-	assert world.deathEpochs[2] == 1;
-	assert world.pets[2].burrow == 0;
+	assert world.stats.deaths == 1 && world.stats.heirs == 1;
+	assert world.deathEpochs[2] == 0;
+	assert world.pets[2].alive && world.pets[2].lineageGeneration == victim.lineageGeneration + 1 && world.pets[2].burrow == 0;
 	assert harvestTotal(world.pets) == matesBefore + 500;
 	const again = world.endEpoch();
 	assert again.stats.deaths == 1;
@@ -1066,6 +1065,7 @@ test "a listed item sells to a pet that wants it, and an unsold one is bought ba
 test "a dead wild retires its wallet once and restores the absent pet" {
 	let world = World.create(1, 5).beginEpoch(1);
 	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0 };
+	world.claimEpochs[7] = 99;
 	world = world.endEpoch().beginEpoch(2);
 	assert world.pets[7].wild && world.pets[7].alive;
 	const absent = world.absent[7];
@@ -1082,10 +1082,9 @@ test "a dead wild retires its wallet once and restores the absent pet" {
 	assert world.global.treasury == treasury;
 }
 
-test "a starved pet is lost: half its wallet to one living mate, half to the treasury, no heir" {
+test "a starved pet leaves half its wallet to one living mate, half to the treasury, and its next generation starts with nothing" {
 	let world = World.create(1, 5).beginEpoch(1);
 	const harvests: uint64[] = world.pets.map((pet) => pet.harvest);
-	const treasury = world.global.treasury;
 	world.pets[7] = { ...world.pets[7], alive: false, hearts: 0, harvest: 600, burrow: 401 };
 	world = world.endEpoch();
 	let lucky = 0;
@@ -1095,10 +1094,8 @@ test "a starved pet is lost: half its wallet to one living mate, half to the tre
 		lucky += 1;
 	}
 	assert lucky == 1;
-	assert world.global.treasury == treasury + 501;
-	assert world.stats.heirs == 0 && world.deathEpochs[7] == 1;
-	world = world.beginEpoch(2).endEpoch().beginEpoch(9);
-	assert !world.realAt(7).alive && world.stats.heirs == 0;
+	assert world.stats.heirs == 1 && world.deathEpochs[7] == 0;
+	assert world.pets[7].alive && world.pets[7].lineageGeneration == 1 && world.pets[7].harvest == 0 && world.pets[7].burrow == 0;
 }
 
 test "a pet dies of age on day 90 and its heir hatches at dusk with the estate" {
@@ -1116,7 +1113,7 @@ test "a pet dies of age on day 90 and its heir hatches at dusk with the estate" 
 	assert world.pets[4].alive && world.pets[4].lineageGeneration == 1;
 	assert world.pets[4].bornEpoch == LIFESPAN_EPOCHS + 1;
 	assert world.pets[4].burrow == wallet - wallet * INHERITANCE_TAX_PERCENT / 100;
-	assert world.deathEpochs[4] == 0 && world.stats.heirs == 1;
+	assert world.deathEpochs[4] == 0 && world.stats.heirs == world.stats.deaths;
 }
 
 test "a robbery leaves a grudge for three epochs and striking back settles it" {

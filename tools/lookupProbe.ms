@@ -210,7 +210,7 @@ function petIn(holder: Account): Result<Ptr<PetAccount>, ProgramError> {
 function pageIn(holder: Account): Result<Ptr<PageHeader>, ProgramError> {
 	if (!holder.isOwnedBy(programId()) || holder.dataLength() < PAGE_HEADER) { return Result.err(failed(ProbeError.Layout)); }
 	const page = holder.data().address as Ptr<PageHeader>;
-	if (page.kind != PAGE_KIND || holder.dataLength() != PAGE_HEADER + (page.capacity as uint64) * 32) {
+	if (page.kind != PAGE_KIND || holder.dataLength() < PAGE_HEADER + (page.capacity as uint64) * 32) {
 		return Result.err(failed(ProbeError.Layout));
 	}
 	return Result.ok(page);
@@ -227,8 +227,9 @@ function loaded(raw: Ptr<GlobalConfig>): GlobalConfig {
 		rewardEpoch: raw.rewardEpoch,
 		totalWorkPower: raw.totalWorkPower,
 		recycledPending: raw.recycledPending,
-		protocolPending: raw.protocolPending,
-		burned: raw.burned,
+		treasury: raw.treasury,
+		itemReserve: raw.itemReserve,
+		emitted: raw.emitted,
 		livingPets: raw.livingPets,
 		floorSlots: raw.floorSlots,
 	};
@@ -240,8 +241,9 @@ function stored(raw: Ptr<GlobalConfig>, global: GlobalConfig): void {
 	raw.rewardEpoch = global.rewardEpoch;
 	raw.totalWorkPower = global.totalWorkPower;
 	raw.recycledPending = global.recycledPending;
-	raw.protocolPending = global.protocolPending;
-	raw.burned = global.burned;
+	raw.treasury = global.treasury;
+	raw.itemReserve = global.itemReserve;
+	raw.emitted = global.emitted;
 	raw.livingPets = global.livingPets;
 	raw.floorSlots = global.floorSlots;
 }
@@ -442,6 +444,54 @@ function assigned(data: Bytes): Result<uint64, ProgramError> {
 		if (strength < page.minStrength) { page.minStrength = strength; }
 		if (strength > page.maxStrength) { page.maxStrength = strength; }
 		memberAt(page, offset + (index as uint64))[0] = holder.key();
+	}
+	page.filled = page.filled + (count as uint32);
+	header.assigned = header.assigned + (count as uint64);
+	if (page.filled == page.capacity && page.id > 0 && previous.minStrength < page.maxStrength) {
+		return Result.err(failed(ProbeError.OutOfOrder));
+	}
+	return Result.ok(0);
+}
+
+function assignedInPlace(data: Bytes): Result<uint64, ProgramError> {
+	const bitmap = try bitmapAt(try account(0));
+	const header = bitmap as Ptr<BitmapHeader>;
+	const pageHolder = try account(1);
+	const page = try pageIn(pageHolder);
+	const _pageBump = try verifiedBump(pageHolder, pageSeeds(page.id as uint64));
+	const previous = try pageIn(try account(2));
+	const offset = try data.readU64(8);
+	if (page.rotation != header.rotation) {
+		if (offset != 0) { return Result.err(failed(ProbeError.OutOfOrder)); }
+		if (page.id > 0) {
+			const ready = previous.rotation == header.rotation && previous.filled == previous.capacity && previous.id + 1 == page.id;
+			if (!ready) { return Result.err(failed(ProbeError.OutOfOrder)); }
+		}
+		page.rotation = header.rotation;
+		page.filled = 0;
+		page.minStrength = 0xffffffffffffffff;
+		page.maxStrength = 0;
+	}
+	if (offset != page.filled as uint64) { return Result.err(failed(ProbeError.OutOfOrder)); }
+	const measure = header.measure as StrengthMeasure;
+	const count = accountCount() - 3;
+	if ((offset + (count as uint64)) > (page.capacity as uint64)) { return Result.err(failed(ProbeError.OutOfRange)); }
+	for (let index = 0; index < count; index++) {
+		const holder = try account(3 + index);
+		const record = try petIn(holder);
+		const ordinal = record.ordinal as uint64;
+		if (ordinal >= header.count) { return Result.err(failed(ProbeError.OutOfRange)); }
+		const cell = bitAt(bitmap, ordinal);
+		const bit = (1 as uint8) << ((ordinal % 8) as uint8);
+		if ((cell[0] & bit) != 0) { return Result.err(failed(ProbeError.AlreadyAssigned)); }
+		cell[0] = cell[0] | bit;
+		const seat = (offset as int32) + index;
+		const pet = placed(record.pet, page.id, seat);
+		record.pet = pet;
+		const strength = pet.alive ? pet.strengthOf(measure) + 1 : 0;
+		if (strength < page.minStrength) { page.minStrength = strength; }
+		if (strength > page.maxStrength) { page.maxStrength = strength; }
+		memberAt(page, seat as uint64)[0] = holder.key();
 	}
 	page.filled = page.filled + (count as uint32);
 	header.assigned = header.assigned + (count as uint64);
@@ -681,6 +731,7 @@ function dispatch(): Result<uint64, ProgramError> {
 		14 => closed(data),
 		15 => touched(),
 		16 => strengthsLogged(data),
+		17 => assignedInPlace(data),
 		_ => Result.err(ProgramError.invalidInstructionData()),
 	};
 }

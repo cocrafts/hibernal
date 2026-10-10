@@ -59,7 +59,7 @@ flowchart LR
   subgraph P[program]
     P0[P0 rules/: layout, fight,<br/>emission, tree, brain]
     P1[P1 config, pet, tick, eat,<br/>harvest_claim, level_up]
-    P2[P2 claim + SGT TLV, block,<br/>free-list, grace, close]
+    P2[P2 claim + SGT TLV, block,<br/>placement]
     P3[P3 session-token verify]
     P4[P4 attack, FightRecord,<br/>death, allocate]
     P5[P5 SKR shop CPI]
@@ -243,7 +243,7 @@ They merge only at the demo. Nothing on the device path waits on the program unt
 | ID | Package | Est. | Depends on |
 |---|---|---|---|
 | **P1** | `init_config`, `GlobalConfig`, `Pet`, `tick` (accumulator + hunger + auto-eat), `eat`, `harvest_claim`, `level_up` | 3 | R1 R2 R3 R4 R5 R7 P0 |
-| **P2** | `claim` (SGT TLV parse, DevAdmission on devnet), `Block`, free-list, grace, `close_dead_pet` | 3 | P1 |
+| **P2** | `claim` (SGT TLV parse, DevAdmission on devnet), `Block`, placement by level | 3 | P1 |
 | **P3** | Session-token verification (MagicBlock PDA layout) | 0.5 | P1 |
 | **P4** | `attack` + `FightPending`, `fight()` in program, stat-driven loot, `FightRecord` ring buffer, starvation death + inheritance, `allocate` | 3 | P2 P0 |
 | **P5** | SKR shop: `feed`, `buy_growth`, `buy_insurance`, `buy_skin` via Token-2022 CPI | 1 | R6 P1 |

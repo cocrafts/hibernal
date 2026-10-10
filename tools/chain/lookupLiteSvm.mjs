@@ -41,6 +41,7 @@ const LISTING_BYTES = 40;
 const FIGHT_RING = 32;
 const MEASURES = ["level", "power", "combat"];
 const BLOCK_SIZES = [10, 100, 200];
+const SOCIAL_BYTES = FIGHT_RING * 120 + 10 * 40 + 45;
 const probeDirectory = new URL("../../out/actProbe/", import.meta.url);
 
 const [programPath, policyPath, countsArgument = "1000,10000"] = process.argv.slice(2);
@@ -146,8 +147,8 @@ function petAccount(sizes, pet, ordinal, mint, ownerKey) {
 	return bytes;
 }
 
-function pageAccount(id, members, filled = 0) {
-	const bytes = new Uint8Array(48 + 32 * members.length);
+function pageAccount(id, members, filled = 0, social = 0) {
+	const bytes = new Uint8Array(48 + 32 * members.length + social);
 	const view = new DataView(bytes.buffer);
 	bytes[0] = PAGE_KIND;
 	bytes[1] = 1;
@@ -274,7 +275,7 @@ for (const members of BLOCK_SIZES) {
 	}
 }
 
-async function rotation(count, members, measure, withTable) {
+async function rotation(count, members, measure, withTable, inPlace = false) {
 	const svm = freshSvm();
 	const next = random(0x0b10c + count + members);
 	const pool = [...petsOf(scenarios[0], "pets"), ...petsOf(scenarios[1], "pets")];
@@ -294,7 +295,7 @@ async function rotation(count, members, measure, withTable) {
 	for (let id = 0; id < blocks; id++) {
 		const key = await pda("block", words(id));
 		pages.push(key);
-		put(svm, key, pageAccount(id, new Array(Math.min(members, count - id * members)).fill(null)));
+		put(svm, key, pageAccount(id, new Array(Math.min(members, count - id * members)).fill(null), 0, inPlace ? SOCIAL_BYTES : 0));
 	}
 	const strengths = [];
 	for (let start = 0; start < count; start += 25) {
@@ -311,8 +312,8 @@ async function rotation(count, members, measure, withTable) {
 	for (let id = 0; id < blocks; id++) {
 		const chosen = order.slice(id * members, (id + 1) * members);
 		for (let offset = 0; offset < chosen.length; offset += perTransaction) {
-			const group = chosen.slice(offset, offset + perTransaction).map((ordinal) => readonly(keys[ordinal]));
-			const sent = await sendOn(svm, [probe([writable(bitmap), writable(pages[id]), readonly(pages[Math.max(id - 1, 0)]), ...group], words(4, offset))], { tables });
+			const group = chosen.slice(offset, offset + perTransaction).map((ordinal) => inPlace ? writable(keys[ordinal]) : readonly(keys[ordinal]));
+			const sent = await sendOn(svm, [probe([writable(bitmap), writable(pages[id]), readonly(pages[Math.max(id - 1, 0)]), ...group], words(inPlace ? 17 : 4, offset))], { tables });
 			if (sent.failed) throw new Error(`assign block ${id} offset ${offset}: ${sent.error}`);
 			transactions += 1;
 			units += sent.units;
@@ -322,7 +323,15 @@ async function rotation(count, members, measure, withTable) {
 	const finish = await sendOn(svm, [probe([writable(bitmap)], words(5))]);
 	transactions += 1;
 	units += finish.units;
-	return { svm, keys, pages, bitmap, order, transactions, units, peak, finished: !finish.failed, perTransaction };
+	let seated = 0;
+	if (inPlace) {
+		order.forEach((ordinal, rank) => {
+			const data = svm.getAccount(keys[ordinal]).data;
+			const view = new DataView(data.buffer, data.byteOffset);
+			if (view.getUint32(8 + sizes.identity, true) === Math.floor(rank / members) && data[8 + sizes.identity + 4] === rank % members) seated += 1;
+		});
+	}
+	return { svm, keys, pages, bitmap, order, transactions, units, peak, finished: !finish.failed, perTransaction, seated };
 }
 
 console.log("\nrotation: proposed off chain, every block checked on chain (a block's weakest is at least as strong as the next block's strongest, each pet placed once)");
@@ -332,6 +341,10 @@ for (const count of countsArgument.split(",").map(Number)) {
 		const perPet = Math.round(result.units / count);
 		console.log(`  ${String(count).padStart(5)} pets, blocks of ${String(members).padStart(3)}: ${result.transactions} transactions, ${result.units} CU (${perPet} a pet, ${result.peak} the fullest transaction, ${result.perTransaction} pets a transaction) · finished ${result.finished}`);
 	}
+}
+for (const count of countsArgument.split(",").map(Number)) {
+	const result = await rotation(count, 10, MEASURES.indexOf("combat"), false, true);
+	console.log(`  ${String(count).padStart(5)} pets, blocks of  10, each pet's block and seat written in the same transactions, members inside a ${48 + 320 + SOCIAL_BYTES}-byte Block: ${result.transactions} transactions, ${result.units} CU (${Math.round(result.units / count)} a pet, ${result.peak} the fullest transaction) · finished ${result.finished} · ${result.seated} of ${count} pets carry their new block and seat`);
 }
 {
 	const result = await rotation(1000, 100, MEASURES.indexOf("combat"), true);

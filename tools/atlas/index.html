@@ -349,6 +349,7 @@ td b.crit { color: var(--ember); }
 
 <div class="shell">
 	<nav class="toc" aria-label="Mục lục">
+		<a href="#confirm">Chốt 05/10 <span>shop · cây · túi đồ</span></a>
 		<a href="#files">Tổng quan <span>13 file</span></a>
 		<a href="#data">Dữ liệu <span>stats · layout</span></a>
 		<a href="#rng">RNG <span>rng</span></a>
@@ -372,6 +373,221 @@ td b.crit { color: var(--ember); }
 	</nav>
 
 	<main>
+		<section id="confirm">
+			<div class="section-head">
+				<div class="file-tag">đọc từ code 05/10 · <b>program/shop.ms</b> · <b>rules/tree.ms</b> · <b>rules/items.ms</b> · nhánh wt/on-chain-ai, chưa commit</div>
+				<h2>Chốt 05/10: shop, cây kỹ năng, túi đồ</h2>
+				<p>Mọi con số trong mục này đọc thẳng từ code, không lấy từ spec. Bảng 64 node sinh bằng <code>msc run tools/atlas/treeTable.ms</code>. Chỗ nào code khác ý bạn thì có đánh dấu <span class="chip partial">lệch</span>.</p>
+			</div>
+
+			<h3>1. Shop đang bán gì</h3>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Chủ mua bằng SKR</h3>
+					<p class="note">Trả trên L1, dùng trên ER. SKR vào kho do program giữ, ví admin rút được (sửa hôm nay).</p>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th>Món</th><th class="num">Giá</th><th>Tác dụng</th><th>Giới hạn</th></tr></thead>
+							<tbody>
+								<tr><td>Đồ ăn nhỏ · vừa · lớn</td><td class="num">1 · 2 · 3 SKR</td><td>Vào ô 5–6; đêm đó pet ăn trước kho ăn: 3 · 6 · 10 tim (cộng % tim mỗi bữa của cây), +6 gắn bó</td><td>Một bữa của chủ mỗi đêm; gắn bó dưới −40 thì pet từ chối</td></tr>
+								<tr><td>Thuốc tăng trưởng mức 1 · 2 · 3</td><td class="num">2 · 4 · 6 SKR</td><td>Vào ô 5–6; bình minh kế tiếp forage +5 · +10 · +15% trong ngày đó: pet được chia phần emission lớn hơn, không có tiền mới. +15 gắn bó</td><td>Mỗi bình minh dùng một liều</td></tr>
+								<tr><td>Bảo hiểm</td><td class="num">20 SKR</td><td>Gắn ngay nếu pet chưa có (không chiếm ô); hết tim thì sống lại với 30% tim, +1 sẹo, 50% ví vào treasury</td><td>Mỗi đời pet một lần; mua dư thì chờ trong ô tới đời sau</td></tr>
+								<tr><td>Skin (2 mẫu)</td><td class="num">5 SKR</td><td>Lưu trên pet (đã sửa); chỉ để hiển thị</td><td>—</td></tr>
+							</tbody>
+						</table>
+					</div>
+					<p class="note">Đã làm (chưa deploy): bỏ biên nhận theo từng lần mua (làm ER đầy sau 41 ngày), thay bằng <b>một sổ mua hàng mỗi pet</b> trên L1; lệnh <code>load</code> trên ER nạp từ sổ vào ô 5–6.</p>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Pet tự tiêu HBRN (bộ não quyết)</h3>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th>Hành động</th><th class="num">Giá</th><th>Ghi chú</th></tr></thead>
+							<tbody>
+								<tr><td>Mua đồ ăn nhỏ · vừa · lớn vào kho</td><td class="num">168 · 315 · 490 × (20 + cấp) ÷ 20</td><td>Tối đa 2 lần/ngày. 40% vào treasury, 60% vào pot chia lại cho mọi pet hôm sau</td></tr>
+								<tr><td>Ăn từ kho</td><td class="num">—</td><td>Ban đêm tự ăn để giữ tim</td></tr>
+								<tr><td>Đúc đồ (mint)</td><td class="num">300 × (20 + cấp) ÷ 20</td><td>Rarity ngẫu nhiên. Tốt hơn món yếu nhất đang mặc thì thay, món cũ hệ thống mua lại. Tiền vào treasury</td></tr>
+								<tr><td>Bán đồ cho hệ thống</td><td class="num">50% giá đúc × độ bền còn lại</td><td>Treasury trả</td></tr>
+								<tr><td>Treo chợ · mua ở chợ</td><td class="num">theo điểm món đồ</td><td>Phí 5% vào treasury, treo 3 ngày, quá hạn thì hệ thống mua lại</td></tr>
+								<tr><td>Cất tiền (bank)</td><td class="num">—</td><td>Chuyển toàn bộ harvest vào burrow; kẻ cướp chỉ lấy được harvest</td></tr>
+							</tbody>
+						</table>
+					</div>
+					<p class="note">Đồ (item): 4 ô đang mặc (nón, áo, tay, chân). Rarity khi đúc: Common 55% · Rare 30% · Epic 12% · Legendary 2,5% · Mythic 0,5%. Cộng vào đúng một chỉ số (forage, might hoặc grit): +4 · +8 · +14 · +20 · +26%, giảm dần theo độ mòn trong 200 ngày. Skill của đồ (Epic 10%, Legendary 40%, Mythic 100%): hồi sinh một lần, chống cướp −40%, giảm sát thương −40%. Chết thì giữ 2 món gia bảo cho đời sau, còn lại treasury mua lại.</p>
+				</div>
+			</div>
+
+			<h3>2. Cây kỹ năng: đúng 64 node trong code</h3>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Cấu trúc</h3>
+					<div class="gaps">
+						<div class="gap-row"><span class="chip done">3</span><p>Khởi đầu: Worker +30 forage · Fighter +30 might · Survivor +30 grit.</p></div>
+						<div class="gap-row"><span class="chip done">1</span><p>Cổng chung ở tâm: +10% tim tối đa, nối ba nhánh.</p></div>
+						<div class="gap-row"><span class="chip done">3 × 18</span><p>Mỗi nhánh: lối vào, ngã rẽ, rồi 4 cụm, mỗi cụm 3 node nhỏ (+10%) và 1 notable (+25%).</p></div>
+						<div class="gap-row"><span class="chip done">6</span><p>Keystone nằm ở biên giữa hai nhánh, mỗi cái 3 điểm.</p></div>
+						<div class="gap-row"><span class="chip done">điểm</span><p>1 điểm mỗi cấp (tối đa 20) + tối đa 10 điểm thưởng (sách, dòng họ) = 30 điểm.</p></div>
+					</div>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Bốn cụm của mỗi nhánh</h3>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th>Nhánh</th><th>Cụm 1</th><th>Cụm 2</th><th>Cụm 3</th><th>Cụm 4</th></tr></thead>
+							<tbody>
+								<tr><td>Worker</td><td>forage</td><td>forage · notable <b>Overtime</b>: cuối ngày tự cất harvest vào burrow</td><td>tim mỗi bữa</td><td>XP</td></tr>
+								<tr><td>Fighter</td><td>might</td><td>might · notable <b>Scavenger</b></td><td>tiền cướp được</td><td>might +5%/node · notable <b>Relentless</b></td></tr>
+								<tr><td>Survivor</td><td>grit</td><td>tim tối đa</td><td>tim tối đa</td><td>chống mất tim · notable <b>Thick Hide</b></td></tr>
+							</tbody>
+						</table>
+					</div>
+					<p class="note">Lối vào và ngã rẽ cộng +10% chỉ số chính của nhánh. Teacher giờ gán keystone theo tính cách × nhánh xuất phát, nên cả 6 keystone đều được dùng (trước đây Tycoon, Berserker, Bulwark bằng 0).</p>
+				</div>
+			</div>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Keystone</th><th>Giữa</th><th>Tác dụng</th></tr></thead>
+					<tbody>
+						<tr><td>Glass Cannon</td><td>Worker | Fighter</td><td>sát thương ×2, máu chiến đấu ×0,5</td></tr><tr><td>Tycoon</td><td>Worker | Fighter</td><td>forage ×1,3, tim tối đa ×0,7</td></tr><tr><td>Cannibal</td><td>Fighter | Survivor</td><td>đòn kết liễu nuốt 50% ví nạn nhân</td></tr><tr><td>Berserker</td><td>Fighter | Survivor</td><td>might tăng theo phần tim đã mất (tới ×2), ăn nhiều hơn 25%</td></tr><tr><td>Pacifist</td><td>Survivor | Worker</td><td>không tấn công được; tiền bị cướp giảm 70%</td></tr><tr><td>Bulwark</td><td>Survivor | Worker</td><td>tim tối đa ×2, might ×0,7, mỗi bữa ăn +100% tim</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<details>
+				<summary>Đủ 64 node (id, nhánh, vai trò, loại, điểm, tác dụng, kề với)</summary>
+				<div class="table-wrap">
+					<table>
+						<thead><tr><th class="num">id</th><th>Nhánh</th><th>Vai trò</th><th>Loại</th><th class="num">Điểm</th><th>Tác dụng</th><th>Kề với</th></tr></thead>
+						<tbody>
+							<tr><td class="num">0</td><td>—</td><td>Khởi đầu</td><td>khởi đầu</td><td class="num">1</td><td>+30 forage, mở nhánh Worker</td><td class="mono">4</td></tr>
+							<tr><td class="num">1</td><td>—</td><td>Khởi đầu</td><td>khởi đầu</td><td class="num">1</td><td>+30 might, mở nhánh Fighter</td><td class="mono">22</td></tr>
+							<tr><td class="num">2</td><td>—</td><td>Khởi đầu</td><td>khởi đầu</td><td class="num">1</td><td>+30 grit, mở nhánh Survivor</td><td class="mono">40</td></tr>
+							<tr><td class="num">3</td><td>—</td><td>Cổng chung</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">4,22,40</td></tr>
+							<tr><td class="num">4</td><td>Worker</td><td>Lối vào</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">0,3,5</td></tr>
+							<tr><td class="num">5</td><td>Worker</td><td>Ngã rẽ</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">4,6,10,14,18</td></tr>
+							<tr><td class="num">6</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">5,7</td></tr>
+							<tr><td class="num">7</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">6,8</td></tr>
+							<tr><td class="num">8</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">7,9</td></tr>
+							<tr><td class="num">9</td><td>Worker</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% forage (làm việc)</td><td class="mono">8</td></tr>
+							<tr><td class="num">10</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">5,11</td></tr>
+							<tr><td class="num">11</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">10,12</td></tr>
+							<tr><td class="num">12</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% forage (làm việc)</td><td class="mono">11,13</td></tr>
+							<tr><td class="num">13</td><td>Worker</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% forage (làm việc) · Overtime: <b>không có tác dụng trong code</b> (chỉ có +25% forage của node)</td><td class="mono">12</td></tr>
+							<tr><td class="num">14</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim mỗi bữa ăn</td><td class="mono">5,15</td></tr>
+							<tr><td class="num">15</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim mỗi bữa ăn</td><td class="mono">14,16</td></tr>
+							<tr><td class="num">16</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim mỗi bữa ăn</td><td class="mono">15,17</td></tr>
+							<tr><td class="num">17</td><td>Worker</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% tim mỗi bữa ăn</td><td class="mono">16,62,63</td></tr>
+							<tr><td class="num">18</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% XP</td><td class="mono">5,19</td></tr>
+							<tr><td class="num">19</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% XP</td><td class="mono">18,20</td></tr>
+							<tr><td class="num">20</td><td>Worker</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% XP</td><td class="mono">19,21</td></tr>
+							<tr><td class="num">21</td><td>Worker</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% XP</td><td class="mono">20,58,59</td></tr>
+							<tr><td class="num">22</td><td>Fighter</td><td>Lối vào</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">1,3,23</td></tr>
+							<tr><td class="num">23</td><td>Fighter</td><td>Ngã rẽ</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">22,24,28,32,36</td></tr>
+							<tr><td class="num">24</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">23,25</td></tr>
+							<tr><td class="num">25</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">24,26</td></tr>
+							<tr><td class="num">26</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">25,27</td></tr>
+							<tr><td class="num">27</td><td>Fighter</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% might</td><td class="mono">26</td></tr>
+							<tr><td class="num">28</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">23,29</td></tr>
+							<tr><td class="num">29</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">28,30</td></tr>
+							<tr><td class="num">30</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% might</td><td class="mono">29,31</td></tr>
+							<tr><td class="num">31</td><td>Fighter</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% might · Scavenger: +15 chí mạng khi mục tiêu ít tim hơn</td><td class="mono">30</td></tr>
+							<tr><td class="num">32</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tiền cướp được</td><td class="mono">23,33</td></tr>
+							<tr><td class="num">33</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tiền cướp được</td><td class="mono">32,34</td></tr>
+							<tr><td class="num">34</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tiền cướp được</td><td class="mono">33,35</td></tr>
+							<tr><td class="num">35</td><td>Fighter</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% tiền cướp được</td><td class="mono">34,58,59</td></tr>
+							<tr><td class="num">36</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+5% might (nhánh tấn công)</td><td class="mono">23,37</td></tr>
+							<tr><td class="num">37</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+5% might (nhánh tấn công)</td><td class="mono">36,38</td></tr>
+							<tr><td class="num">38</td><td>Fighter</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+5% might (nhánh tấn công)</td><td class="mono">37,39</td></tr>
+							<tr><td class="num">39</td><td>Fighter</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% might (nhánh tấn công) · Relentless: +1 lượt tấn công mỗi ngày</td><td class="mono">38,60,61</td></tr>
+							<tr><td class="num">40</td><td>Survivor</td><td>Lối vào</td><td>nhỏ</td><td class="num">1</td><td>+10% grit</td><td class="mono">2,3,41</td></tr>
+							<tr><td class="num">41</td><td>Survivor</td><td>Ngã rẽ</td><td>nhỏ</td><td class="num">1</td><td>+10% grit</td><td class="mono">40,42,46,50,54</td></tr>
+							<tr><td class="num">42</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% grit</td><td class="mono">41,43</td></tr>
+							<tr><td class="num">43</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% grit</td><td class="mono">42,44</td></tr>
+							<tr><td class="num">44</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% grit</td><td class="mono">43,45</td></tr>
+							<tr><td class="num">45</td><td>Survivor</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% grit</td><td class="mono">44</td></tr>
+							<tr><td class="num">46</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">41,47</td></tr>
+							<tr><td class="num">47</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">46,48</td></tr>
+							<tr><td class="num">48</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">47,49</td></tr>
+							<tr><td class="num">49</td><td>Survivor</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% tim tối đa</td><td class="mono">48</td></tr>
+							<tr><td class="num">50</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">41,51</td></tr>
+							<tr><td class="num">51</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">50,52</td></tr>
+							<tr><td class="num">52</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% tim tối đa</td><td class="mono">51,53</td></tr>
+							<tr><td class="num">53</td><td>Survivor</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% tim tối đa</td><td class="mono">52,60,61</td></tr>
+							<tr><td class="num">54</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% chống mất tim khi bị cắn</td><td class="mono">41,55</td></tr>
+							<tr><td class="num">55</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% chống mất tim khi bị cắn</td><td class="mono">54,56</td></tr>
+							<tr><td class="num">56</td><td>Survivor</td><td>Cụm</td><td>nhỏ</td><td class="num">1</td><td>+10% chống mất tim khi bị cắn</td><td class="mono">55,57</td></tr>
+							<tr><td class="num">57</td><td>Survivor</td><td>Cụm</td><td>notable</td><td class="num">1</td><td>+25% chống mất tim khi bị cắn · ThickHide: +10 né; 3 trận bị đánh đầu tiên mỗi ngày chỉ mất 50% tiền</td><td class="mono">56,62,63</td></tr>
+							<tr><td class="num">58</td><td>—</td><td>Keystone</td><td>keystone</td><td class="num">3</td><td>Glass Cannon (Worker | Fighter): sát thương ×2, máu chiến đấu ×0,5</td><td class="mono">21,35</td></tr>
+							<tr><td class="num">59</td><td>—</td><td>Keystone</td><td>keystone</td><td class="num">3</td><td>Tycoon (Worker | Fighter): forage ×1,3, tim tối đa ×0,7</td><td class="mono">21,35</td></tr>
+							<tr><td class="num">60</td><td>—</td><td>Keystone</td><td>keystone</td><td class="num">3</td><td>Cannibal (Fighter | Survivor): đòn kết liễu nuốt 50% ví nạn nhân</td><td class="mono">39,53</td></tr>
+							<tr><td class="num">61</td><td>—</td><td>Keystone</td><td>keystone</td><td class="num">3</td><td>Berserker (Fighter | Survivor): might tăng theo phần tim đã mất (tới ×2), ăn nhiều hơn 25%</td><td class="mono">39,53</td></tr>
+							<tr><td class="num">62</td><td>—</td><td>Keystone</td><td>keystone</td><td class="num">3</td><td>Pacifist (Survivor | Worker): không tấn công được; tiền bị cướp giảm 70%</td><td class="mono">17,57</td></tr>
+							<tr><td class="num">63</td><td>—</td><td>Keystone</td><td>keystone</td><td class="num">3</td><td>Bulwark (Survivor | Worker): tim tối đa ×2, might ×0,7, mỗi bữa ăn +100% tim</td><td class="mono">17,57</td></tr>
+						</tbody>
+					</table>
+				</div>
+			</details>
+
+			<h3>3. Túi đồ 6 ô</h3>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Đã chốt 05/10</h3>
+					<div class="table-wrap">
+						<table>
+							<thead><tr><th>Ô</th><th>Ai quản lý</th><th>Chứa gì</th><th>Lấy từ đâu</th></tr></thead>
+							<tbody>
+								<tr><td>1–4</td><td>Pet (bộ não)</td><td>Đồ mặc, cộng chỉ số; pet có thể mặc đủ 4 món</td><td>Pet đúc hoặc mua ở chợ bằng HBRN</td></tr>
+								<tr><td>5–6</td><td>Người chơi</td><td>Chỉ đồ dùng (consumable)</td><td>Chủ mua bằng SKR</td></tr>
+								<tr><td>kho ăn</td><td>Pet</td><td>Đồ ăn pet tự mua, không chiếm ô</td><td>HBRN</td></tr>
+							</tbody>
+						</table>
+					</div>
+					<div class="gaps">
+						<div class="gap-row"><span class="chip done">dùng hết</span><p>Ô 5–6 phải được pet ăn/dùng hết thì chủ mới mua món mới vào. Chưa có lệnh huỷ món.</p></div>
+						<div class="gap-row"><span class="chip done">hình</span><p>Đồ không chia kiểu RPG: vẽ thành mảnh giáp, món cơ khí; hình dạng theo chỉ số, không có mũ nón.</p></div>
+						<div class="gap-row"><span class="chip done">code</span><p>Ô 1–4 khớp code hiện tại (4 ô đồ mặc + kho ăn riêng); chỉ đổi tên vị trí. Ô 5–6 là phần mới.</p></div>
+					</div>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Đã chốt thêm và đã làm</h3>
+					<div class="gaps">
+						<div class="gap-row"><span class="chip done">dùng khi nào</span><p>Pet dùng đồ của chủ theo luật, không qua bộ não: đồ ăn ăn trong đêm trước kho ăn, thuốc dùng ở bình minh và có tác dụng ngay ngày đó.</p></div>
+						<div class="gap-row"><span class="chip done">bảo hiểm</span><p>Gắn ngay nếu pet chưa có, không chiếm ô; nếu đã có thì chờ trong ô tới đời sau.</p></div>
+						<div class="gap-row"><span class="chip done">ô đầy</span><p>Món mua lúc đầy nằm chờ trong sổ mua hàng và vào ô khi trống; app ẩn nút "+" khi đầy.</p></div>
+						<div class="gap-row"><span class="chip done">skin</span><p>Lưu riêng trên pet, không chiếm ô.</p></div>
+						<div class="gap-row"><span class="chip done">appearance</span><p>Mỗi pet có <code>appearance</code> 4 byte (4,29 tỉ kiểu), băm từ mint lúc nhận pet, đời sau giữ nguyên; để dành cho customize skin. Nằm ngoài <code>Pet</code> nên luật và bộ não không thấy, không phải train lại.</p></div>
+						<div class="gap-row"><span class="chip partial">kiểu dáng</span><p>Thêm 1 byte "kiểu dáng" rút lúc đúc để hai món cùng chỉ số trông khác nhau (chỉ để vẽ)?</p></div>
+						<div class="gap-row"><span class="chip partial">cấp</span><p>Mockup ghi 60 LVL; code trần cấp 20 (D6). Thanh XP nên hiện XP trong cấp hiện tại / XP cần lên cấp kế, cấp 20 hiện MAX.</p></div>
+					</div>
+				</div>
+			</div>
+
+			<h3>Đã sửa hôm nay (chưa commit) và còn chờ</h3>
+			<div class="two">
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Đã sửa, test xanh</h3>
+					<div class="gaps">
+						<div class="gap-row"><span class="chip done">21M</span><p>Emission chia đôi mỗi Winter (90 ngày), không có sàn; bộ đếm chặn tổng đúng 21.000.000. Claim trên L1 từ chối nếu tổng cung vượt 21M.</p></div>
+						<div class="gap-row"><span class="chip done">treasury</span><p>Không còn đốt. Phần của ô trống, 40% chi tiêu đồ ăn, 5% tiền cược, 50% ví khi bảo hiểm cứu, tiền chết không chia ai, tiền đúc đồ và phí chợ đều vào treasury. Treasury trả mọi lần mua lại đồ.</p></div>
+						<div class="gap-row"><span class="chip done">thuốc</span><p>Tăng forage ngày hôm sau, không tạo tiền mới.</p></div>
+						<div class="gap-row"><span class="chip done">bảo hiểm</span><p>Pet đời sau mua được; mỗi đời một lần, kiểm trên ER.</p></div>
+						<div class="gap-row"><span class="chip done">SKR</span><p>Chỉ nhận vào kho do program giữ; admin có lệnh rút.</p></div>
+						<div class="gap-row"><span class="chip done">sổ cái</span><p>Sim 400 ngày: tổng HBRN khớp số đã phát, lệch −0,034 HBRN do làm tròn (khi không tính tiền wild pet tự sinh trong sim).</p></div>
+					</div>
+				</div>
+				<div class="panel" style="display:grid;gap:10px">
+					<h3>Chờ bạn</h3>
+					<div class="gaps">
+						<div class="gap-row"><span class="chip partial">pot</span><p>Đang giữ như cũ: 60% tiền đồ ăn chia lại pet hôm sau. Muốn chuyển vào treasury thì nói trước khi chốt bộ não.</p></div>
+						<div class="gap-row"><span class="chip partial">wild trên chain</span><p>Luật và sim đã có. Trên chain cần probe "trang wild" chỉ sống trên ER; ER localnet đang đứng từ ngày 41.</p></div>
+						<div class="gap-row"><span class="chip partial">localnet</span><p>Chốt run 50k ở ngày 41, hay thử cứu ER (index đầy)?</p></div>
+						<div class="gap-row"><span class="chip partial">kiểu dáng · cấp</span><p>Byte "kiểu dáng" cho hình món đồ; trần cấp 20 hay theo mockup 60.</p></div>
+						<div class="gap-row"><span class="chip partial">train</span><p>Đang chạy: BC rồi PPO 3 seed trên luật mới; xong sẽ đo và commit.</p></div>
+					</div>
+				</div>
+				</div>
+			</div>
+		</section>
+
 		<section id="files">
 			<div class="section-head">
 				<div class="file-tag"><b>rules/index.ms</b> re-export tất cả · 49 test</div>
@@ -559,10 +775,10 @@ Dice { seed, draw }
 			<div class="section-head">
 				<div class="file-tag"><b>rules/tree.ms</b> · 6 test</div>
 				<h2>Cây kỹ năng 64 node</h2>
-				<p>Đã chốt <b>64 node</b> hình vòng tròn, dùng trọn <code>uint64</code>. Layout dưới đây <b>đã chốt</b>: loại node, hiệu ứng và kề nhau đều tính bằng công thức từ id, không cần bảng. Độ lớn hiệu ứng của notable và attribute còn chỉnh bằng sim như mọi con số khác. Bấm node để allocate theo luật <code>allocate</code>: chọn một Start trước, sau đó chỉ lấy được node kề node đã có. Nút bên dưới chuyển giữa layout đã chốt và cây 24 node đang có trong code.</p>
+				<p>Đã chốt <b>64 node</b> hình vòng tròn, dùng trọn <code>uint64</code>. Layout dưới đây <b>đã chốt</b>: loại node, hiệu ứng và kề nhau đều tính bằng công thức từ id, không cần bảng. Độ lớn hiệu ứng của notable và attribute còn chỉnh bằng sim như mọi con số khác. Bấm node để allocate theo luật <code>allocate</code>: chọn một Start trước, sau đó chỉ lấy được node kề node đã có. Code hiện tại đã là vòng 64 node này; bảng chính xác từng node nằm ở mục <a href="#confirm">Chốt 05/10</a>. Nút "bản cũ" chỉ còn để so sánh.</p>
 				<div class="model-switch" role="group" aria-label="Chọn cây">
 					<button type="button" id="modelRing" aria-pressed="true">Đã chốt: vòng tròn 64 node</button>
-					<button type="button" id="modelLegacy" aria-pressed="false">Hiện tại: rules/tree.ms (24 node)</button>
+					<button type="button" id="modelLegacy" aria-pressed="false">Bản cũ 24 node (code đã thay)</button>
 				</div>
 				<p class="note" id="treeModelNote"></p>
 			</div>
@@ -732,13 +948,14 @@ bitesInToday_D &lt; 1</div>
 			<div class="panel chart" style="display:grid;gap:8px">
 				<h3>Phát hành mỗi epoch (HBRN)</h3>
 				<div id="emissionChart"></div>
-				<p class="note">Bắt đầu 100.000; cứ 90 epoch × 3/4; sàn 5.000 (chạm ở epoch 990).</p>
+				<p class="note">Bắt đầu 116.666,67; mỗi 90 epoch (một Winter) chia đôi; không có sàn. Bộ đếm <code>emitted</code> chặn tổng đúng 21.000.000 (chạm ở epoch 2.258).</p>
 			</div>
 			<div class="formula">settleGlobal:  với mỗi epoch còn thiếu
-                 rewardPerWorkPower += (emission(epoch) + recycled) × 100000 ÷ totalWorkPower
-                 recycled chỉ cộng vào epoch đầu tiên
+                 amount = min(emission(epoch − 1), 21M − emitted) + recycled
+                 rewardPerWorkPower += amount × 100000 ÷ (totalWorkPower + bot của ô trống)
+                 phần không chia cho pet thật (ô trống, số lẻ) → treasury; recycled chỉ cộng vào epoch đầu tiên
 pendingReward:   workPower × (rewardPerWorkPower − rewardSnapshot) ÷ 100000
-growthBonus:     pending × (clamp(multiplierBps, 10000, 12000) − 10000) ÷ 10000   ← mint thêm, không pha loãng người khác</div>
+thuốc tăng trưởng: forage +5–20% ngày hôm sau → phần chia lớn hơn, không mint thêm</div>
 
 			<div class="two">
 				<div class="panel" style="display:grid;gap:10px">
@@ -755,17 +972,17 @@ growthBonus:     pending × (clamp(multiplierBps, 10000, 12000) − 10000) ÷ 10
 					<h3>Chia tiền</h3>
 					<div class="split">
 						<div class="note">Chi tiêu (food)</div>
-						<div class="split-bar"><div class="s-recycled" style="width:60%">recycled 60</div><div class="s-burn" style="width:30%">burn 30</div><div class="s-protocol" style="width:10%">10</div></div>
+						<div class="split-bar"><div class="s-recycled" style="width:60%">pot 60</div><div class="s-protocol" style="width:40%">treasury 40</div></div>
 					</div>
 					<div class="split">
 						<div class="note">Loot khi thắng</div>
-						<div class="split-bar"><div class="s-winner" style="width:95%">attacker 95</div><div class="s-protocol" style="width:5%">5</div></div>
+						<div class="split-bar"><div class="s-winner" style="width:95%">attacker 95</div><div class="s-protocol" style="width:5%">treasury 5</div></div>
 					</div>
 					<div class="split">
-						<div class="note">Khi chết: nửa ví chia đều cho bạn còn sống trong block, phần dư vào pot</div>
-						<div class="split-bar"><div class="s-recycled" style="width:50%">bạn cùng block 50</div><div class="s-burn" style="width:50%">pot 50</div></div>
+						<div class="note">Khi chết: nửa ví chia đều cho bạn còn sống trong block, phần dư vào treasury</div>
+						<div class="split-bar"><div class="s-recycled" style="width:50%">bạn cùng block 50</div><div class="s-protocol" style="width:50%">treasury 50</div></div>
 					</div>
-					<p class="note">Không còn ai sống thì cả ví vào pot.</p>
+					<p class="note">Không còn ai sống thì cả ví vào treasury.</p>
 				</div>
 			</div>
 
@@ -1076,11 +1293,11 @@ chết già       = hàm của tuổi, không cần lệnh nào</div>
 					<table>
 						<thead><tr><th>Rarity</th><th class="num">Tỉ lệ khi mint</th><th class="num">Cộng mỗi chỉ số</th><th class="num">Có skill</th></tr></thead>
 						<tbody>
-							<tr><td>Common</td><td class="num">55%</td><td class="num">+2%</td><td class="num">—</td></tr>
-							<tr><td>Rare</td><td class="num">30%</td><td class="num">+4%</td><td class="num">—</td></tr>
-							<tr><td>Epic</td><td class="num">12%</td><td class="num">+7%</td><td class="num">10%</td></tr>
-							<tr><td class="worker"><b>Legendary</b></td><td class="num">2.5%</td><td class="num">+10%</td><td class="num">40%</td></tr>
-							<tr><td style="color:var(--ember)"><b>Mythic</b></td><td class="num">0.5%</td><td class="num">+13%</td><td class="num">100%</td></tr>
+							<tr><td>Common</td><td class="num">55%</td><td class="num">+4%</td><td class="num">—</td></tr>
+							<tr><td>Rare</td><td class="num">30%</td><td class="num">+8%</td><td class="num">—</td></tr>
+							<tr><td>Epic</td><td class="num">12%</td><td class="num">+14%</td><td class="num">10%</td></tr>
+							<tr><td class="worker"><b>Legendary</b></td><td class="num">2.5%</td><td class="num">+20%</td><td class="num">40%</td></tr>
+							<tr><td style="color:var(--ember)"><b>Mythic</b></td><td class="num">0.5%</td><td class="num">+26%</td><td class="num">100%</td></tr>
 						</tbody>
 					</table>
 				</div>
@@ -1090,12 +1307,12 @@ chết già       = hàm của tuổi, không cần lệnh nào</div>
 						<div class="gate"><span>Trả $HBRN, VRF gieo rarity và affix</span><span class="chip">mint</span></div>
 						<div class="gate"><span>Mặc vào một trong 4 ô: nón, áo, tay, chân</span><span class="chip">equip</span></div>
 						<div class="gate"><span>Dùng thì mòn, bonus và giá trị giảm</span><span class="chip">wear</span></div>
-						<div class="gate"><span>Bán cho pet khác trong ER, phí vào pot</span><span class="chip">market</span></div>
-						<div class="gate"><span>Hoặc bán lại hệ thống theo công thức, phần chênh bị burn</span><span class="chip">buyback</span></div>
+						<div class="gate"><span>Bán cho pet khác trong ER, phí 5% vào treasury</span><span class="chip">market</span></div>
+						<div class="gate"><span>Hoặc bán lại hệ thống theo công thức, treasury trả</span><span class="chip">buyback</span></div>
 					</div>
 				</div>
 			</div>
-			<div class="formula">4 ô × affix Mythic +13% = +52% workPower  → thu nhập × 1.52² ≈ × 2.3
+			<div class="formula">mỗi món cộng vào đúng một chỉ số (forage, might hoặc grit), Mythic +26%, giảm dần theo độ mòn
 chỉ số cộng trên mọi attribute (forage, might, grit, speed, armor, accuracy, lifesteal, bleed)
 skill đồ mạnh: hồi sinh (qua một lần chết mỗi đời) · chống cướp (−X% loot) · giảm X% sát thương
            skill cùng loại trên hai món không cộng dồn
@@ -1104,7 +1321,7 @@ lưu trữ  = đồ đang mặc: 4 × 8 byte trong Pet · đồ trong túi và �
 			<div class="panel gaps">
 				<div class="gap-row"><span class="chip todo">rủi ro</span><p><b>Pay-to-win cộng dồn</b>: thu nhập mua đồ, đồ tăng thu nhập. Chặn bằng độ mòn, trần bonus mỗi affix, và việc pet giàu bị cướp. Đo trong sim S1.</p></div>
 				<div class="gap-row"><span class="chip todo">phải đo</span><p>Tạo account item ngay trong ER có được không (<code>docs/SOLANA.md</code> §7).</p></div>
-				<div class="gap-row"><span class="chip partial">còn mở</span><p>Danh sách và độ lớn skill; Fighter có cướp được đồ không; chết thì đồ đi đâu; giá mint; tỉ lệ burn và pot; phí market; item chỉ ở trong ER hay commit lên L1 thành NFT.</p></div>
+				<div class="gap-row"><span class="chip partial">còn mở</span><p>Danh sách và độ lớn skill; Fighter có cướp được đồ không; chết thì đồ đi đâu; giá mint; phí market; item chỉ ở trong ER hay commit lên L1 thành NFT.</p></div>
 				<div class="gap-row"><span class="chip done">dòng họ</span><p>Ô gia bảo mang đồ đã chọn sang đời sau; thuế thừa kế 30% có thể tính cả giá trị đồ.</p></div>
 			</div>
 		</section>
