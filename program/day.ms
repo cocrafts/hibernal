@@ -563,6 +563,10 @@ function loadedPets(block: Ptr<Block>, first: int32): Result<Ptr<BlockPets>, Pro
 		if (!holder.key().equals(member)) { continue; }
 		const proof = try mutable<PetAccount>(first + seat);
 		const record = proof.data();
+		if (record.pet.blockId != block.id || (record.pet.slot as int32) != seat) {
+			block.members[seat] = Pubkey.zero();
+			continue;
+		}
 		heap.pets[seat] = record.pet;
 		heap.records[seat] = record as uint64;
 	}

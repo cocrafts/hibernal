@@ -245,6 +245,20 @@ test "a pet starved by dusk is lost: half its wallet to one living mate, half to
 	assert world.stats.heirs == heirsBefore && world.deathEpochs[3] == TEST_DAY;
 }
 
+test "a member whose pet sits in another block is dropped from the seat and its pet left untouched" {
+	const policy = policyBytes();
+	const step = turnAccounts(worldBeforeDay(TEST_DAY), TEST_DAY, policy);
+	const stray = petsOf(step)[4];
+	step[TURN_PET + 4] = { ...step[TURN_PET + 4], data: withPet(step[TURN_PET + 4].data, { ...stray, blockId: stray.blockId + 13 }) };
+	const strayBytes = step[TURN_PET + 4].data;
+	assert passed(roundStarted(step, TEST_DAY));
+	assert passed(seededWith(step, blockOf(step).pendingRequest));
+	assert passed(turned(step, TEST_DAY));
+	assert blockOf(step).members[4].isZero();
+	assert sameBytes(step[TURN_PET + 4].data, strayBytes);
+	assert !blockOf(step).members[3].isZero();
+}
+
 test "a step refuses a stale seq and an early slot, a forged callback is refused and a stale one changes nothing" {
 	const policy = policyBytes();
 	const world = worldBeforeDay(TEST_DAY);
