@@ -124,14 +124,12 @@ object PetWatch {
     // Fights land when the Block turns its day, all of a day's at once, so a later epoch is a new fight.
     internal fun news(before: Seen, now: Seen, fights: List<Fight>, seat: Long): List<String> {
         if (before.owner != now.owner || now.generation < before.generation) return emptyList()
-        // Only old age leaves an heir (rules/life.ms agedOut); it hatches when the chain records the death at dusk.
+        // Every death hatches the heir at dusk, when the chain records it (program/day.ms dusked).
         if (now.generation > before.generation) {
-            return listOfNotNull("YOUR PET DIED OF OLD AGE".takeIf { !dead(before) }, "ITS HEIR HAS HATCHED")
+            return listOfNotNull("YOUR PET HAS DIED".takeIf { !dead(before) }, "ITS HEIR HAS HATCHED")
         }
         val lines = mutableListOf<String>()
-        if (dead(now) && !dead(before)) {
-            lines += if (now.hearts > 0) "YOUR PET DIED OF OLD AGE. ITS HEIR IS COMING" else "YOUR PET IS GONE"
-        }
+        if (dead(now) && !dead(before)) lines += "${deathLine(before, now, fights, seat)}. ITS HEIR IS COMING"
         if (now.insurance == INSURANCE_USED && before.insurance != INSURANCE_USED) lines += "INSURANCE SAVED YOUR PET"
         fights.filter { it.epoch > before.lastFightEpoch && it.defenderSeat == seat }.forEach {
             val slot = it.attackerSeat + 1
@@ -142,6 +140,14 @@ object PetWatch {
         if (now.claimable > before.claimable) lines += "A GIFT IS READY TO CLAIM"
         if (now.inTransit < before.inTransit) lines += "YOUR ORDER HAS ARRIVED"
         return lines
+    }
+
+    // rules/life.ms agedOut: dead with hearts left is old age; out of hearts, a fight lost since the last look beat it.
+    private fun deathLine(before: Seen, now: Seen, fights: List<Fight>, seat: Long): String {
+        if (now.hearts > 0) return "YOUR PET DIED OF OLD AGE"
+        val slayer = fights.lastOrNull { it.epoch > before.lastFightEpoch && (it.defenderSeat == seat && it.attackerWon || it.attackerSeat == seat && !it.attackerWon) }
+            ?: return "YOUR PET STARVED"
+        return "YOUR PET FELL TO SLOT ${(if (slayer.defenderSeat == seat) slayer.attackerSeat else slayer.defenderSeat) + 1}"
     }
 
     private fun hbrn(baseUnits: Long): String = "%d.%02d".format(baseUnits / HBRN_UNIT, baseUnits % HBRN_UNIT / (HBRN_UNIT / 100))

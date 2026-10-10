@@ -363,7 +363,8 @@ function fightOf(attackerSeat: int32, defenderSeat: int32, epoch: uint64): GameF
 	};
 }
 
-function blockRead(): GameRead {
+// Seat 4 is mine; on day 40 seats 7 and 9 robbed it.
+export function blockRead(): GameRead {
 	const seats: GameNeighbour[] = [];
 	for (let seat = 0; seat < 10; seat++) {
 		const kind = match (seat) {

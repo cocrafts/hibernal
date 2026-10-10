@@ -74,7 +74,7 @@ function petFoundStatus(snapshot: GameRead): string {
 		NotLive.AwaitingPlacement => "YOUR PET IS WAITING FOR A BLOCK.",
 		NotLive.WorldBehind => "THE WORLD IS CATCHING UP...",
 		NotLive.ReadOld => "RECONNECTING...",
-		NotLive.Dead => "YOUR PET IS LOST FOR GOOD.",
+		NotLive.Dead => "YOUR PET HAS DIED.",
 		NotLive.Inactive => "YOUR PET IS ASLEEP. CHECKING AGAIN SOON.",
 		NotLive.Inconsistent => "SOMETHING LOOKS OFF. CHECKING AGAIN SOON.",
 	};
@@ -437,7 +437,7 @@ test "death and inactivity are separate and never live" {
 	let dead = livePetRead();
 	dead.pet.life = PetLife.DeathRecorded;
 	assert refusedAs(dead, NotLive.Dead);
-	assert petReadStatus(dead) == "YOUR PET IS LOST FOR GOOD.";
+	assert petReadStatus(dead) == "YOUR PET HAS DIED.";
 	dead.pet.life = PetLife.InactiveWithoutDeathRecord;
 	assert refusedAs(dead, NotLive.Inactive);
 }

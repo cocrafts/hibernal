@@ -407,7 +407,7 @@ function onShopTap(home: Home, pet: GamePet, live: boolean, tap: ShopTap): void 
 
 function refusalLine(lock: ShopLock): string {
 	return match (lock) {
-		ShopLock.PetLost => "YOUR PET IS LOST FOR GOOD.",
+		ShopLock.PetLost => "YOUR PET HAS DIED.",
 		ShopLock.ComingSoon => "SKINS ARE COMING SOON.",
 		ShopLock.CartFull => "THE CART HOLDS 3 ITEMS.",
 		ShopLock.InsuranceUsed => "INSURANCE WAS USED IN THIS LIFE.",
@@ -884,7 +884,7 @@ export function frameHudWallpaper(petHead: Result<PetHead, PetHeadHidden>, secon
 	if (mourned.ok) {
 		say(home.ui, home.kit, PET_NAME_ID, mournedName(mourned.value).toUpperCase(), 0.0, MOURNED_NAME_Y, DESIGN_W, 16.0,
 			INK_BRIGHT, 0.5);
-		say(home.ui, home.kit, PET_REGION_ID, mournedLine(mourned.value.mourning), 0.0, MOURNED_LINE_Y, DESIGN_W, 8.0,
+		say(home.ui, home.kit, PET_REGION_ID, mournedLine(mourned.value), 0.0, MOURNED_LINE_Y, DESIGN_W, 8.0,
 			HOLO_BLUE, 0.5);
 		endKit(home.kit);
 		endUi(home.ui);

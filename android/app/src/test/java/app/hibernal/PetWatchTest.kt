@@ -26,14 +26,17 @@ class PetWatchTest {
     @Test
     fun aDeathIsToldOnceByHowItEnds() {
         val starving = seen.copy(life = life(SourcePetLifecycle.Fact.INACTIVE_WITHOUT_DEATH_RECORD), hearts = 0)
-        assertEquals(listOf("YOUR PET IS GONE", "LOST 8 HEARTS: 0/10 LEFT"), PetWatch.news(seen, starving, emptyList(), 4))
+        assertEquals(listOf("YOUR PET STARVED. ITS HEIR IS COMING", "LOST 8 HEARTS: 0/10 LEFT"), PetWatch.news(seen, starving, emptyList(), 4))
+        val beaten = starving.copy(lastFightEpoch = 41)
+        assertEquals(listOf("YOUR PET FELL TO SLOT 3. ITS HEIR IS COMING", "ROBBED BY SLOT 3: -1.00 HBRN", "LOST 8 HEARTS: 0/10 LEFT"),
+            PetWatch.news(seen, beaten, listOf(PetWatch.Fight(41, 2, 4, attackerWon = true, loot = 1_000_000)), 4))
         val recorded = starving.copy(life = life(SourcePetLifecycle.Fact.DEATH_RECORDED))
         assertEquals(emptyList<String>(), PetWatch.news(starving, recorded, emptyList(), 4))
         val old = seen.copy(life = life(SourcePetLifecycle.Fact.INACTIVE_WITHOUT_DEATH_RECORD))
         assertEquals(listOf("YOUR PET DIED OF OLD AGE. ITS HEIR IS COMING"), PetWatch.news(seen, old, emptyList(), 4))
         val heir = seen.copy(generation = 1, life = life(SourcePetLifecycle.Fact.CLAIMED_UNPLACED), hearts = 10)
         assertEquals(listOf("ITS HEIR HAS HATCHED"), PetWatch.news(old, heir, emptyList(), 4))
-        assertEquals(listOf("YOUR PET DIED OF OLD AGE", "ITS HEIR HAS HATCHED"), PetWatch.news(seen, heir, emptyList(), 4))
+        assertEquals(listOf("YOUR PET HAS DIED", "ITS HEIR HAS HATCHED"), PetWatch.news(seen, heir, emptyList(), 4))
     }
 
     @Test

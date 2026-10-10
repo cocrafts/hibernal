@@ -27,7 +27,7 @@ import {
 	summonInFlight,
 	summonStatus,
 } from "./gameAvailability";
-import { Mourning, mournedPet } from "./mourning";
+import { Mourning, mournedLine, mournedName, mournedPet } from "./mourning";
 import { spinner } from "./buttons";
 
 const LEFT: float32 = 28.0;
@@ -97,23 +97,15 @@ function heirStatus(mourning: Mourning): string {
 	return mourning == Mourning.HeirArrived ? "THE HEIR HAS HATCHED." : "THE HEIR IS ON ITS WAY.";
 }
 
-// What the chain keeps of a lost Pet's life.
-function lifeLine(lost: GamePet): string {
-	const reached: string = "REACHED LEVEL " + lost.level.toString();
-	if (lost.diedEpoch <= lost.bornEpoch) { return reached; }
-	return "LIVED " + ((lost.diedEpoch - lost.bornEpoch) as int32).toString() + " DAYS / " + reached;
-}
-
 export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	const dead = mournedPet();
 	const named = namedPet();
 	const picking: boolean = !dead.ok && !named.ok;
-	const lost: boolean = dead.ok && dead.value.mourning == Mourning.Lost;
 	fill(kit, id, 0.0, 0.0, DESIGN_W, DESIGN_H, rgba(0.0, 0.02, 0.06, 0.55));
 	say(ui, kit, id, "HIBERNAL", LEFT, 72.0, WIDTH, 32.0, INK_BRIGHT, 0.5);
 	say(ui, kit, id + 1, "ONE PET. ONE LIFE.", LEFT, 124.0, WIDTH, 8.0, HOLO_BLUE, 0.5);
 	if (dead.ok) {
-		say(ui, kit, id + 2, lost ? "YOUR PET IS GONE" : "YOUR PET HAS DIED", LEFT, 175.0, WIDTH, 16.0, INK_BRIGHT, 0.5);
+		say(ui, kit, id + 2, "YOUR PET HAS DIED", LEFT, 175.0, WIDTH, 16.0, INK_BRIGHT, 0.5);
 	} else {
 		say(ui, kit, id + 2, "CHOOSE YOUR LINEAGE", LEFT, 178.0, WIDTH, 8.0, HOLO_BLUE, 0.5);
 	}
@@ -133,14 +125,13 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	}
 	const nameId: uint8 = dead.ok ? dead.value.pet.nameId : (named.ok ? named.value.nameId : selected);
 	const heirArrived: boolean = dead.ok && dead.value.mourning == Mourning.HeirArrived;
-	const heirGeneration: int32 = dead.ok && !lost ? dead.value.pet.lineageGeneration : 0;
-	const generation: uint16 = lost ? (dead.value.pet.lineageGeneration as uint16)
-		: (dead.ok ? ((heirGeneration - 1) as uint16) : (named.ok ? (named.value.lineageGeneration as uint16) : 0));
-	const name: string = petDisplayName(nameId, generation);
+	const heirGeneration: int32 = dead.ok ? dead.value.pet.lineageGeneration : 0;
+	const name: string = dead.ok ? mournedName(dead.value)
+		: petDisplayName(nameId, named.ok ? (named.value.lineageGeneration as uint16) : 0);
 	pieceSized(kit, id + 6, PieceLayer.Frames, dead.ok ? "onboardingNameDead" : "onboardingName", 80.0, 452.0, 200.0, 38.0);
 	say(ui, kit, id + 6, name, 80.0, capsCentredY(kit, name, 16.0, 452.0, 38.0),
 		200.0, 16.0, dead.ok ? DEAD_INK : INK_BRIGHT, 0.5);
-	say(ui, kit, id + 7, lost ? "LOST FOR GOOD" : dead.ok ? "DIED OF OLD AGE / ITS HEIR CARRIES ON"
+	say(ui, kit, id + 7, dead.ok ? mournedLine(dead.value)
 		: (named.ok ? "YOUR PET" : "PICK A NAME. IT STAYS FOR LIFE."), LEFT, 504.0, WIDTH, 8.0,
 		HOLO_BLUE, 0.5);
 	const summoned: string = dead.ok ? "CONTINUE WITH " + petDisplayName(nameId, heirGeneration as uint16) : "SUMMON " + name;
@@ -161,9 +152,7 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 			GameReadError.InvalidState => "SOMETHING LOOKS OFF. CHECKING AGAIN SOON.",
 		};
 	}
-	if (lost) {
-		say(ui, kit, id + 20, lifeLine(dead.value.pet), LEFT, 664.0, WIDTH, 8.0, DEAD_INK, 0.5);
-	} else if (!known) {
+	if (!known) {
 		if (onboardingButton(ui, kit, id + 20, "onboardingCreate", LEFT, 635.0, WIDTH, 74.0, connectLabel(), !walletPending())) {
 			connectWallet();
 		}
@@ -180,7 +169,7 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	// One line under the button: what the last wallet request did, else why Summon waits.
 	const wallet: string = walletStatus();
 	const action: string = dead.ok ? heirStatus(dead.value.mourning) : wallet != "" ? wallet : summonStatus(outcome);
-	const status: string = lost ? "" : action != "" ? action : summon || !known ? "" : availability;
+	const status: string = action != "" ? action : summon || !known ? "" : availability;
 	walletLine(ui, kit, id + 10, DESIGN_W * 0.5, 715.0);
 	say(ui, kit, id + 24, status, LEFT, 762.0, WIDTH, 8.0, action != "" ? HOLO_BLUE : INK_MUTED, 0.5);
 	return selected;

@@ -3,19 +3,29 @@ import {
 	GameRead,
 	GameReadState,
 	PetLife,
+	SeatKind,
 	deathNoticeSeen,
 	gameRead,
 	noGamePet,
 } from "../host/host";
+import { Outcome } from "../../rules/fight";
 import { NotLive, livePet } from "./gameAvailability";
 import { petDisplayName } from "./petNames";
+import { blockRead } from "./neighbours";
 
+// Every death hatches the next generation in the same Pet account at dusk (program/day.ms dusked).
 export enum Mourning {
-	// Starved or beaten: the Pet is gone and no heir will hatch.
-	Lost,
-	// Died of old age: its heir is on chain, waiting for a Block.
+	// Dead today, or hatched and waiting for a Block.
 	HeirWaiting,
 	HeirArrived,
+}
+
+// Read while the chain still holds the dead Pet, before dusk; after it only the heir is left.
+export enum DeathCause {
+	OldAge,
+	Starved,
+	Beaten,
+	Unknown,
 }
 
 export enum NotMourning {
@@ -24,13 +34,16 @@ export enum NotMourning {
 	NoticeSeen,
 }
 
-// `pet` is the Pet on chain: the lost one, or the heir.
+// `pet` is the heir, as it is or as it will hatch.
 export struct MournedPet {
 	pet: GamePet;
 	mourning: Mourning;
+	cause: DeathCause;
+	// Beaten: the slot (seat + 1) of the Pet that won the fight; 0 otherwise.
+	slayerSlot: int32;
 }
 
-// Onboarding mourns a lost Pet for good, and an old one from its heir's hatching until the owner continues.
+// Onboarding mourns a Pet from its death until the owner continues with its heir.
 export function mournedPet(): Result<MournedPet, NotMourning> {
 	const read = gameRead();
 	if (!read.ok) { return Result.err(NotMourning.NoRead); }
@@ -41,42 +54,61 @@ export function mournedPet(): Result<MournedPet, NotMourning> {
 export function mourning(snapshot: GameRead, seen: int32): Result<MournedPet, NotMourning> {
 	const live = livePet(snapshot);
 	if (!live.ok) {
-		if (live.error == NotLive.Dead) { return Result.ok({ pet: snapshot.pet, mourning: Mourning.Lost }); }
-		// Died during the day: the chain records it at dusk (program/day.ms dusked), and rules/life.ms
-		// agedOut already says how it ends: out of hearts is lost, old with hearts left leaves an heir.
-		if (live.error == NotLive.Inactive) { return dying(snapshot.pet, seen); }
+		if (live.error == NotLive.Dead || live.error == NotLive.Inactive) { return dying(snapshot, seen); }
 		const unplaced: boolean = live.error == NotLive.AwaitingPlacement || live.error == NotLive.AwaitingDelegation;
 		const heir: GamePet = snapshot.pet;
 		if (!unplaced || heir.lineageGeneration == 0) { return Result.err(NotMourning.NotDead); }
 		if (heir.lineageGeneration <= seen) { return Result.err(NotMourning.NoticeSeen); }
-		return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting });
+		return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting, cause: DeathCause.Unknown, slayerSlot: 0 });
 	}
 	const heir = live.value;
 	if (heir.life != PetLife.HeirActive || heir.lineageGeneration <= seen) {
 		return Result.err(NotMourning.NoticeSeen);
 	}
-	return Result.ok({ pet: heir, mourning: Mourning.HeirArrived });
+	return Result.ok({ pet: heir, mourning: Mourning.HeirArrived, cause: DeathCause.Unknown, slayerSlot: 0 });
 }
 
-// The mourned Pet's own name, generation included: `pet` is the heir unless the Pet was lost.
+// The mourned Pet's own name, one generation before its heir.
 export function mournedName(mourned: MournedPet): string {
-	const generation: int32 = mourned.pet.lineageGeneration - (mourned.mourning == Mourning.Lost ? 0 : 1);
-	return petDisplayName(mourned.pet.nameId, generation as uint16);
+	return petDisplayName(mourned.pet.nameId, (mourned.pet.lineageGeneration - 1) as uint16);
 }
 
-export function mournedLine(mourning: Mourning): string {
-	return match (mourning) {
-		Mourning.Lost => "LOST FOR GOOD",
-		Mourning.HeirWaiting => "DIED OF OLD AGE / ITS HEIR IS ON ITS WAY",
-		Mourning.HeirArrived => "DIED OF OLD AGE / ITS HEIR HAS HATCHED",
+export function mournedLine(mourned: MournedPet): string {
+	return match (mourned.cause) {
+		DeathCause.OldAge => "DIED OF OLD AGE / THE HEIR KEEPS 70% AND TWO ITEMS",
+		DeathCause.Starved => "STARVED / THE HEIR STARTS WITH NOTHING",
+		DeathCause.Beaten => "FELL TO SLOT " + mourned.slayerSlot.toString() + " / THE HEIR STARTS WITH NOTHING",
+		DeathCause.Unknown => "ITS HEIR CARRIES ON",
 	};
 }
 
-function dying(pet: GamePet, seen: int32): Result<MournedPet, NotMourning> {
-	if (pet.hearts == 0) { return Result.ok({ pet: pet, mourning: Mourning.Lost }); }
+// rules/life.ms agedOut: dead with hearts left is old age. Out of hearts, a fight it lost on the day it
+// died beat it; with none, it starved.
+function dying(snapshot: GameRead, seen: int32): Result<MournedPet, NotMourning> {
+	const pet: GamePet = snapshot.pet;
 	const heir: GamePet = { ...pet, lineageGeneration: pet.lineageGeneration + 1 };
 	if (heir.lineageGeneration <= seen) { return Result.err(NotMourning.NoticeSeen); }
-	return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting });
+	if (pet.hearts > 0) {
+		return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting, cause: DeathCause.OldAge, slayerSlot: 0 });
+	}
+	const slayer: int32 = slayerSlot(snapshot);
+	return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting, cause: slayer > 0 ? DeathCause.Beaten : DeathCause.Starved,
+		slayerSlot: slayer });
+}
+
+function slayerSlot(snapshot: GameRead): int32 {
+	let me: int32 = -1;
+	for (const seat of snapshot.seats) {
+		if (seat.kind == SeatKind.Self) { me = seat.seat; }
+	}
+	let slayer: int32 = 0;
+	for (const fight of snapshot.fights) {
+		if (fight.epoch != snapshot.pet.blockEpoch) { continue; }
+		const attackerWon: boolean = fight.outcome == Outcome.AttackerWins;
+		if (fight.attackerSeat == me && !attackerWon) { slayer = fight.defenderSeat + 1; }
+		if (fight.defenderSeat == me && attackerWon) { slayer = fight.attackerSeat + 1; }
+	}
+	return slayer;
 }
 
 function readOf(life: PetLife, lineageGeneration: int32): GameRead {
@@ -114,9 +146,7 @@ function unplacedHeirOf(lineageGeneration: int32): GameRead {
 	return { ...read, pet: { ...read.pet, member: false, blockStarted: false } };
 }
 
-test "a lost Pet is mourned for good; an old one from its heir's hatching until the owner continues" {
-	const lost = mourning(readOf(PetLife.DeathRecorded, 0), 3);
-	assert lost.ok && lost.value.mourning == Mourning.Lost;
+test "a Pet is mourned from its death until the owner continues with its heir" {
 	const waiting = mourning(unplacedHeirOf(1), -1);
 	assert waiting.ok && waiting.value.mourning == Mourning.HeirWaiting;
 	const waitingSeen = mourning(unplacedHeirOf(1), 1);
@@ -125,28 +155,26 @@ test "a lost Pet is mourned for good; an old one from its heir's hatching until 
 	assert arrived.ok && arrived.value.mourning == Mourning.HeirArrived;
 	const continued = mourning(readOf(PetLife.HeirActive, 1), 1);
 	assert !continued.ok && continued.error == NotMourning.NoticeSeen;
-	const nextDeath = mourning(readOf(PetLife.HeirActive, 2), 1);
-	assert nextDeath.ok && nextDeath.value.mourning == Mourning.HeirArrived;
 	const firstLife = mourning(readOf(PetLife.FirstLifeActive, 0), -1);
 	assert !firstLife.ok && firstLife.error == NotMourning.NoticeSeen;
 	const claimed = mourning(unplacedHeirOf(0), -1);
 	assert !claimed.ok && claimed.error == NotMourning.NotDead;
 }
 
-test "a Pet that died today is mourned before dusk records it" {
+test "a Pet that died today says how, before dusk hatches its heir" {
 	const read = readOf(PetLife.InactiveWithoutDeathRecord, 0);
+	const old = mourning(read, -1);
+	assert old.ok && old.value.cause == DeathCause.OldAge && old.value.pet.lineageGeneration == 1;
+	assert mournedName(old.value) == petDisplayName(read.pet.nameId, 0);
 	const starved = mourning({ ...read, pet: { ...read.pet, hearts: 0 } }, -1);
-	assert starved.ok && starved.value.mourning == Mourning.Lost;
-	const old = mourning(read, -1);
-	assert old.ok && old.value.mourning == Mourning.HeirWaiting && old.value.pet.lineageGeneration == 1;
-	const oldSeen = mourning(read, 1);
-	assert !oldSeen.ok && oldSeen.error == NotMourning.NoticeSeen;
-}
-
-test "a mourned Pet is named as it lived, not as its heir" {
-	const read = readOf(PetLife.InactiveWithoutDeathRecord, 1);
-	const lost = mourning({ ...read, pet: { ...read.pet, hearts: 0 } }, -1);
-	assert lost.ok && mournedName(lost.value) == petDisplayName(read.pet.nameId, 1) && mournedLine(lost.value.mourning) == "LOST FOR GOOD";
-	const old = mourning(read, -1);
-	assert old.ok && mournedName(old.value) == petDisplayName(read.pet.nameId, 1);
+	assert starved.ok && starved.value.cause == DeathCause.Starved;
+	assert mournedLine(starved.value) == "STARVED / THE HEIR STARTS WITH NOTHING";
+	const seen = mourning(read, 1);
+	assert !seen.ok && seen.error == NotMourning.NoticeSeen;
+	const block = blockRead();
+	const beaten = mourning({ ...block, pet: { ...block.pet, life: PetLife.InactiveWithoutDeathRecord, hearts: 0 } }, -1);
+	assert beaten.ok && beaten.value.cause == DeathCause.Beaten && beaten.value.slayerSlot == 10;
+	assert mournedLine(beaten.value) == "FELL TO SLOT 10 / THE HEIR STARTS WITH NOTHING";
+	const recorded = mourning(readOf(PetLife.DeathRecorded, 0), -1);
+	assert recorded.ok && recorded.value.mourning == Mourning.HeirWaiting;
 }
