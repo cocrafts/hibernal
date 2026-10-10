@@ -642,7 +642,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 		WALLPAPER_LABEL, wallpaperPlace() != WallpaperPlace.Off, true)) {
 		requestWallpaperPicker();
 	}
-	if (home.treeShown) { skillTree(home, numbers.character, barTop); }
+	if (home.treeShown) { skillTree(home, numbers.character, barTop, numbers.live); }
 	const treeToggleTop: float32 = wallpaperTop + STACKED_ROW_HEIGHT;
 	const treeLabel: string = numbers.live ? "SKILL TREE" : TREE_LABEL;
 	if (toggleRow(home.ui, home.kit, TREE_TOGGLE_ID, DESIGN_W - COLUMN_RIGHT_PADDING, treeToggleTop, STACKED_ROW_HEIGHT, treeLabel,
@@ -719,12 +719,12 @@ function visitButtons(home: Home, block: NeighbourBlock): void {
 // A neighbour's home: its Pet's account read only, nothing of the owner's to buy, gift or claim.
 // The scene's Pet stands for the visited one: its HP over its head, no hearts (bonding is with its own owner).
 // Over the scene, shaded: the ring with the chosen node's card above the hotbar.
-function skillTree(home: Home, character: Character, barTop: float32): void {
+function skillTree(home: Home, character: Character, barTop: float32, live: boolean): void {
 	fill(home.kit, TREE_SHADE_ID, 0.0, 0.0, DESIGN_W, DESIGN_H, TREE_SHADE);
 	home.selectedSkill = skillRing(home.ui, home.kit, SKILL_RING_ID, DESIGN_W * 0.5, DESIGN_H * 0.475, character,
 		home.selectedSkill);
 	skillPreview(home.ui, home.kit, SKILL_PREVIEW_ID, barTop + hotbarTopEdge() - INFO_PANEL_HEIGHT - 8.0, home.selectedSkill,
-		character.tree);
+		character.tree, live);
 }
 
 function neighbourFrame(home: Home, block: NeighbourBlock, seat: GameNeighbour, petHead: Result<PetHead, PetHeadHidden>): void {
@@ -747,7 +747,7 @@ function neighbourFrame(home: Home, block: NeighbourBlock, seat: GameNeighbour, 
 	statColumn(home.ui, home.kit, CHARACTER_ID, DESIGN_W - COLUMN_RIGHT_PADDING, COLUMNS_TOP, seat.forage, seat.might, seat.grit,
 		talent);
 	// Read only: the ring selects a node to read about, nothing to allocate.
-	if (home.treeShown) { skillTree(home, { level: seat.level, tree: { bits: seat.tree }, talent: talent }, barTop); }
+	if (home.treeShown) { skillTree(home, { level: seat.level, tree: { bits: seat.tree }, talent: talent }, barTop, true); }
 	if (toggleRow(home.ui, home.kit, TREE_TOGGLE_ID, DESIGN_W - COLUMN_RIGHT_PADDING,
 		COLUMNS_TOP + STAT_COLUMN_HEIGHT + CHARACTER_STATS_GAP, STACKED_ROW_HEIGHT, "SKILL TREE", home.treeShown, true)) {
 		home.treeShown = !home.treeShown;

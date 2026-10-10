@@ -173,13 +173,13 @@ export function skillRing(ui: Ui, kit: Kit, id: int32, x: float32, y: float32,
 }
 
 export function skillPreview(ui: Ui, kit: Kit, id: int32, top: float32,
-	selected: int32, tree: Tree): void {
+	selected: int32, tree: Tree, live: boolean): void {
 	const width: float32 = DESIGN_W - 24.0;
 	infoPanel(ui, 12.0, top, width);
 	const left: float32 = 12.0 + TIP_PAD;
 	const contentWidth: float32 = width - TIP_PAD * 2.0;
 	if (selected == NO_NODE) {
-		say(ui, kit, subId(id, 0), "TAP A NODE TO PREVIEW", left, top + TIP_PAD,
+		say(ui, kit, subId(id, 0), live ? "TAP A NODE TO VIEW" : "TAP A NODE TO PREVIEW", left, top + TIP_PAD,
 			contentWidth, 9.0, INK_BRIGHT, 0.0);
 		say(ui, kit, subId(id, 1), "FILLED: OWNED / RING: NOT OWNED", left, top + 27.0,
 			contentWidth, TIP_TEXT, INK, 0.0);
@@ -199,11 +199,13 @@ export function skillPreview(ui: Ui, kit: Kit, id: int32, top: float32,
 			: "COST " + nodeCost(selected).toString() + " POINTS";
 		say(ui, kit, subId(id, 10), cost, left, top + 76.0,
 			contentWidth * 0.5, TIP_TEXT, INK, 0.0);
-		const status: string = tree.has(selected) ? "OWNED IN PREVIEW"
+		const status: string = tree.has(selected) ? (live ? "OWNED" : "OWNED IN PREVIEW")
 			: (neighbors(selected) & tree.bits) != 0 ? "CONNECTED TO OWNED" : "NOT CONNECTED";
 		say(ui, kit, subId(id, 11), status, left + contentWidth * 0.5, top + 76.0,
 			contentWidth * 0.5, TIP_TEXT, INK_BRIGHT, 0.0);
 	}
+	// A live Pet's brain spends its points on chain; only the preview has upgrades still to wire.
+	if (live) { return; }
 	say(ui, kit, subId(id, 12), "UI PREVIEW / SKILL UPGRADES NOT CONNECTED",
 		left, top + 93.0, contentWidth, 6.0, HOLO_BLUE, 0.0);
 }
