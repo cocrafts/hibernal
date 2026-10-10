@@ -45,6 +45,7 @@ import {
 	MAX_PETS,
 	NO_BLOCK,
 	NO_SEAT,
+	Ledger,
 	Paid,
 	Phase,
 	PetAccount,
@@ -67,6 +68,7 @@ export struct ClaimAccounts {
 	pet: Writable;
 	paid: Writable;
 	systemProgram: Program<System>;
+	ledger: Writable;
 }
 
 export struct DelegatePetAccounts {
@@ -162,6 +164,7 @@ export function claim(): Result<uint64, ProgramError> {
 	if (config.pets >= (MAX_PETS as uint32)) { return Result.err(hibernalError(HibernalError.PetCap)); }
 	const madePet = try createPda<PetAccount>(x.owner, x.pet, ["pet", mintKey]);
 	const madePaid = try createPda<Paid>(x.owner, x.paid, ["paid", mintKey]);
+	const madeLedger = try createPda<Ledger>(x.owner, x.ledger, ["ledger", mintKey]);
 	const epoch = dayOf(config, clock().unixTimestamp);
 	const region = (mintKey.bytes[0] % REGIONS) as int32;
 	const hatched = Pet.born(NO_BLOCK, BlockSlot.First, region as Region, epoch, GlobalConfig.genesis(config.genesisTimestamp));
@@ -178,6 +181,9 @@ export function claim(): Result<uint64, ProgramError> {
 	const paid = madePaid.account.data();
 	paid.mint = mintKey;
 	paid.bump = madePaid.bump;
+	const ledger = madeLedger.account.data();
+	ledger.mint = mintKey;
+	ledger.bump = madeLedger.bump;
 	config.pets = config.pets + 1;
 	return Result.ok(record.ordinal as uint64);
 }

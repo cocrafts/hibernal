@@ -357,6 +357,7 @@ export function hibernal(programAddress, authority) {
 				writable(await address(seeds.pet(mint))),
 				writable(await address(seeds.paid(mint))),
 				readonly(SYSTEM_PROGRAM),
+				writable(await address(seeds.ledger(mint))),
 			], u8(nameId));
 		},
 		async delegatePet(payer, mint) {

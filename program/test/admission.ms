@@ -167,6 +167,11 @@ function paidKey(mint: Pubkey): Pubkey {
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
+function ledgerKey(mint: Pubkey): Pubkey {
+	const found = findProgramAddressOf(programKey(), ["ledger", mint]);
+	return found.ok ? found.value.key : Pubkey.zero();
+}
+
 function bufferKey(delegated: Pubkey): Pubkey {
 	const found = findProgramAddressOf(programKey(), ["buffer", delegated]);
 	return found.ok ? found.value.key : Pubkey.zero();
@@ -277,6 +282,7 @@ function claimAccounts(made: HostAccount[], claimer: Pubkey, mint: HostAccount, 
 		blank(petKey(mint.key)),
 		blank(paidKey(mint.key)),
 		executable(SYSTEM_PROGRAM_ID),
+		blank(ledgerKey(mint.key)),
 	];
 }
 
@@ -469,6 +475,7 @@ test "claim admits a group member once and refuses mints outside the group" {
 	assert u32At(pet.data, PET_RECORD + 116) == appearanceOf(admissionMintKey(0));
 	assert u32At(pet.data, PET_BLOCK) == NO_BLOCK && pet.data[PET_SLOT] == NO_SEAT && pet.data[PET_ALIVE] == 0;
 	assert accounts[5].owner == programKey() && keyAt(accounts[5].data, 8) == admissionMintKey(0);
+	assert accounts[7].owner == programKey() && keyAt(accounts[7].data, 8) == admissionMintKey(0);
 	assert u32At(made[1].data, CONFIG_PETS) == 1;
 	const second = claimed(made, 3);
 	assert u32At(second[4].data, PET_ORDINAL) == 1 && u32At(made[1].data, CONFIG_PETS) == 2;
