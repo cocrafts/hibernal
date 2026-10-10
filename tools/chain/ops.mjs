@@ -325,9 +325,10 @@ async function tokenMetadata() {
 		await onL1("HBRN metadata", [await program.createHbrnMetadata({ name: "Hibernal", symbol: "HBRN", uri: `${TOKEN_URI}/hbrn.json` })]);
 		note("bootstrap", "HBRN metadata created");
 	}
-	const skrMint = await keypairAt(process.env.SKR_MINT ?? "out/devSkrMint.json");
-	if (!(await read(baseRead, await metadataAddress(skrMint.address)))) {
-		await onL1("SKR metadata", [await createMetadata(skrMint.address, authority, { name: "Seeker Devnet", symbol: "SKR", uri: `${TOKEN_URI}/skr.json` })]);
+	const config = await read(baseRead, await configAddress());
+	const skrMint = getBase58Decoder().decode(config.data.subarray(configAt.skr_mint, configAt.skr_mint + 32));
+	if (!(await read(baseRead, await metadataAddress(skrMint)))) {
+		await onL1("SKR metadata", [await createMetadata(skrMint, authority, { name: "Seeker Devnet", symbol: "SKR", uri: `${TOKEN_URI}/skr.json` })]);
 		note("bootstrap", "SKR metadata created");
 	}
 }
