@@ -1,6 +1,5 @@
 package app.hibernal
 
-import android.app.Activity
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
@@ -9,11 +8,15 @@ import android.os.Bundle
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import androidx.activity.ComponentActivity
 
-class MainActivity : Activity(), SurfaceHolder.Callback {
+class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
+    private lateinit var walletBridge: WalletBridge
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         VoidNative.prepare(applicationContext)
+        walletBridge = WalletBridge(this)
         val view = SurfaceView(this)
         view.holder.addCallback(this)
         // Every touch goes to Void, which draws and hit-tests the whole UI. A long press
@@ -32,6 +35,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     override fun onResume() {
         super.onResume()
         reportWallpaperPlaces()
+    }
+
+    fun handleWalletRequest(request: Int) {
+        walletBridge.request(request)
+    }
+
+    fun handleOwnerActionRequest(request: Int) {
+        walletBridge.requestOwnerAction(request)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}

@@ -57,10 +57,12 @@ object VoidRenderer : Choreographer.FrameCallback {
                 VoidNative.detach()
                 Log.i(TAG, "detach")
             }
+            TiltSensor.stop()
             activeOwner = null
             activeTarget = null
             return
         }
+        TiltSensor.start()
         val current = activeTarget
         if (owner === activeOwner && current != null && current.surface == target.surface) {
             if (current.width != target.width || current.height != target.height) {
@@ -95,6 +97,27 @@ object VoidRenderer : Choreographer.FrameCallback {
             VoidNative.frame()
             framesSinceLog++
             if (VoidNative.takeWallpaperPickerRequest()) openWallpaperPicker()
+            val deathNoticeMark = VoidNative.takeDeathNoticeMark()
+            if (deathNoticeMark >= 0) DeathNoticeStore.mark(GameSync.livePet, deathNoticeMark)
+            val walletRequest = VoidNative.takeWalletRequest()
+            if (walletRequest != 0) {
+                val activity = activeOwner as? MainActivity
+                if (activity != null && target.inApp) {
+                    activity.runOnUiThread { activity.handleWalletRequest(walletRequest) }
+                } else {
+                    // A wallpaper/background request is consumed, never deferred to app resume.
+                    VoidNative.setWalletState(4, "")
+                }
+            }
+            val ownerActionRequest = VoidNative.takeOwnerActionRequest()
+            if (ownerActionRequest != 0) {
+                val activity = activeOwner as? MainActivity
+                if (activity != null && target.inApp) {
+                    activity.runOnUiThread { activity.handleOwnerActionRequest(ownerActionRequest) }
+                } else {
+                    VoidNative.setOwnerActionState(OwnerSigning.Outcome.CANCELLED.ordinal)
+                }
+            }
         }
         if (frameTimeNanos - lastLogNanos >= 1_000_000_000L) {
             Log.i(TAG, "fps=$framesSinceLog")

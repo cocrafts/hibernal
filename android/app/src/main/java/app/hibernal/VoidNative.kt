@@ -21,9 +21,31 @@ object VoidNative {
     external fun resize(width: Int, height: Int)
     external fun frame()
     external fun detach()
+    external fun rotation(w: Float, x: Float, y: Float, z: Float)
     external fun touch(phase: Int, id: Int, x: Float, y: Float)
     external fun setWallpaperPlaces(home: Boolean, lock: Boolean)
     external fun takeWallpaperPickerRequest(): Boolean
+    external fun setDeathNoticeSeen(generation: Int)
+    external fun takeDeathNoticeMark(): Int
+    external fun takeWalletRequest(): Int
+    external fun setWalletState(state: Int, address: String)
+    external fun takeOwnerActionRequest(): Int
+    external fun setOwnerActionState(state: Int)
+    external fun setGameOwner(state: Int, publicKey: ByteArray)
+    external fun gameOwnerRevision(): Int
+    external fun setGameRead(
+        ownerRevision: Int,
+        state: Int,
+        baseSlot: Long,
+        ephemeralSlot: Long,
+        admissionHoldings: Int,
+        admissionMembers: Int,
+        unclaimedMembers: Int,
+        detail: String,
+        pet: LongArray,
+        seats: LongArray,
+        fights: LongArray,
+    ): Boolean
     private external fun setAssetRoot(path: String)
 
     private var prepared = false
@@ -33,6 +55,9 @@ object VoidNative {
     @Synchronized
     fun prepare(context: Context) {
         if (prepared) return
+        DeathNoticeStore.prepare(context)
+        GameOwnerStore.restore(context)
+        TiltSensor.prepare(context)
         copyAssets(context, "", File(context.filesDir, "assets"))
         setAssetRoot(context.filesDir.absolutePath)
         prepared = true
