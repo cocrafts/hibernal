@@ -256,3 +256,23 @@ test("placement seats an heir in the block with the lowest living level and neve
 	assert.equal(result.unplacedBefore, 1);
 	assert.equal(result.placed, 1);
 });
+
+test("load is due only for a living pet whose ledger bought more than it loaded, with an owner slot free", () => {
+	const readU32 = (data, at) => data[at] | (data[at + 1] << 8) | (data[at + 2] << 16) | (data[at + 3] << 24);
+	const loadable = loadFunction("ops.mjs", "loadable", "loads", {
+		readU32,
+		ledgerAt: { bought: 32 },
+		petAccountAt: { loaded: 96, pet: 128 },
+		petAt: { owner_first: 10, owner_second: 11, alive: 12 },
+	});
+	const ledger = (food) => ({ data: Uint8Array.from({ length: 64 }, (_, at) => (at === 32 + 4 * 2 ? food : 0)) });
+	const record = (food, first, second, alive = 1) => ({
+		data: Uint8Array.from({ length: 160 }, (_, at) => (at === 96 + 4 * 2 ? food : at === 138 ? first : at === 139 ? second : at === 140 ? alive : 0)),
+	});
+	assert.equal(loadable(ledger(2), record(1, 0, 0)), true);
+	assert.equal(loadable(ledger(2), record(2, 0, 0)), false);
+	assert.equal(loadable(ledger(2), record(1, 3, 3)), false);
+	assert.equal(loadable(ledger(2), record(1, 3, 0)), true);
+	assert.equal(loadable(ledger(2), record(1, 0, 0, 0)), false);
+	assert.equal(loadable(null, record(0, 0, 0)), false);
+});

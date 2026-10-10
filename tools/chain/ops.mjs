@@ -49,7 +49,7 @@ const PHASES = ["Idle", "Seeding", "Acting", "Dusk"];
 
 const [programArgument, policyPath] = process.argv.slice(2);
 if (!programArgument) {
-	console.log("usage: STAGE=bootstrap|blocks|sweep|watchdog|resort|status|run node tools/chain/ops.mjs <program id> [<checkpoint>.policy]");
+	console.log("usage: STAGE=bootstrap|blocks|sweep|watchdog|resort|load|status|run node tools/chain/ops.mjs <program id> [<checkpoint>.policy]");
 	process.exit(2);
 }
 const programAddress = address(programArgument);
@@ -63,6 +63,7 @@ const blockAt = accountOffsets(idl, "Block");
 const worldAt = accountOffsets(idl, "World");
 const petAccountAt = accountOffsets(idl, "PetAccount");
 const configAt = accountOffsets(idl, "Config");
+const ledgerAt = accountOffsets(idl, "Ledger");
 const petAt = fieldsOf(idl, "Pet").offsets;
 const gearAt = fieldsOf(idl, "Gear").offsets;
 const itemAt = fieldsOf(idl, "Item").offsets;
@@ -688,12 +689,40 @@ async function status() {
 	return snapshot;
 }
 
+function loadable(ledger, record) {
+	if (!ledger || !record) return false;
+	const at = (field) => petAccountAt.pet + petAt[field];
+	if (record.data[at("alive")] === 0) return false;
+	if (record.data[at("owner_first")] !== 0 && record.data[at("owner_second")] !== 0) return false;
+	for (let kind = 0; kind < 7; kind++) {
+		if (readU32(ledger.data, ledgerAt.bought + kind * 4) > readU32(record.data, petAccountAt.loaded + kind * 4)) return true;
+	}
+	return false;
+}
+
+async function loads() {
+	const mints = Object.values(state.pets).map((entry) => address(entry.mint));
+	const ledgers = await readMany(baseRead, await Promise.all(mints.map((mint) => addressOf(program.seeds.ledger(mint)))));
+	const bought = mints.filter((_, index) => ledgers[index]);
+	const buyers = ledgers.filter(Boolean);
+	const records = await readMany(ephemeral, await Promise.all(bought.map(petAddress)));
+	const due = bought.filter((_, index) => loadable(buyers[index], records[index]));
+	await inParallel(due, async (mint) => {
+		try {
+			await onEr("load", [await program.load(mint)], 100_000);
+		} catch (error) {
+			note("load", `${mint} failed: ${error.message}`);
+		}
+	});
+	if (due.length > 0) note("load", `loaded ${due.length} pets`);
+}
+
 async function run() {
 	if (delegated(await read(baseRead, await vrfPayerAddress()))) await sweep();
 	await bootstrap();
 	for (;;) {
 		const started = Date.now();
-		for (const [name, work] of [["blocks", blocks], ["sweep", sweep], ["watchdog", watchdog], ["resort", resort], ["fund", bootstrap], ["status", status]]) {
+		for (const [name, work] of [["blocks", blocks], ["sweep", sweep], ["watchdog", watchdog], ["resort", resort], ["load", loads], ["fund", bootstrap], ["status", status]]) {
 			try {
 				await work();
 			} catch (error) {
@@ -705,7 +734,7 @@ async function run() {
 	}
 }
 
-const stages = { bootstrap, blocks, sweep, watchdog, resort, status, run };
+const stages = { bootstrap, blocks, sweep, watchdog, resort, load: loads, status, run };
 if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}`);
 const outcome = await stages[STAGE]();
 if (outcome !== undefined && STAGE !== "run") console.log(json(outcome));
