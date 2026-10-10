@@ -12,6 +12,7 @@ import {
 	admissionTicket,
 	cluster,
 	encoder,
+	fieldsOf,
 	hibernal,
 	idlAt,
 	joined,
@@ -37,7 +38,7 @@ const LOG_PATH = process.env.TICKET_LOG ?? `${NET_DIR}/tickets.jsonl`;
 
 const programAddress = address(process.env.PROGRAM ?? process.argv[2] ?? "");
 const mainnet = createSolanaRpc(process.env.MAINNET_RPC ?? "https://api.mainnet-beta.solana.com");
-const { base, baseRead } = cluster();
+const { base, baseRead, ephemeral } = cluster();
 const wallet = await keypairAt(process.env.AUTHORITY ?? `${process.env.HOME}/.config/solana/id.json`);
 const group = (await keypairAt(process.env.GROUP_KEYPAIR ?? "out/devGroupMint.json")).address;
 if (!existsSync(SEED_PATH)) writeFileSync(SEED_PATH, randomBytes(32).toString("hex"));
@@ -46,8 +47,11 @@ const program = hibernal(programAddress);
 const configAt = accountOffsets(idlAt(), "Config");
 const configHolder = await read(baseRead, await program.address(program.seeds.config()));
 const skrMint = getAddressDecoder().decode(configHolder.data.subarray(configAt.skr_mint, configAt.skr_mint + 32));
+const commitCooldownMs = Number(configHolder.data.readBigUInt64LE(configAt.seconds_per_day)) * 1000;
+const giftOwedAt = accountOffsets(idlAt(), "PetAccount").pet + fieldsOf(idlAt(), "Pet").offsets.gift_owed;
 const ticketRent = BigInt(await base.getMinimumBalanceForRentExemption(MEMBER_MINT_BYTES).send());
 const inFlight = new Map();
+const committedAt = new Map();
 
 async function seekerGenesisMint(owner) {
 	const { value: accounts } = await mainnet.getTokenAccountsByOwner(owner, { programId: TOKEN_2022_PROGRAM }, { encoding: "jsonParsed" }).send();
@@ -98,6 +102,23 @@ async function admit(owner) {
 	return { code: 200, body: { status: "issued", owner, sgt, ticket: ticket.address, signature: sent.signature, skr: String(GIFT_SKR), lamports: String(GIFT_LAMPORTS) } };
 }
 
+async function commit(mint) {
+	const waitMs = (committedAt.get(mint) ?? -Infinity) + commitCooldownMs - Date.now();
+	if (waitMs > 0) return { code: 429, body: { error: "TooSoon", mint, retryAfterSeconds: Math.ceil(waitMs / 1000) } };
+	const pet = await read(ephemeral, await program.address(program.seeds.pet(mint)));
+	if (!pet) return { code: 404, body: { error: "NoPet", mint } };
+	const giftOwed = pet.data.readBigUInt64LE(giftOwedAt);
+	if (giftOwed === 0n) return { code: 409, body: { error: "NothingToClaim", mint } };
+	committedAt.set(mint, Date.now());
+	try {
+		const sent = await send(ephemeral, ephemeral, "commit", [await program.commitPet(wallet, mint)], wallet, 100_000, false);
+		return { code: 200, body: { status: "committed", mint, giftOwed: String(giftOwed), signature: sent.signature } };
+	} catch (error) {
+		committedAt.delete(mint);
+		throw error;
+	}
+}
+
 function admitOnce(owner) {
 	if (!inFlight.has(owner)) inFlight.set(owner, admit(owner).finally(() => inFlight.delete(owner)));
 	return inFlight.get(owner);
@@ -129,6 +150,22 @@ const server = createServer(async (request, response) => {
 	if (token) {
 		response.writeHead(200, { "content-type": token.type, "cache-control": "public, max-age=3600" });
 		return response.end(readFileSync(new URL(`.${request.url}`, import.meta.url)));
+	}
+	if (request.method === "POST" && request.url === "/commit") {
+		let mint;
+		try {
+			mint = address((await bodyOf(request)).mint);
+		} catch {
+			return reply(400, { error: "BadMint" });
+		}
+		try {
+			const { code, body } = await commit(mint);
+			console.log(`${new Date().toISOString()} commit ${mint} ${code} ${body.status ?? body.error}`);
+			return reply(code, body);
+		} catch (error) {
+			console.log(`${new Date().toISOString()} commit ${mint} 500 ${error.message}`);
+			return reply(500, { error: "CommitFailed", detail: error.message });
+		}
 	}
 	if (request.method !== "POST" || request.url !== "/admit") return reply(404, { error: "NotFound" });
 	let owner;
