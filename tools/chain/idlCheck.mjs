@@ -27,6 +27,7 @@ const built = [
 	await program.commitPet(owner, mint),
 	await program.claimReward(owner, mint, await someKey()),
 	await program.withdrawRevenue(1n, skrMint, await someKey()),
+	await program.createHbrnMetadata({ name: "Hibernal", symbol: "HBRN", uri: "https://example.com/hbrn.json" }),
 	await program.buy(owner, mint, { item: 0, tier: 0, skrMint, source: await someKey(), treasury: await someKey() }),
 	await program.load(mint),
 	await program.resortBegin(0, 1n),

@@ -33,6 +33,7 @@ export const SLOT_HASHES = address("SysvarS1otHashes111111111111111111111111111"
 export const INSTRUCTIONS_SYSVAR = address("Sysvar1nstructions1111111111111111111111111");
 export const HYDRA_PROGRAM = address("eHyd5BU8QffvHi4GnXwxrK4WpS7pM2x9UGKHBWii7mf");
 export const MAGIC_VAULT = address("MagicVau1t999999999999999999999999999999999");
+export const METADATA_PROGRAM = address("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 export const SESSION_KEYS_PROGRAM = address("KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5");
 export const COMPUTE_UNIT_LIMIT = 1_400_000;
 export const CLONE_ATTEMPTS = 5;
@@ -237,6 +238,29 @@ export function bool(value) {
 
 export function key(value) {
 	return encoder.encode(value);
+}
+
+export async function metadataAddress(mint) {
+	return (await pda(METADATA_PROGRAM, "metadata", encoder.encode(METADATA_PROGRAM), encoder.encode(mint)))[0];
+}
+
+function metadataTexts({ name, symbol, uri }) {
+	return joined(...[name, symbol, uri].flatMap((value) => [u32(text(value).length), text(value)]));
+}
+
+export async function createMetadata(mint, mintAuthority, token) {
+	return {
+		programAddress: METADATA_PROGRAM,
+		accounts: [
+			writable(await metadataAddress(mint)),
+			readonly(mint),
+			signer(mintAuthority),
+			writableSigner(mintAuthority),
+			readonly(mintAuthority.address),
+			readonly(SYSTEM_PROGRAM),
+		],
+		data: joined(u8(33), metadataTexts(token), new Uint8Array([0, 0, 0, 0, 0, 1, 0])),
+	};
 }
 
 export function hibernal(programAddress, authority) {
@@ -471,6 +495,18 @@ export function hibernal(programAddress, authority) {
 				writable(destination),
 				readonly(tokenProgram),
 			], u64(amount));
+		},
+		async createHbrnMetadata(token) {
+			const mint = await address(seeds.mint());
+			const texts = metadataTexts(token);
+			return call("CreateHbrnMetadata", [
+				writableSigner(authority),
+				writable(await address(seeds.config())),
+				readonly(mint),
+				writable(await metadataAddress(mint)),
+				readonly(METADATA_PROGRAM),
+				readonly(SYSTEM_PROGRAM),
+			], u32(texts.length), texts);
 		},
 		async buy(owner, mint, { item, tier, skrMint, source, treasury, tokenProgram = TOKEN_PROGRAM }) {
 			return call("Buy", [

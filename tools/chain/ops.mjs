@@ -7,6 +7,7 @@ import {
 	MAGIC_VAULT,
 	SYSTEM_PROGRAM,
 	accountOffsets,
+	createMetadata,
 	cluster,
 	encoder,
 	fieldsOf,
@@ -16,6 +17,7 @@ import {
 	joined,
 	json,
 	keypairAt,
+	metadataAddress,
 	patiently,
 	read,
 	readU32,
@@ -43,6 +45,7 @@ const PLACES_PER_TRANSACTION = Number(process.env.PLACES_PER_TRANSACTION ?? 5);
 const SWEEP_BATCH = Number(process.env.SWEEP_BATCH ?? 20);
 const PARALLEL = Number(process.env.PARALLEL ?? 16);
 const WATCHDOG_SLOTS = BigInt(process.env.WATCHDOG_SLOTS ?? 6_000);
+const TOKEN_URI = process.env.TOKEN_URI;
 const TICK_SECONDS = Number(process.env.TICK_SECONDS ?? 10);
 const MEASURE = ["level", "power", "combat"].indexOf(process.env.MEASURE ?? "combat");
 const PHASES = ["Idle", "Seeding", "Acting", "Dusk"];
@@ -293,6 +296,7 @@ async function bootstrap() {
 		})]);
 		note("bootstrap", `initialized, genesis ${genesisTimestamp}`);
 	}
+	if (TOKEN_URI) await tokenMetadata();
 	if (policyPath) {
 		const policy = new Uint8Array(readFileSync(policyPath));
 		const holder = await read(baseRead, await addressOf(program.seeds.policy()));
@@ -313,6 +317,19 @@ async function bootstrap() {
 		note("bootstrap", "VRF payer delegated");
 	}
 	await fundVrfPayer();
+}
+
+async function tokenMetadata() {
+	const hbrn = await addressOf(program.seeds.mint());
+	if (!(await read(baseRead, await metadataAddress(hbrn)))) {
+		await onL1("HBRN metadata", [await program.createHbrnMetadata({ name: "Hibernal", symbol: "HBRN", uri: `${TOKEN_URI}/hbrn.json` })]);
+		note("bootstrap", "HBRN metadata created");
+	}
+	const skrMint = await keypairAt(process.env.SKR_MINT ?? "out/devSkrMint.json");
+	if (!(await read(baseRead, await metadataAddress(skrMint.address)))) {
+		await onL1("SKR metadata", [await createMetadata(skrMint.address, authority, { name: "Seeker Devnet", symbol: "SKR", uri: `${TOKEN_URI}/skr.json` })]);
+		note("bootstrap", "SKR metadata created");
+	}
 }
 
 async function fundVrfPayer() {
