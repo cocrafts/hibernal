@@ -1,6 +1,6 @@
 import { Color } from "@metascript/void/src/void2d/types";
-import { Ui, box, pressable } from "../ui/ui";
-import { Kit, subId, measure, say, INK, INK_BRIGHT, HOLO_BLUE, ALERT_RED, GROWTH_GREEN } from "./kit";
+import { Ui, box, held, pressable } from "../ui/ui";
+import { Kit, subId, measure, plainLook, pressedLook, say, INK, INK_BRIGHT, HOLO_BLUE, ALERT_RED, GROWTH_GREEN } from "./kit";
 import { hbrnAmount } from "./gameNumbers";
 import { Scroll, scrollState, scrollArea } from "./scroll";
 import { centredY, infoPanelSized, withAlpha, INFO_PANEL_HEIGHT } from "./shapes";
@@ -59,11 +59,11 @@ function activityRow(ui: Ui, kit: Kit, id: int32, activity: PetActivity, x: floa
 }
 
 // A pixel triangle ARROW_WIDTH wide, pointing up (opens upwards) or down (closes).
-function arrow(ui: Ui, x: float32, middle: float32, up: boolean): void {
+function arrow(ui: Ui, kit: Kit, x: float32, middle: float32, up: boolean): void {
 	const rows: int32 = 4;
 	for (let row: int32 = 0; row < rows; row += 1) {
 		const inset: float32 = (up ? rows - 1 - row : row) as float32;
-		box(ui, x + inset, middle - 2.0 + (row as float32), ARROW_WIDTH - inset * 2.0, 1.0, 0.0, HOLO_BLUE);
+		box(ui, x + inset, middle - 2.0 + (row as float32), ARROW_WIDTH - inset * 2.0, 1.0, 0.0, withAlpha(HOLO_BLUE, kit.fade));
 	}
 }
 
@@ -83,10 +83,10 @@ export function activityLog(ui: Ui, kit: Kit, id: int32, log: ActivityLog, newes
 	const panelHeight: float32 = log.expanded ? INFO_PANEL_HEIGHT : COMPACT_HEIGHT;
 	const panelTop: float32 = panelBottom - panelHeight;
 	// Before the scroll area, which limits the presses after it to the rows.
-	const toggled: boolean = log.expanded
-		? pressable(ui, subId(id, 15), panelX + panelWidth - ARROW_REACH, panelTop, ARROW_REACH, ARROW_REACH)
-		: pressable(ui, subId(id, 15), panelX, panelTop, panelWidth, panelHeight);
-	if (toggled) {
+	const toggleX: float32 = log.expanded ? panelX + panelWidth - ARROW_REACH : panelX;
+	const toggleWidth: float32 = log.expanded ? ARROW_REACH : panelWidth;
+	const toggleHeight: float32 = log.expanded ? ARROW_REACH : panelHeight;
+	if (pressable(ui, subId(id, 15), toggleX, panelTop, toggleWidth, toggleHeight)) {
 		log.expanded = !log.expanded;
 		log.following = true;
 	}
@@ -95,16 +95,22 @@ export function activityLog(ui: Ui, kit: Kit, id: int32, log: ActivityLog, newes
 	const width: float32 = panelWidth - PANEL_PAD * 2.0 - ARROW_SPACE;
 	const arrowX: float32 = panelX + panelWidth - PANEL_PAD - ARROW_WIDTH;
 	const count: int32 = newestFirst.length as int32;
+	pressedLook(kit, subId(id, 15), held(ui, subId(id, 15), toggleX, panelTop, toggleWidth, toggleHeight));
 	if (!log.expanded) {
-		arrow(ui, arrowX, panelTop + panelHeight * 0.5, true);
-		if (count == 0) { return panelTop; }
+		arrow(ui, kit, arrowX, panelTop + panelHeight * 0.5, true);
+		if (count == 0) {
+			plainLook(kit);
+			return panelTop;
+		}
 		const rowTop: float32 = panelTop + PANEL_PAD;
 		if (glow > 0.0) { box(ui, panelX + 1.0, rowTop, panelWidth - 2.0, ROW_HEIGHT, 0.0, withAlpha(FRESH_GLOW, FRESH_GLOW_ALPHA * glow)); }
 		activityRow(ui, kit, id, newestFirst[0], x, centredY(kit, newestFirst[0].line, TEXT_SIZE, rowTop, ROW_HEIGHT), width,
 			glow > 0.0 ? INK_BRIGHT : INK);
+		plainLook(kit);
 		return panelTop;
 	}
-	arrow(ui, arrowX, panelTop + PANEL_PAD + ROW_HEIGHT * 0.5, false);
+	arrow(ui, kit, arrowX, panelTop + PANEL_PAD + ROW_HEIGHT * 0.5, false);
+	plainLook(kit);
 	const bottom: float32 = panelBottom - PANEL_PAD;
 	const top: float32 = bottom - LOG_HEIGHT;
 	const contentHeight: float32 = (count as float32) * ROW_HEIGHT;
