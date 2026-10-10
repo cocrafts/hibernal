@@ -35,12 +35,13 @@ import {
 } from "@metascript/void/src/gpu/target";
 import { PixelFormat, contextGeneration } from "@metascript/void/src/gpu/door";
 import { fbWidth, fbHeight } from "@metascript/void/src/sokol/gpu";
+import { LowResView } from "@metascript/void/src/void3d/blit";
 
 extern function hudPostRegister(fullscreenLayout: int32): int32;
 
 // Measured on the Seeker (2026-10-05) against the campfire scene: luminance 67-72 against 51,
 // saturation 184-199 against 125. A 5 pixel cell, the scene's own, left the HUD's text unreadable.
-export const HUD_PIXEL: float32 = 3.0;
+export const HUD_PIXEL: float32 = 0.0;
 export const HUD_BRIGHTNESS: float32 = 0.85;
 export const HUD_SATURATION: float32 = 0.65;
 export const HUD_TINT_SHARE: float32 = 0.0;
@@ -81,12 +82,29 @@ export function sizeHudTarget(target: RenderTarget): void {
 }
 
 export function drawHudPost(target: RenderTarget): void {
+	params[0] = HUD_PIXEL;
+	params[1] = 0.0;
+	params[2] = 0.0;
+	params[3] = 0.0;
+	drawComposite(target, target);
+}
+
+export function drawPixelPet(target: RenderTarget, coverage: RenderTarget, view: LowResView): void {
+	params[0] = view.scale as float32;
+	params[1] = 1.0;
+	params[2] = view.offsetX;
+	params[3] = view.offsetY;
+	drawComposite(target, coverage);
+}
+
+function drawComposite(target: RenderTarget, coverage: RenderTarget): void {
 	adopt();
 	const state: RenderState = screenState().withBlend(Blend.One, Blend.OneMinusSourceAlpha);
 	const pipeline: uint32 = pipelineFor(cache, program, doorLayout(VertexLayout.Fullscreen), false, state, SWAPCHAIN_LAYOUT);
 	for (let i: int32 = 0; i < GPU3D_BINDING_LENGTH; i += 1) { bindings[i] = 0; }
 	bindings[GPU3D_BINDING_VERTEX_BUFFER] = triangle;
 	bindings[GPU3D_BINDING_VIEW] = target.asTexture();
+	bindings[GPU3D_BINDING_VIEW + 1] = coverage.asTexture();
 	bindings[GPU3D_BINDING_SAMPLER] = sampler.asHandle();
 	applyPipeline(pipeline);
 	applyBindings(bindings);

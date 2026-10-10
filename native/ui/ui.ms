@@ -53,6 +53,7 @@ export struct BoxShape {
 	h: float32;
 	radius: float32;
 	color: Color;
+	style: BoxStyle | null;
 }
 
 // nodes[0, shown) were visible at the last endUi; shapes[k] is what nodes[k] holds.
@@ -139,18 +140,30 @@ function designScale(): float32 {
 	return wf / DESIGN_W < hf / DESIGN_H ? wf / DESIGN_W : hf / DESIGN_H;
 }
 
-function toDesignX(px: float32): float32 {
+export function toDesignX(px: float32): float32 {
 	const r: float32 = designScale();
 	const wf: float32 = (fbWidth() as float32) / dpiScale();
 	const offset: float32 = (wf - DESIGN_W * r) * 0.5;
 	return (px / dpiScale() - offset) / r;
 }
 
-function toDesignY(py: float32): float32 {
+export function toDesignY(py: float32): float32 {
 	const r: float32 = designScale();
 	const hf: float32 = (fbHeight() as float32) / dpiScale();
 	const offset: float32 = (hf - DESIGN_H * r) * 0.5;
 	return (py / dpiScale() - offset) / r;
+}
+
+// The top of the walking Pet in design units, and the scene's pixel, so what the HUD draws over
+// the Pet can sit on the scene's pixel grid.
+export struct PetHead {
+	x: float32;
+	y: float32;
+	texel: float32;
+}
+
+export enum PetHeadHidden {
+	NotDrawn,
 }
 
 // Design units → surface pixels: where a native overlay (a Kotlin EditText over a sheet) has
@@ -280,27 +293,32 @@ function inside(px: float32, py: float32, x: float32, y: float32, w: float32, h:
 export function beginOverlay(ui: Ui): void { ui.overlay = true; }
 export function endOverlay(ui: Ui): void { ui.overlay = false; }
 
-export function box(ui: Ui, x: float32, y: float32, w: float32, h: float32, radius: float32, color: Color): void {
-	placeBox(ui.sc, ui.overlay ? ui.boxesTop : ui.boxes, x, y, w, h, radius, color);
+export function box(ui: Ui, x: float32, y: float32, w: float32, h: float32,
+	radius: float32, color: Color, style: BoxStyle | null = null): void {
+	placeBox(ui.sc, ui.overlay ? ui.boxesTop : ui.boxes, x, y, w, h, radius, color, style);
 }
 
-function placeBox(sc: Scene2D, layer: BoxLayer, x: float32, y: float32, w: float32, h: float32, radius: float32,
-	color: Color): void {
+function placeBox(sc: Scene2D, layer: BoxLayer, x: float32, y: float32, w: float32, h: float32,
+	radius: float32, color: Color, style: BoxStyle | null = null): void {
 	const k: int32 = layer.used;
 	const shape: BoxShape = {
-		x: x, y: y, w: w, h: h, radius: Math.max(0.0, Math.min(radius, Math.min(w, h) * 0.5)) as float32, color: color,
+		x: x, y: y, w: w, h: h,
+		radius: Math.max(0.0, Math.min(radius, Math.min(w, h) * 0.5)) as float32,
+		color: color, style: style,
 	};
 	if (k == (layer.nodes.length as int32)) {
 		const created: NodeRef = sc.rect(w, h, color);
 		layer.group.addChild(created);
 		layer.nodes.push(created);
-		layer.shapes.push({ x: 0.0, y: 0.0, w: w, h: h, radius: 0.0, color: color });
+		layer.shapes.push({ x: 0.0, y: 0.0, w: w, h: h, radius: 0.0, color: color, style: null });
 	}
 	const n: NodeRef = layer.nodes[k];
 	const was: BoxShape = layer.shapes[k];
 	if (was != shape) {
-		if (was.radius != shape.radius) {
-			n.setBoxStyle(BoxStyle.create(uniformRadii(shape.radius), uniformBorders(0.0), color));
+		if (was.radius != shape.radius || was.style != shape.style) {
+			n.setBoxStyle(style == null
+				? BoxStyle.create(uniformRadii(shape.radius), uniformBorders(0.0), color)
+				: style);
 		}
 		n.setPosition(x, y);
 		n.setSize(w, h);

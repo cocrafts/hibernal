@@ -11,8 +11,8 @@ void main() {
 
 @fs fs
 layout(binding=0) uniform texture2D hudTexture;
+layout(binding=1) uniform texture2D coverageTexture;
 layout(binding=0) uniform sampler hudSampler;
-// cell: side in framebuffer pixels, unused, then an offset added before dividing by it.
 // grade: brightness, saturation, tint share. tint.rgb.
 layout(binding=0) uniform hudPostParams {
     vec4 cell;
@@ -21,6 +21,18 @@ layout(binding=0) uniform hudPostParams {
 };
 out vec4 fragColor;
 void main() {
+    if (cell.y > 0.5) {
+        ivec2 size = textureSize(sampler2D(hudTexture, hudSampler), 0);
+        ivec2 at = clamp(ivec2(floor((gl_FragCoord.xy + cell.zw) / cell.x)), ivec2(0), size - 1);
+        vec3 rgb = texelFetch(sampler2D(hudTexture, hudSampler), at, 0).rgb;
+        float alpha = texelFetch(sampler2D(coverageTexture, hudSampler), at, 0).a;
+        fragColor = vec4(rgb * alpha, alpha);
+        return;
+    }
+    if (cell.x <= 0.0) {
+        fragColor = texelFetch(sampler2D(hudTexture, hudSampler), ivec2(gl_FragCoord.xy), 0);
+        return;
+    }
     vec2 size = vec2(textureSize(sampler2D(hudTexture, hudSampler), 0));
     vec2 corner = floor((gl_FragCoord.xy + cell.zw) / cell.x) * cell.x - cell.zw;
     // Linear taps on a 3x3 grid reach every texel of a cell up to 6 pixels wide, so a line one
