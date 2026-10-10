@@ -12,7 +12,7 @@ STALE_SECONDS=${STALE_SECONDS:-300}
 OVERDUE_SLOTS=${OVERDUE_SLOTS:-3000}
 MIN_DISK_PERCENT=${MIN_DISK_PERCENT:-10}
 MIN_WALLET_LAMPORTS=${MIN_WALLET_LAMPORTS:-500000000}
-UNITS=${UNITS:-hibernal-admission hibernal-ops hibernal-cranker}
+UNITS=${UNITS:-hibernal-admission hibernal-ops hibernal-cranker hibernal-behaviour}
 
 problems=()
 
