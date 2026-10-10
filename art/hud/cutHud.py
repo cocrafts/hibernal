@@ -285,6 +285,18 @@ def orange(piece):
     return turned
 
 
+# The sheet's item slot glows past the icon and the rarity rim: channels above its fill colour keep this share.
+SLOT_FILL = (0, 57, 97)
+SLOT_GLOW_KEPT = 0.4
+
+
+def calmSlot(piece):
+    *channels, alpha = piece.split()
+    calmed = [channel.point(lambda value, fill=fill: round(fill + (value - fill) * SLOT_GLOW_KEPT) if value > fill else value)
+        for channel, fill in zip(channels, SLOT_FILL)]
+    return Image.merge("RGBA", (*calmed, alpha))
+
+
 def orangePieces():
     for name in ORANGE:
         orange(Image.open(OUT / (name + ".png")).convert("RGBA")).save(OUT / (name + "Orange.png"))
@@ -297,7 +309,9 @@ def main():
         part = sheet.crop(box)
         if name == "endCap":
             part = endCapFrame(part)
-        if name == "levelPlate":
+        if name == "slot":
+            calmSlot(fitted(part, size)).save(OUT / (name + ".png"))
+        elif name == "levelPlate":
             part.resize(pixels(size), Image.LANCZOS).save(OUT / (name + ".png"))
         else:
             fitted(part, size).save(OUT / (name + ".png"))
