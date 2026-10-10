@@ -1,5 +1,6 @@
 import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf, ProgramAddress } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
+import { metadataProgram } from "../admin";
 import { BlockSlot, GlobalConfig, Insurance, OwnerItem, Pet, Region, born, ownerSlots } from "../../rules/index";
 import { Config, HibernalError, Ledger, PetAccount, ShopItem, World, hibernalError } from "../layout";
 
@@ -379,4 +380,60 @@ test "only the authority withdraws SKR revenue, and only out of the program's va
 	elsewhere[3] = tokenHolder(keyOf(13), address(findProgramAddressOf(programKey(), ["revenue"])), 50_000_000);
 	assert run(programKey(), elsewhere, withdrawData(1), entry).result == code(HibernalError.WrongTreasury);
 	assert amountOf(elsewhere[3]) == 50_000_000;
+}
+
+function pushText(bytes: uint8[], text: uint8[]): void {
+	pushU32(bytes, text.length as uint32);
+	for (const value of text) { bytes.push(value); }
+}
+
+function pushU32(bytes: uint8[], value: uint32): void {
+	for (let shift = 0; shift < 32; shift += 8) { bytes.push(((value >> (shift as uint32)) & 255) as uint8); }
+}
+
+function metadataTexts(): uint8[] {
+	const texts: uint8[] = [];
+	pushText(texts, [72, 105]);
+	pushText(texts, [72, 66]);
+	pushText(texts, [104]);
+	return texts;
+}
+
+function metadataData(texts: uint8[]): uint8[] {
+	const bytes = instructionData("CreateHbrnMetadata");
+	pushU32(bytes, texts.length as uint32);
+	for (const value of texts) { bytes.push(value); }
+	return bytes;
+}
+
+function metadataAccounts(signer: Pubkey, hbrn: Pubkey, program: Pubkey): HostAccount[] {
+	return [
+		{ ...signerOf(signer), writable: true },
+		{ ...configHolder(), writable: true },
+		{ ...mintHolder(), key: hbrn, writable: false },
+		{ ...blank(keyOf(14)), writable: true },
+		executable(program),
+		executable(SYSTEM_PROGRAM_ID),
+	];
+}
+
+const METAPLEX = Pubkey.metadataProgram();
+
+test "only the authority creates the HBRN metadata, signed by the mint, through Metaplex only" {
+	const accounts = metadataAccounts(keyOf(9), keyOf(11), METAPLEX);
+	assert run(programKey(), accounts, metadataData(metadataTexts()), entry).result == 0;
+	const calls = invocations();
+	assert calls.length == 1 && calls[0].program == METAPLEX && calls[0].signers == 1;
+	assert calls[0].accounts[1].key == keyOf(11) && calls[0].accounts[1].signer;
+	assert calls[0].accounts[2].key == keyOf(11) && calls[0].accounts[3].key == keyOf(9) && calls[0].accounts[4].key == keyOf(9);
+	const texts = metadataTexts();
+	assert calls[0].data.length == 1 + texts.length + 7 && calls[0].data[0] == 33;
+	for (let index = 0; index < texts.length; index++) { assert calls[0].data[1 + index] == texts[index]; }
+	assert calls[0].data[calls[0].data.length - 2] == 1;
+	assert run(programKey(), metadataAccounts(stranger, keyOf(11), METAPLEX), metadataData(metadataTexts()), entry).result == code(HibernalError.NotAuthority);
+	assert run(programKey(), metadataAccounts(keyOf(9), skrMint, METAPLEX), metadataData(metadataTexts()), entry).result == code(HibernalError.WrongMint);
+	assert run(programKey(), metadataAccounts(keyOf(9), keyOf(11), keyOf(15)), metadataData(metadataTexts()), entry).result != 0;
+	const trailing = metadataTexts();
+	trailing.push(0);
+	assert run(programKey(), metadataAccounts(keyOf(9), keyOf(11), METAPLEX), metadataData(trailing), entry).result == code(HibernalError.BadMetadata);
 }

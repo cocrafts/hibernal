@@ -40,6 +40,7 @@ export enum Op {
 	Turn,
 	Sweep,
 	WithdrawRevenue,
+	CreateHbrnMetadata,
 }
 
 export enum Phase {
@@ -254,6 +255,7 @@ export enum HibernalError {
 	EngagedThisRound,
 	SessionExpired,
 	PetLost,
+	BadMetadata,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {

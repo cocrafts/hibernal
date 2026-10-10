@@ -29,6 +29,8 @@ import {
 } from "./layout";
 import {
 	CreateBlockAccounts,
+	CreateHbrnMetadataAccounts,
+	CreateHbrnMetadataArgs,
 	DelegateVrfPayerAccounts,
 	InitializeAccounts,
 	WithdrawRevenueAccounts,
@@ -86,6 +88,7 @@ export function hibernalIdl(): string {
 		Turn: [TurnAccounts, StepArgs],
 		Sweep: [SweepAccounts],
 		WithdrawRevenue: [WithdrawRevenueAccounts, WithdrawRevenueArgs],
+		CreateHbrnMetadata: [CreateHbrnMetadataAccounts, CreateHbrnMetadataArgs],
 		accounts: [Config, Policy, World, Block, PetAccount, Paid, Resort, Ledger, VrfPayer],
 		events: [],
 		errors: HibernalError,

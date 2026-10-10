@@ -7,6 +7,7 @@ import {
 	Program,
 	ProgramError,
 	Pubkey,
+	InstructionAccount,
 	Signer,
 	System,
 	Token,
@@ -18,9 +19,14 @@ import {
 	TOKEN_2022_PROGRAM_ID,
 	TOKEN_PROGRAM_ID,
 	findProgramAddress,
+	invoke,
 	leBytes,
 	pdaWithBump,
 	programId,
+	pubkeyOf,
+	putBool,
+	putU16,
+	putU8,
 	signed,
 } from "std/solana";
 import { accounts, args } from "std/solana";
@@ -247,5 +253,72 @@ export function withdrawRevenue(): Result<uint64, ProgramError> {
 	return signed(
 		transferTokens(x.treasury, x.destination, x.skrMint, x.revenue, a.amount),
 		["revenue", [revenue.bump]],
+	);
+}
+
+const CREATE_METADATA_V3: uint8 = 33;
+const METADATA_TEXTS: int32 = 3;
+
+export function metadataProgram(this typeof Pubkey): Pubkey {
+	return @comptime { return pubkeyOf("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"); };
+}
+
+export struct CreateHbrnMetadataAccounts {
+	authority: WritableSigner;
+	config: Mutable<Config>;
+	mint: External<Mint>;
+	metadata: Writable;
+	metadataProgram: Account;
+	systemProgram: Program<System>;
+}
+
+export struct CreateHbrnMetadataArgs {
+	texts: Bytes;
+}
+
+function textsEnd(texts: Bytes): Result<uint64, ProgramError> {
+	let read: uint64 = 0;
+	for (let field = 0; field < METADATA_TEXTS; field++) {
+		const length = try texts.readU32(read);
+		read = read + 4 + (length as uint64);
+	}
+	if (read != texts.length) { return Result.err(hibernalError(HibernalError.BadMetadata)); }
+	return Result.ok(read);
+}
+
+export function createHbrnMetadata(): Result<uint64, ProgramError> {
+	const a = try args<CreateHbrnMetadataArgs>();
+	const x = try accounts<CreateHbrnMetadataAccounts>();
+	const config = try authorized(x.config, x.authority.key());
+	if (x.mint.key() != config.hbrnMint) { return Result.err(hibernalError(HibernalError.WrongMint)); }
+	if (x.metadataProgram.key() != Pubkey.metadataProgram()) { return Result.err(ProgramError.incorrectProgramId()); }
+	const length = try textsEnd(a.texts);
+	let storage: uint8[300] = [];
+	let at = putU8(storage, 0, CREATE_METADATA_V3);
+	for (let index: uint64 = 0; index < length; index++) {
+		at = putU8(storage, at, try a.texts.readU8(index));
+	}
+	at = putU16(storage, at, 0);
+	at = putU8(storage, at, 0);
+	at = putU8(storage, at, 0);
+	at = putU8(storage, at, 0);
+	at = putBool(storage, at, true);
+	at = putU8(storage, at, 0);
+	if (at > (storage.length as uint64)) { return Result.err(hibernalError(HibernalError.BadMetadata)); }
+	return signed(
+		invoke(
+			Pubkey.metadataProgram(),
+			[
+				InstructionAccount.writable(x.metadata.asAccount()),
+				InstructionAccount.readonlySigner(x.mint.asAccount()),
+				InstructionAccount.readonlySigner(x.mint.asAccount()),
+				InstructionAccount.writableSigner(x.authority.asAccount()),
+				InstructionAccount.readonly(x.authority.asAccount()),
+				InstructionAccount.readonly(x.systemProgram.asAccount()),
+			],
+			storage,
+			at,
+		),
+		["mint", [config.mintBump]],
 	);
 }
