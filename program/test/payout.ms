@@ -337,7 +337,7 @@ function payerHolder(): HostAccount {
 	return holderOf(found.ok ? found.value.key : Pubkey.zero(), programKey(), data);
 }
 
-test "the owner commits a pet through the magic program and the game's payer PDA pays for it" {
+test "the owner or the game authority commits a pet through the magic program and the game's payer PDA pays for it" {
 	const payer = payerHolder();
 	const feeVault = keyOf(42);
 	const accounts: HostAccount[] = [
@@ -347,6 +347,7 @@ test "the owner commits a pet through the magic program and the game's payer PDA
 		holderOf(MAGIC_CONTEXT_ID, programKey(), []),
 		holderOf(feeVault, programKey(), []),
 		executable(MAGIC_PROGRAM_ID),
+		configHolder(keyOf(11)),
 	];
 	const commit = instructionData("CommitPet");
 	assert run(programKey(), accounts, commit, entry).result == 0;
@@ -358,11 +359,13 @@ test "the owner commits a pet through the magic program and the game's payer PDA
 	assert last.accounts[1].key == MAGIC_CONTEXT_ID && last.accounts[1].writable;
 	assert last.accounts[2].key == feeVault && last.accounts[2].writable;
 	assert last.accounts[3].key == petAddress().key && last.accounts[3].writable;
-	const strangers = [wallet(stranger), accounts[1], accounts[2], accounts[3], accounts[4], accounts[5]];
+	const byGame = [wallet(keyOf(9)), accounts[1], accounts[2], accounts[3], accounts[4], accounts[5], accounts[6]];
+	assert run(programKey(), byGame, commit, entry).result == 0;
+	const strangers = [wallet(stranger), accounts[1], accounts[2], accounts[3], accounts[4], accounts[5], accounts[6]];
 	assert run(programKey(), strangers, commit, entry).result == ProgramError.constraintHasOne().code;
-	const wrongContext = [accounts[0], accounts[1], accounts[2], holderOf(keyOf(41), programKey(), []), accounts[4], accounts[5]];
+	const wrongContext = [accounts[0], accounts[1], accounts[2], holderOf(keyOf(41), programKey(), []), accounts[4], accounts[5], accounts[6]];
 	assert run(programKey(), wrongContext, commit, entry).result == ProgramError.constraintAddress().code;
 	const forgedPayer: HostAccount = { ...payer, key: keyOf(43) };
-	const impostor: HostAccount[] = [accounts[0], accounts[1], forgedPayer, accounts[3], accounts[4], accounts[5]];
+	const impostor: HostAccount[] = [accounts[0], accounts[1], forgedPayer, accounts[3], accounts[4], accounts[5], accounts[6]];
 	assert run(programKey(), impostor, commit, entry).result != 0;
 }

@@ -45,12 +45,13 @@ const PET_INDEX: int32 = 2;
 const PAID_INDEX: int32 = 3;
 
 export struct CommitPetAccounts {
-	owner: Signer;
+	committer: Signer;
 	pet: Mutable<PetAccount>;
 	payer: Mutable<VrfPayer>;
 	magicContext: Writable;
 	magicFeeVault: Writable;
 	magicProgram: Account;
+	config: Owned<Config>;
 }
 
 const SCHEDULE_COMMIT: uint32 = 1;
@@ -89,7 +90,8 @@ export struct ClaimRewardAccounts {
 export function commitPet(): Result<uint64, ProgramError> {
 	const x = try accounts<CommitPetAccounts>();
 	const record = x.pet.data();
-	const _owner = try expectHasOne(record.owner, x.owner.key());
+	const committer = x.committer.key();
+	if (committer != record.owner && committer != x.config.data().authority) { return Result.err(ProgramError.constraintHasOne()); }
 	const _seeds = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	const _context = try expectAddress(x.magicContext.key(), MAGIC_CONTEXT_ID);
 	const _program = try expectAddress(x.magicProgram.key(), MAGIC_PROGRAM_ID);

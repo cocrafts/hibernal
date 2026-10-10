@@ -443,16 +443,17 @@ export function hibernal(programAddress, authority) {
 		async bank(owner, mint) {
 			return call("Bank", [signer(owner), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world()))]);
 		},
-		async commitPet(owner, mint) {
+		async commitPet(committer, mint) {
 			const validator = process.env.VALIDATOR ?? "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
 			const [feeVault] = await pda(DELEGATION_PROGRAM, "magic-fee-vault", encoder.encode(validator));
 			return call("CommitPet", [
-				signer(owner),
+				signer(committer),
 				writable(await address(seeds.pet(mint))),
 				writable(await address(seeds.vrfPayer())),
 				writable(MAGIC_CONTEXT),
 				writable(feeVault),
 				readonly(MAGIC_PROGRAM),
+				readonly(await address(seeds.config())),
 			]);
 		},
 		async claimReward(owner, mint, destination) {
