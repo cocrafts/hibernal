@@ -1,5 +1,5 @@
 """Cut hotbarSheet.png, statBarsSheet.png, shopSheet.png, toggleSheet.png and buttonSheet.png into
-the pieces native/hud/hotbar.ms, statBars.ms, shopPopup.ms, toggles.ms, actionButton.ms and
+the pieces native/hud/hotbar.ms, statBars.ms, shopStrip.ms, toggles.ms, actionButton.ms and
 banners.ms draw.
 
 Every piece is resized to the design size those files give it, at the Seeker's 1200 / 360 pixels
@@ -9,7 +9,7 @@ per design unit, so it draws 1:1 there. Run from the repo root: python3 art/hud/
 from collections import deque
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageOps
 
 SHEET = Path("art/hud/hotbarSheet.png")
 STAT_SHEET = Path("art/hud/statBarsSheet.png")
@@ -58,6 +58,16 @@ def fitted(piece, size):
     width, height = pixels(size)
     scale = min(width / piece.width, height / piece.height)
     return piece.resize((max(1, round(piece.width * scale)), max(1, round(piece.height * scale))), Image.LANCZOS)
+
+
+def endCapFrame(piece):
+    for x in range(26, 72):
+        top = piece.getpixel((x, 42))
+        bottom = piece.getpixel((x, 104))
+        for y in range(43, 104):
+            share = (y - 42) / 62
+            piece.putpixel((x, y), tuple(round(a + (b - a) * share) for a, b in zip(top, bottom)))
+    return piece
 
 
 def stretched(piece, size, end):
@@ -139,80 +149,11 @@ def statIcons():
         whiteGlyph(name, size).save(OUT / ("stat" + name[0].upper() + name[1:] + ".png"))
 
 
-# The shop over the hotbar, assembled from shopSheet.png's slices into shopMockup.jpg's layout,
-# one part at a time: the hex body (nine-sliced, so its chamfers keep their size) is the panel's
-# thin outline; the title strip keeps its two ends and stretches its plain middle; the top-left
-# corner, close box, top-right bracket and side dots sit where the mockup has them. Positions are
-# canvas pixels, the mockup's own pixels from the panel's top-left (mockup (321, 78)); the panel is
-# taller than the mockup's (590, not 487) so it stands as tall over the hotbar, which is thicker
-# here. The outline (canvas x 11 to 1023) is as wide as the hotbar's XP frame.
+# Item icons from shopSheet.png, scaled as the shop panel that sheet was cut for.
 SHOP_SHEET = Path("art/hud/shopSheet.png")
-# The panel is 50 pixels taller than the mockup's for the buttons, twice the mockup's height.
-SHOP_CANVAS = (1030, 640)
 SHOP_OUTLINE = 1012
 SHOP_SCALE = XP_FRAME_SIZE[0] / SHOP_OUTLINE
-# The body's top border is the line under the title and the close box; between it and the
-# outline's top runs a dark band (the mockup's (1, 39, 86)). Short straight pieces of the body's
-# own edges and of the title's top line bridge the outline where the body's corners turn in.
-SHOP_BAND = ((16, 6, 1002, 62), (1, 39, 86, 255))
-SHOP_BODY = ((118, 155, 1004, 538), (11, 59, 1016, 581), 60)
-SHOP_TITLE = [
-    ((142, 72, 600, 147), (11, 0, 458, 75)),
-    ((600, 72, 670, 147), (469, 0, 185, 75)),
-    ((670, 72, 921, 147), (654, 0, 251, 75)),
-]
-SHOP_OUTLINE_PARTS = [
-    ((122, 300, 134, 360), (15, 62, 12, 50)),
-    ((988, 300, 1000, 360), (1011, 62, 12, 60)),
-    ((700, 76, 860, 86), (884, 2, 112, 10)),
-    ((32, 72, 120, 159), (16, 4, 70, 70)),
-    ((1006, 66, 1092, 148), (923, 8, 64, 62)),
-    ((926, 70, 983, 152), (975, 0, 48, 70)),
-    ((33, 266, 46, 366), (0, 190, 10, 80)),
-    ((33, 266, 46, 366), (1020, 190, 10, 80)),
-]
-# Three projectors on the hotbar's edge under the panel: a cone from the middle, and a beam from
-# each end up to the panel's bottom corners; a glow line along the edge. Each piece's bright tip
-# sits on the canvas' bottom edge. The side beams are drawn at 1.7 times their sheet opacity, as
-# bright as the mockup's.
-SHOP_HOLOGRAM_CANVAS = (1030, 110)
-SHOP_HOLOGRAM_PARTS = [
-    ((182, 1207, 442, 1361), (265, 0, 500, 110)),
-    ((58, 1206, 164, 1321), (4, 0, 62, 110), 1.7),
-    ((456, 1212, 551, 1320), (964, 0, 62, 110), 1.7),
-    ((569, 1218, 839, 1250), (40, 96, 950, 16)),
-]
-# Canvas pixels of the content pieces; shopPopup.ms places them.
-SHOP_CELL_CANVAS = (172, 140)
-SHOP_CELL_CORNER = 36
-# The selection check, lifted off its cell by brightness so it draws over the item.
-SHOP_CHECK_CANVAS = (40, 40)
-# PURCHASE and CANCEL, nine-sliced so their chamfered ends keep their shape at any height.
-SHOP_BUTTONS = {
-    "shopPurchase": ((38, 905, 385, 982), (346, 100)),
-    "shopCancel": ((405, 907, 745, 976), (343, 100)),
-}
-SHOP_BUTTON_CORNER = 30
-SHOP_CHECK_FLOOR = 110
 SHOP_ITEM_CANVAS = (118, 104)
-SHOP_CART = ((207, 90, 252, 129), (35, 28))
-# The price plate under a cell: the sheet's plate turned upside down (the mockup's has its
-# chamfers at the bottom), its fill and rim darkened to the mockup's (0, 25, 55) and (0, 90, 150).
-SHOP_TAG = ((374, 656, 578, 693), (152, 28))
-SHOP_TAG_FILL_GREEN = 110
-SHOP_TAG_FILL_SHADE = 0.45
-SHOP_TAG_RIM_SHADE = 0.65
-SHOP_CELLS = {
-    "shopCell": (37, 741, 199, 875),
-    "shopCellBright": (224, 738, 385, 879),
-    "shopCellPlus": (580, 741, 736, 875),
-    "shopCellDisabled": (757, 741, 911, 875),
-}
-SHOP_CHECK = ((404, 741, 560, 875), (100, 0, 156, 56))
-SHOP_PLATES = {
-    "shopBalance": ((597, 655, 814, 702), (145, 30)),
-    "shopGem": ((798, 916, 848, 975), (22, 26)),
-}
 # Item icons: shop size from shopSheet.png, and hotbar size for those the hotbar sheet lacks.
 SHOP_ITEMS = {
     "Sword": (22, 1014, 128, 1146),
@@ -231,22 +172,6 @@ HOTBAR_ITEM_SIZE = (31.0, 31.0)
 
 def canvasPixels(size):
     return pixels((size[0] * SHOP_SCALE, size[1] * SHOP_SCALE))
-
-
-# Corners kept at `corner` source pixels, edges and middle stretched to `size` source pixels.
-def nineSliced(piece, size, corner):
-    width, height = size
-    source_width, source_height = piece.size
-    out = Image.new("RGBA", size)
-    columns = [(0, corner, 0, corner), (corner, source_width - corner, corner, width - corner),
-        (source_width - corner, source_width, width - corner, width)]
-    rows = [(0, corner, 0, corner), (corner, source_height - corner, corner, height - corner),
-        (source_height - corner, source_height, height - corner, height)]
-    for sx0, sx1, dx0, dx1 in columns:
-        for sy0, sy1, dy0, dy1 in rows:
-            tile = piece.crop((sx0, sy0, sx1, sy1)).resize((dx1 - dx0, dy1 - dy0), Image.LANCZOS)
-            out.paste(tile, (dx0, dy0))
-    return out
 
 
 # The sheet's item icons overlap each other's boxes: keep only the largest opaque blob of a crop
@@ -282,61 +207,7 @@ def isolated(piece, threshold=24):
     return out
 
 
-def placed(sheet, out, parts):
-    for part in parts:
-        box, (x, y, width, height) = part[0], part[1]
-        piece = sheet.crop(box).resize((width, height), Image.LANCZOS)
-        if len(part) > 2:
-            gain = part[2]
-            piece.putalpha(piece.getchannel("A").point(lambda v: min(255, round(v * gain))))
-        out.alpha_composite(piece, (x, y))
-
-
 def shopPieces(sheet):
-    frame = Image.new("RGBA", SHOP_CANVAS)
-    (x, y, width, height), colour = SHOP_BAND
-    frame.alpha_composite(Image.new("RGBA", (width, height), colour), (x, y))
-    box, (x, y, width, height), corner = SHOP_BODY
-    frame.alpha_composite(nineSliced(sheet.crop(box), (width, height), corner), (x, y))
-    placed(sheet, frame, SHOP_TITLE)
-    placed(sheet, frame, SHOP_OUTLINE_PARTS)
-    frame.resize(canvasPixels(SHOP_CANVAS), Image.LANCZOS).save(OUT / "shopFrame.png")
-    hologram = Image.new("RGBA", SHOP_HOLOGRAM_CANVAS)
-    placed(sheet, hologram, SHOP_HOLOGRAM_PARTS)
-    hologram.resize(canvasPixels(SHOP_HOLOGRAM_CANVAS), Image.LANCZOS).save(OUT / "shopHologram.png")
-    for name, box in SHOP_CELLS.items():
-        if name == "shopCellBright":
-            continue
-        cell = nineSliced(sheet.crop(box), SHOP_CELL_CANVAS, SHOP_CELL_CORNER)
-        cell.resize(canvasPixels(SHOP_CELL_CANVAS), Image.LANCZOS).save(OUT / (name + ".png"))
-    selected = nineSliced(sheet.crop(SHOP_CELLS["shopCellBright"]), SHOP_CELL_CANVAS, SHOP_CELL_CORNER)
-    selected.resize(canvasPixels(SHOP_CELL_CANVAS), Image.LANCZOS).save(OUT / "shopCellSelected.png")
-    checkBox, checkArea = SHOP_CHECK
-    raw = sheet.crop(checkBox).crop(checkArea)
-    floor = SHOP_CHECK_FLOOR
-    bright = raw.convert("L").point(lambda v: max(0, min(255, (v - floor) * 255 // (255 - floor))))
-    check = Image.new("RGBA", raw.size, (255, 255, 255, 255))
-    check.putalpha(ImageChops.multiply(bright, raw.getchannel("A")))
-    check.resize(canvasPixels(SHOP_CHECK_CANVAS), Image.LANCZOS).save(OUT / "shopCheck.png")
-    for name, (box, size) in SHOP_PLATES.items():
-        sheet.crop(box).resize(canvasPixels(size), Image.LANCZOS).save(OUT / (name + ".png"))
-    for name, (box, size) in SHOP_BUTTONS.items():
-        button = nineSliced(sheet.crop(box), size, SHOP_BUTTON_CORNER)
-        button.resize(canvasPixels(size), Image.LANCZOS).save(OUT / (name + ".png"))
-    box, size = SHOP_TAG
-    tag = ImageOps.flip(sheet.crop(box))
-    pixels_ = tag.load()
-    for y in range(tag.height):
-        for x in range(tag.width):
-            r, g, b, a = pixels_[x, y]
-            shade = SHOP_TAG_FILL_SHADE if g < SHOP_TAG_FILL_GREEN else SHOP_TAG_RIM_SHADE
-            pixels_[x, y] = (round(r * shade), round(g * shade), round(b * shade), a)
-    tag.resize(canvasPixels(size), Image.LANCZOS).save(OUT / "shopTag.png")
-    box, size = SHOP_CART
-    cart = sheet.crop(box).convert("L").point(lambda v: max(0, min(255, (v - 120) * 255 // 100)))
-    glyph = Image.new("RGBA", cart.size, (255, 255, 255, 255))
-    glyph.putalpha(cart)
-    glyph.resize(canvasPixels(size), Image.LANCZOS).save(OUT / "shopCart.png")
     for name, box in SHOP_ITEMS.items():
         icon = isolated(sheet.crop(box))
         width, height = canvasPixels(SHOP_ITEM_CANVAS)
@@ -364,21 +235,12 @@ def togglePieces(sheet):
         sheet.crop((x - half, y - half, x + half, y + half)).resize(pixels(TOGGLE_SIZE), Image.LANCZOS).save(OUT / (name + ".png"))
 
 
-# SET AS WALLPAPER: the sheet's blue button and its glowing look (held), cropped round the same
-# centre with room for the glow and stretched to the label's width with both ends kept. The yellow
-# row's glow starts right under the blue's, so the crop stops above it and the halo fades out.
+# The banners are cut from the sheet's blue button. The yellow row's glow starts right under it,
+# so the crop stops above that glow and the button's bottom rows fade out.
 BUTTON_SHEET = Path("art/hud/buttonSheet.png")
-WALLPAPER_BUTTONS = {
-    "wallpaperButton": (7, 545, 285, 646),
-    "wallpaperButtonHeld": (283, 545, 561, 646),
-}
-WALLPAPER_BUTTON_END = 70
-WALLPAPER_BUTTON_FADE = 8
-WALLPAPER_BUTTON_SIZE = (137.0, 30.0)
-
-
-# The glyph after SET AS WALLPAPER on Home: the kit's house, as Settings' wallpaper row has.
-WALLPAPER_GLYPH = ("home", 10.0)
+BANNER_BUTTON = (7, 545, 285, 646)
+BANNER_BUTTON_END = 70
+BANNER_BUTTON_FADE = 8
 
 
 # The banners on Home: the same blue button at banner height, cut into its chevron end, a strip of
@@ -391,29 +253,41 @@ def fadedButton(sheet, box):
     button = sheet.crop(box)
     alpha = button.getchannel("A")
     values = alpha.load()
-    for row in range(WALLPAPER_BUTTON_FADE):
+    for row in range(BANNER_BUTTON_FADE):
         y = button.height - 1 - row
         for x in range(button.width):
-            values[x, y] = values[x, y] * row // WALLPAPER_BUTTON_FADE
+            values[x, y] = values[x, y] * row // BANNER_BUTTON_FADE
     button.putalpha(alpha)
     return button
 
 
-def buttonPieces(sheet):
-    for name, box in WALLPAPER_BUTTONS.items():
-        stretched(fadedButton(sheet, box), WALLPAPER_BUTTON_SIZE, WALLPAPER_BUTTON_END).save(OUT / (name + ".png"))
-
-
 def bannerPieces(sheet):
-    button = fadedButton(sheet, WALLPAPER_BUTTONS["wallpaperButton"])
+    button = fadedButton(sheet, BANNER_BUTTON)
     height = round(BANNER_HEIGHT * DENSITY)
     scale = height / button.height
     scaled = button.resize((round(button.width * scale), height), Image.LANCZOS)
-    end = round(WALLPAPER_BUTTON_END * scale)
+    end = round(BANNER_BUTTON_END * scale)
     middle = scaled.width // 2
     scaled.crop((0, 0, end, height)).save(OUT / "bannerStart.png")
     scaled.crop((middle, 0, middle + BANNER_STRIP, height)).save(OUT / "bannerBody.png")
     scaled.crop((scaled.width - end, 0, scaled.width, height)).save(OUT / "bannerEnd.png")
+
+
+# A press that changes the Pet on chain is orange: these pieces are also saved hue-turned as <name>Orange.
+ORANGE = ["plusSlot", "bannerStart", "bannerBody", "bannerEnd"]
+ORANGE_HUE_TURN = -118
+
+
+def orange(piece):
+    hue, saturation, value = piece.convert("HSV").split()
+    turned = Image.merge("HSV", (hue.point(lambda h: (h + ORANGE_HUE_TURN) % 256), saturation, value)).convert("RGBA")
+    turned.putalpha(piece.getchannel("A"))
+    return turned
+
+
+def orangePieces():
+    for name in ORANGE:
+        orange(Image.open(OUT / (name + ".png")).convert("RGBA")).save(OUT / (name + "Orange.png"))
 
 
 def main():
@@ -422,7 +296,13 @@ def main():
     for stale in OUT.glob("*.png"):
         stale.unlink()
     for name, (box, size) in FITTED.items():
-        fitted(sheet.crop(box), size).save(OUT / (name + ".png"))
+        part = sheet.crop(box)
+        if name == "endCap":
+            part = endCapFrame(part)
+        if name == "levelPlate":
+            part.resize(pixels(size), Image.LANCZOS).save(OUT / (name + ".png"))
+        else:
+            fitted(part, size).save(OUT / (name + ".png"))
     for name, (box, size) in EXACT.items():
         sheet.crop(box).resize(pixels(size), Image.LANCZOS).save(OUT / (name + ".png"))
     stretched(sheet.crop(XP_FRAME_BOX), XP_FRAME_SIZE, XP_FRAME_END).save(OUT / "xpFrame.png")
@@ -431,9 +311,8 @@ def main():
     statIcons()
     shopPieces(Image.open(SHOP_SHEET).convert("RGBA"))
     togglePieces(Image.open(TOGGLE_SHEET).convert("RGBA"))
-    buttonPieces(Image.open(BUTTON_SHEET).convert("RGBA"))
-    whiteGlyph(*WALLPAPER_GLYPH).save(OUT / "wallpaperGlyph.png")
     bannerPieces(Image.open(BUTTON_SHEET).convert("RGBA"))
+    orangePieces()
 
 
 if __name__ == "__main__":
