@@ -17,9 +17,9 @@ import kotlin.coroutines.coroutineContext
 import kotlin.random.Random
 
 object GameSync {
-    internal const val PROGRAM = "FqNDZWzei5gvnUnNEVXVroe3MsMZ5tibJXyGsS3omQHP"
+    internal const val PROGRAM = "3USaBvy8KmgWJvKoC8BuTd66Lrow942E35SD7DREBctT"
     private const val DELEGATION = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-    internal const val CONFIG = "AZGqC5edzRUNMBbPHcfHteisMWPYaQ7dhx7BaJ5MUujC"
+    internal const val CONFIG = "HfAcsUuqfbvzaTztCQ1qvpyJ5tcJxbKHdGUzsRbP2iSW"
     private const val DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
     internal const val DISCOVERY_TTL_MS = 600_000L
     internal const val REFRESH_INTERVAL_MS = 30_000L
