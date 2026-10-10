@@ -41,6 +41,8 @@ const COUNT = Number(process.env.COUNT ?? 1000);
 const PARALLEL = Number(process.env.PARALLEL ?? 64);
 const IN_FLIGHT = Number(process.env.IN_FLIGHT ?? 1500);
 const FUND_LAMPORTS = BigInt(process.env.FUND_LAMPORTS ?? 30_000_000);
+const KEEP_LAMPORTS = BigInt(process.env.KEEP_LAMPORTS ?? 5_000_000);
+const REFUND_DUST = 100_000n;
 const MASTER_PATH = process.env.MASTER ?? "out/localnet/playersMaster.hex";
 const MAX_WIRE_BYTES = 1232;
 const TOKEN_GROUP_EXTENSION = 21;
@@ -271,8 +273,7 @@ async function admit() {
 	});
 }
 
-async function fund() {
-	const players = await playersIn(FIRST, COUNT);
+async function balancesOf(players) {
 	const balances = new Map();
 	const keysOf = players.map((player) => player.owner.address);
 	for (let index = 0; index < keysOf.length; index += 100) {
@@ -280,6 +281,12 @@ async function fund() {
 		const { value } = await patiently(() => baseRead.getMultipleAccounts(chunk, { encoding: "base64", dataSlice: { offset: 0, length: 0 } }).send());
 		value.forEach((account, position) => balances.set(chunk[position], account ? BigInt(account.lamports) : 0n));
 	}
+	return balances;
+}
+
+async function fund() {
+	const players = await playersIn(FIRST, COUNT);
+	const balances = await balancesOf(players);
 	const todo = players.filter((player) => balances.get(player.owner.address) < FUND_LAMPORTS / 2n);
 	console.log(`fund: ${players.length - todo.length} of ${players.length} already funded, ${todo.length} to go, ${FUND_LAMPORTS} lamports each`);
 	if (todo.length === 0) return;
@@ -289,6 +296,23 @@ async function fund() {
 	}), async (left) => {
 		const funded = await existing(left.map((player) => player.owner.address));
 		return left.filter((player) => !funded.has(player.owner.address));
+	});
+}
+
+async function refund() {
+	const players = await playersIn(FIRST, COUNT);
+	const balances = await balancesOf(players);
+	const above = (player) => balances.get(player.owner.address) > KEEP_LAMPORTS + REFUND_DUST;
+	const todo = players.filter(above);
+	const back = todo.reduce((sum, player) => sum + balances.get(player.owner.address) - KEEP_LAMPORTS, 0n);
+	console.log(`refund: ${todo.length} of ${players.length} players hold over ${KEEP_LAMPORTS} lamports, ${back} lamports back to ${wallet.address}`);
+	if (todo.length === 0) return;
+	await runBatches("refund", todo, Number(process.env.PER_TRANSACTION ?? 8), async (batch) => ({
+		feePayer: wallet,
+		instructions: batch.map((player) => transfer(player.owner, wallet.address, balances.get(player.owner.address) - KEEP_LAMPORTS)),
+	}), async (left) => {
+		const now = await balancesOf(left);
+		return left.filter((player) => now.get(player.owner.address) > KEEP_LAMPORTS + REFUND_DUST);
 	});
 }
 
@@ -335,6 +359,6 @@ async function exported() {
 	console.log(`wrote ${players.length} players to ${path}`);
 }
 
-const stages = { keys, admit, fund, claim, export: exported };
-if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}; use STAGE=keys|admit|fund|claim|export`);
+const stages = { keys, admit, fund, refund, claim, export: exported };
+if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}; use STAGE=keys|admit|fund|refund|claim|export`);
 await stages[STAGE]();
