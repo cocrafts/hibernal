@@ -293,8 +293,6 @@ def orangePieces():
 def main():
     sheet = Image.open(SHEET).convert("RGBA")
     OUT.mkdir(parents=True, exist_ok=True)
-    for stale in OUT.glob("*.png"):
-        stale.unlink()
     for name, (box, size) in FITTED.items():
         part = sheet.crop(box)
         if name == "endCap":
