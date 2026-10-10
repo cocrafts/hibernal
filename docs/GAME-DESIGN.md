@@ -163,7 +163,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
   - days 0–30: level 1→20;
   - days 30–50: prime (keystone builds, fights, block rank);
   - days 50–90: decline **(Decided)**, a sharp drop that brakes at 70% on day 60, then close to linear down to 50% on day 90; the brain may retire the pet early to pass the line on;
-  - day 90: natural death; the heir hatches at the same dusk with the estate and starts in the lowest-level block (2026-10-10). A starved or killed pet has no heir: the line ends.
+  - day 90: natural death; the heir hatches at the same dusk with the estate and starts in the lowest-level block (2026-10-10). A starved or killed pet loses its wallet and gear; its next generation hatches at the same dusk with nothing (2026-10-11).
 - Decline curve, percent of prime applied to every stat gained from the tree:
 
 | Day | ≤ 50 | 52 | 55 | 58 | 60 | 75 | 90 |
