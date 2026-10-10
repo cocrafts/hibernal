@@ -112,12 +112,24 @@ async function bodyOf(request) {
 	return JSON.parse(raw);
 }
 
+const TOKEN_FILES = new Map([
+	["/tokens/hbrn.json", { type: "application/json" }],
+	["/tokens/hbrn.png", { type: "image/png" }],
+	["/tokens/skr.json", { type: "application/json" }],
+	["/tokens/skr.png", { type: "image/png" }],
+]);
+
 const server = createServer(async (request, response) => {
 	const reply = (code, body) => {
 		response.writeHead(code, { "content-type": "application/json" });
 		response.end(JSON.stringify(body));
 	};
 	if (request.method === "GET" && request.url === "/health") return reply(200, { ok: true, program: programAddress, group, skrMint });
+	const token = request.method === "GET" && TOKEN_FILES.get(request.url);
+	if (token) {
+		response.writeHead(200, { "content-type": token.type, "cache-control": "public, max-age=3600" });
+		return response.end(readFileSync(new URL(`.${request.url}`, import.meta.url)));
+	}
 	if (request.method !== "POST" || request.url !== "/admit") return reply(404, { error: "NotFound" });
 	let owner;
 	try {
