@@ -2,17 +2,17 @@ import { VRF_PROGRAM_ID } from "std/solana/vrf";
 import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import { ACTS_PER_EPOCH, BLOCK_SLOTS, BlockSlot, Pet, checkPolicy, movedTo, withDeath } from "../../rules/index";
 import { HostAccount, HostRun, invocations, run, setClock } from "std/solana/host";
-import { Pubkey, SYSTEM_PROGRAM_ID } from "std/solana";
+import { Pubkey, SYSTEM_PROGRAM_ID, findProgramAddressOf } from "std/solana";
 
 import { actorAt, beginEpoch, endEpoch, inRound } from "../../sim/world";
 import { GRUDGE_EPOCHS as SIM_GRUDGE_EPOCHS } from "../../sim/world";
 import { engineVersion } from "../../sim/digests";
 import { digestOf } from "../../tools/actBench";
-import { Block, HibernalError, NO_BLOCK, Phase, PetAccount, World as WorldAccount, hibernalError } from "../layout";
+import { Block, HibernalError, Ledger, NO_BLOCK, Phase, PetAccount, World as WorldAccount, hibernalError } from "../layout";
 import { GRUDGE_EPOCHS, SEED_RETRY_SECONDS, seededDiscriminator } from "../day";
 import { hydraProgram, magicVault } from "../hydra";
 import { entry } from "../main";
-import { FIRST_DUE_SLOT, PET_OFFSET, TEST_DAY, TEST_DAYS, WORLD_SEED, at, blockOf, bytesAt, crankKey, currentSeq, dueClock, executable, globalOf, instructionBytes, keyOf, owned, petsOf, plain, policyAct, policyBytes, programKey, TURN_PET, returned, roundStartAccounts, roundStartReturned, seededAccounts, seededData, stepData, turnAccounts, withDiscriminator, withNextCrank, worldBeforeDay } from "./dayWorld";
+import { FIRST_DUE_SLOT, PET_OFFSET, TEST_DAY, TEST_DAYS, WORLD_SEED, at, blockOf, bytesAt, crankKey, currentSeq, dueClock, executable, globalOf, instructionBytes, keyOf, owned, petOfData, petsOf, plain, policyAct, policyBytes, programKey, TURN_PET, returned, roundStartAccounts, roundStartReturned, seededAccounts, seededData, stepData, turnAccounts, withDiscriminator, withNextCrank, worldBeforeDay } from "./dayWorld";
 
 const CANCEL: uint8 = 2;
 
@@ -90,6 +90,58 @@ function seatedPets(step: HostAccount[]): Pet[] {
 		if (pets[seat].blockId == NO_BLOCK) { pets[seat] = { ...pets[seat], blockId: blockOf(step).id, slot: seat as uint8 }; }
 	}
 	return pets;
+}
+
+const PET_MINT: int32 = 8 + 32;
+const PET_BUMP: int32 = 8 + 69;
+const PET_DIED: int32 = 8 + 80;
+
+function keyIn(data: uint8[], offset: int32): Pubkey {
+	let key = Pubkey.zero();
+	for (let index = 0; index < 32; index++) { key.bytes[index] = data[offset + index]; }
+	return key;
+}
+
+function diedEpochOf(data: uint8[]): uint64 {
+	let value: uint64 = 0;
+	for (let index = 7; index >= 0; index--) { value = (value << 8) | (data[PET_DIED + index] as uint64); }
+	return value;
+}
+
+function withByte(account: HostAccount, key: Pubkey, offset: int32, value: uint8): HostAccount {
+	const data: uint8[] = [];
+	for (const byte of account.data) { data.push(byte); }
+	data[offset] = value;
+	return { ...account, key: key, data: data };
+}
+
+function paidLedger(key: Pubkey, bump: uint8, mint: Pubkey, rebirths: uint32): HostAccount {
+	const ledgers: Ledger[] = [{ mint: mint, bought: [], skin: 0, bump: bump, pad: 0, rebirths: rebirths }];
+	return { ...owned(key, withDiscriminator(Ledger.discriminator(), bytesAt(ledgers[0] as Ptr<void>, sizeof Ledger as int32))), writable: false };
+}
+
+function rebornAfterDusk(step: HostAccount[]): boolean {
+	for (let seat = 0; seat < BLOCK_SLOTS; seat++) {
+		const holder = step[TURN_PET + seat];
+		const pet = petOfData(holder.data);
+		if (pet.alive || diedEpochOf(holder.data) == 0) { continue; }
+		const mint = keyIn(holder.data, PET_MINT);
+		const petAddress = findProgramAddressOf(programKey(), ["pet", mint]);
+		const ledgerAddress = findProgramAddressOf(programKey(), ["ledger", mint]);
+		const worldAddress = findProgramAddressOf(programKey(), ["world"]);
+		if (!petAddress.ok || !ledgerAddress.ok || !worldAddress.ok) { return false; }
+		const world = worldOfData(step[2].data);
+		const worldHolder: HostAccount = { ...step[2], key: worldAddress.value.key, data: withWorld(step[2].data, { ...world, bump: worldAddress.value.bump }) };
+		const accounts: HostAccount[] = [
+			withByte(holder, petAddress.value.key, PET_BUMP, petAddress.value.bump),
+			paidLedger(ledgerAddress.value.key, ledgerAddress.value.bump, mint, (pet.lineageGeneration as uint32) + 1),
+			worldHolder,
+		];
+		if (!passed(run(programKey(), accounts, instructionBytes("Rebirth"), entry))) { return false; }
+		step[TURN_PET + seat] = withByte(accounts[0], holder.key, PET_BUMP, 255);
+		step[2] = { ...step[2], data: withWorld(accounts[2].data, { ...worldOfData(accounts[2].data), bump: world.bump }) };
+	}
+	return true;
 }
 
 function heirsPlaced(step: HostAccount[]): boolean {
@@ -197,6 +249,7 @@ test "ten days of a block on the program match the sim acting with the same poli
 		assert passed(turned(step, day));
 		world = world.endEpoch();
 		world = world.beginEpoch(day + 1);
+		assert rebornAfterDusk(step);
 		assert digestOf(seatedPets(step), globalOf(step)) == digestOf(world.pets, world.global);
 		assert heirsPlaced(step);
 		assert digestOf(seatedPets(step), globalOf(step)) == digestOf(world.pets, world.global);
@@ -210,7 +263,7 @@ test "ten days of a block on the program match the sim acting with the same poli
 	assert fights > 0 && (blockOf(step).fightHead as int32) == fights % 32;
 }
 
-test "a pet starved by dusk leaves half its wallet to one living mate, half to the treasury, frees its seat and hatches the next generation with nothing" {
+test "a pet starved by dusk leaves half its wallet to one living mate, half to the treasury, frees its seat, and its paid rebirth hatches the next generation with nothing" {
 	const policy = policyBytes();
 	let world = worldBeforeDay(TEST_DAY);
 	const victim = world.pets[3];
@@ -237,6 +290,10 @@ test "a pet starved by dusk leaves half its wallet to one living mate, half to t
 	}
 	assert passed(turned(step, TEST_DAY));
 	world = world.endEpoch().beginEpoch(TEST_DAY + 1);
+	const buried = petsOf(step)[3];
+	assert !buried.alive && buried.blockId == NO_BLOCK && diedEpochOf(step[TURN_PET + 3].data) == TEST_DAY;
+	assert buried.harvest == 0 && buried.burrow == 0;
+	assert rebornAfterDusk(step);
 	assert digestOf(seatedPets(step), globalOf(step)) == digestOf(world.pets, world.global);
 	const next = petsOf(step)[3];
 	assert next.alive && next.lineageGeneration == victim.lineageGeneration + 1;

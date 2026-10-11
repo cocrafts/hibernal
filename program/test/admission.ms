@@ -5,7 +5,7 @@ import { HostAccount, HostInvocation, invocations, run, setClock } from "std/sol
 import { EPOCH_SECONDS, POLICY_FORMAT, POLICY_MAGIC } from "../../rules/index";
 import { HibernalError, MAX_PETS, NO_BLOCK, NO_SEAT, Op, POLICY_BYTES, SEATS, hibernalError } from "../layout";
 import { associatedTokenAddress } from "std/solana/token";
-import { createBlock, initialize, writePolicy } from "../admin";
+import { createBlock, initialize, withdrawFund, writePolicy } from "../admin";
 import { appearanceOf, claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "../admission";
 
 function dispatched(): Result<uint64, ProgramError> {
@@ -19,6 +19,7 @@ function dispatched(): Result<uint64, ProgramError> {
 		Op.DelegateWorld => delegateWorld(),
 		Op.ProcessUndelegation => processUndelegation(),
 		Op.Place => place(),
+		Op.WithdrawFund => withdrawFund(),
 		_ => Result.err(ProgramError.instructionFallbackNotFound()),
 	};
 }
@@ -30,7 +31,9 @@ function entry(): void {
 
 const ENGINE: uint64 = 0x8000000000000007;
 const GENESIS: uint64 = 1_700_000_000;
-const CONFIG_BYTES: int32 = 8 + 296;
+const CONFIG_BYTES: int32 = 8 + 304;
+const CONFIG_HATCH_FEE: int32 = 8 + 296;
+const HATCH_FEE: uint64 = 20_000_000;
 
 function keyOf(seed: uint8, salt: uint8): Pubkey {
 	let key = Pubkey.zero();
@@ -77,6 +80,10 @@ function u32At(data: uint8[], offset: int32): uint32 {
 
 function setU32At(data: uint8[], offset: int32, value: uint32): void {
 	for (let i = 0; i < 4; i++) { data[offset + i] = ((value >> ((i * 8) as uint32)) & 255) as uint8; }
+}
+
+function setU64At(data: uint8[], offset: int32, value: uint64): void {
+	for (let i = 0; i < 8; i++) { data[offset + i] = ((value >> ((i * 8) as uint64)) & 255) as uint8; }
 }
 
 function u64At(data: uint8[], offset: int32): uint64 {
@@ -127,6 +134,11 @@ function readonly(holder: HostAccount): HostAccount {
 
 function configKey(): Pubkey {
 	const found = findProgramAddressOf(programKey(), ["config"]);
+	return found.ok ? found.value.key : Pubkey.zero();
+}
+
+function fundKey(): Pubkey {
+	const found = findProgramAddressOf(programKey(), ["revenue"]);
 	return found.ok ? found.value.key : Pubkey.zero();
 }
 
@@ -192,10 +204,10 @@ const otherGroup = keyOf(5, 0);
 const validator = keyOf(6, 0);
 
 function initializeData(engine: uint64): uint8[] {
-	return initializeDataWith(engine, treasuryKey());
+	return initializeDataWith(engine, treasuryKey(), HATCH_FEE);
 }
 
-function initializeDataWith(engine: uint64, treasury: Pubkey): uint8[] {
+function initializeDataWith(engine: uint64, treasury: Pubkey, hatchFee: uint64): uint8[] {
 	const bytes = instructionBytes("Initialize");
 	pushKey(bytes, group);
 	pushU64(bytes, engine);
@@ -210,6 +222,7 @@ function initializeDataWith(engine: uint64, treasury: Pubkey): uint8[] {
 	pushU64(bytes, 0);
 	pushU64(bytes, 10);
 	pushU64(bytes, 100);
+	pushU64(bytes, hatchFee);
 	return bytes;
 }
 
@@ -283,6 +296,7 @@ function claimAccounts(made: HostAccount[], claimer: Pubkey, mint: HostAccount, 
 		blank(paidKey(mint.key)),
 		executable(SYSTEM_PROGRAM_ID),
 		blank(ledgerKey(mint.key)),
+		blank(fundKey()),
 	];
 }
 
@@ -346,6 +360,7 @@ function now(epoch: uint64): void {
 const PET_RECORD: int32 = 8;
 const PET_ORDINAL: int32 = PET_RECORD + 64;
 const PET_NAME: int32 = PET_RECORD + 70;
+const PET_DIED: int32 = PET_RECORD + 80;
 const NAME_ID: uint8 = 42;
 const PET_DATA: int32 = PET_RECORD + 120;
 const PET_BLOCK: int32 = PET_DATA + 88;
@@ -374,6 +389,7 @@ test "initialize creates config, policy, world and the HBRN mint it signs for" {
 	assert u64At(made[1].data, 8 + 104) == GENESIS;
 	assert keyAt(made[1].data, 8 + 136) == validator;
 	assert keyAt(made[1].data, 8 + 168) == keyOf(7, 0) && keyAt(made[1].data, 8 + 200) == treasuryKey();
+	assert u64At(made[1].data, CONFIG_HATCH_FEE) == HATCH_FEE;
 	assert made[2].owner == programKey() && made[3].owner == programKey();
 	assert u64At(made[3].data, 8) == GENESIS;
 	assert made[4].owner == TOKEN_PROGRAM_ID && made[4].data.length == 82;
@@ -397,9 +413,45 @@ test "initialize refuses an SKR treasury the program does not hold" {
 		executable(TOKEN_PROGRAM_ID),
 		executable(SYSTEM_PROGRAM_ID),
 	];
-	const outcome = run(programKey(), made, initializeDataWith(ENGINE, keyOf(8, 0)), entry);
+	const outcome = run(programKey(), made, initializeDataWith(ENGINE, keyOf(8, 0), HATCH_FEE), entry);
 	assert outcome.result == hibernalError(HibernalError.WrongTreasury).code;
 	assert made[1].owner != programKey();
+}
+
+test "a hatch fee the fund could not hold rent-exempt is refused at initialize" {
+	now(0);
+	const made = [
+		wallet(authority),
+		blank(configKey()),
+		blank(policyKey()),
+		blank(worldKey()),
+		blank(mintKey()),
+		executable(TOKEN_PROGRAM_ID),
+		executable(SYSTEM_PROGRAM_ID),
+	];
+	const outcome = run(programKey(), made, initializeDataWith(ENGINE, treasuryKey(), 1), entry);
+	assert outcome.result == hibernalError(HibernalError.HatchFeeTooSmall).code;
+	assert made[1].owner != programKey();
+}
+
+test "claim pays the hatch fee into the fund, and only the authority withdraws it" {
+	now(3);
+	const made = initialized();
+	const accounts = claimed(made, 0);
+	assert accounts[8].key == fundKey() && accounts[8].lamports == HATCH_FEE;
+	assert accounts[0].lamports < 10_000_000_000 - HATCH_FEE;
+	const misdirected = claimAccounts(made, owner, admissionMint(admissionMintKey(1), group), heldAccount(keyOf(151, 7), admissionMintKey(1), owner, 1));
+	misdirected[8] = blank(keyOf(9, 9));
+	assert claimRan(made, misdirected) == ProgramError.constraintSeeds().code;
+	const data = instructionBytes("WithdrawFund");
+	pushU64(data, HATCH_FEE);
+	const stolen = [wallet(stranger), made[1], accounts[8], blank(keyOf(8, 8)), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), stolen, data, entry).result == hibernalError(HibernalError.NotAuthority).code;
+	const elsewhere = [wallet(authority), made[1], blank(keyOf(9, 9)), blank(keyOf(8, 8)), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), elsewhere, data, entry).result == ProgramError.constraintSeeds().code;
+	const withdrawn = [wallet(authority), made[1], accounts[8], blank(keyOf(8, 8)), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), withdrawn, data, entry).result == 0;
+	assert withdrawn[2].lamports == 0 && withdrawn[3].lamports == HATCH_FEE;
 }
 
 test "writePolicy fills the policy in order, seals it once and refuses everything after" {
@@ -625,6 +677,17 @@ test "place seats pets in order, births them into the world and stops at ten" {
 	spare[0].data[BLOCK_PHASE] = 0;
 	assert placeRan(made, authority, spare, late) == 0;
 	assert u32At(late[4].data, PET_BLOCK) == 1 && u32At(made[3].data, WORLD_PLACED) == (SEATS + 1) as uint32;
+}
+
+test "place refuses a dead pet until its owner pays its rebirth" {
+	now(2);
+	const made = initialized();
+	const home = blockCreated(made, authority, 0, blockKey(0));
+	const dead = claimed(made, 0);
+	setU64At(dead[4].data, PET_DIED, 5);
+	assert placeRan(made, authority, home, dead) == hibernalError(HibernalError.AwaitingRebirth).code;
+	setU64At(dead[4].data, PET_DIED, 0);
+	assert placeRan(made, authority, home, dead) == 0;
 }
 
 test "place moves a living heir in with its estate" {

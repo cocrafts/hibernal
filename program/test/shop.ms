@@ -2,7 +2,7 @@ import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecke
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
 import { metadataProgram } from "../admin";
 import { BlockSlot, GlobalConfig, Insurance, OwnerItem, Pet, Region, born, ownerSlots } from "../../rules/index";
-import { Config, HibernalError, Ledger, PetAccount, ShopItem, World, hibernalError } from "../layout";
+import { Config, HibernalError, Ledger, NO_BLOCK, NO_SEAT, PetAccount, ShopItem, World, hibernalError } from "../layout";
 
 import { entry } from "../main";
 
@@ -172,6 +172,7 @@ function configHolder(): HostAccount {
 		staggerSeconds: 0,
 		slotMillis: 10,
 		turnGapSlots: 100,
+		hatchFeeLamports: HATCH_FEE,
 	});
 	const data = staged(Config.discriminator(), sizeof(Config) as uint64, stageConfigEntry);
 	return { ...account(address(findProgramAddressOf(programKey(), ["config"])), programKey(), data, 1_000_000), writable: false };
@@ -276,6 +277,28 @@ function ledgerHolder(bought: uint32[], skin: uint8, ledgerMint: Pubkey): HostAc
 	const key = address(findProgramAddressOf(programKey(), ["ledger", ledgerMint]));
 	const data = staged(Ledger.discriminator(), sizeof(Ledger) as uint64, stageLedgerEntry);
 	return { ...account(key, programKey(), data, 1_000_000), writable: false };
+}
+
+const HATCH_FEE: uint64 = 20_000_000;
+
+function fundKey(): Pubkey { return address(findProgramAddressOf(programKey(), ["revenue"])); }
+
+function deadHolder(pet: Pet, diedEpoch: uint64): HostAccount {
+	stagedPets.push({ ...petRecord({ ...pet, alive: false, hearts: 0, blockId: NO_BLOCK }), diedEpoch: diedEpoch });
+	return account(petKey(), programKey(), staged(PetAccount.discriminator(), sizeof(PetAccount) as uint64, stagePetEntry), 1_000_000);
+}
+
+function rebirthsHolder(rebirths: uint32): HostAccount {
+	stagedLedgers.push({
+		mint: mint,
+		bought: [0, 0, 0, 0, 0, 0, 0],
+		skin: 0,
+		bump: bumpOf(findProgramAddressOf(programKey(), ["ledger", mint])),
+		pad: 0,
+		rebirths: rebirths,
+	});
+	const data = staged(Ledger.discriminator(), sizeof(Ledger) as uint64, stageLedgerEntry);
+	return { ...account(ledgerKey(), programKey(), data, 1_000_000), writable: false };
 }
 
 function code(error: HibernalError): uint64 {
@@ -436,4 +459,28 @@ test "only the authority creates the HBRN metadata, signed by the mint, through 
 	const trailing = metadataTexts();
 	trailing.push(0);
 	assert run(programKey(), metadataAccounts(keyOf(9), keyOf(11), METAPLEX), metadataData(trailing), entry).result == code(HibernalError.BadMetadata);
+}
+
+test "paying a rebirth moves the hatch fee into the fund and counts it in the pet's ledger" {
+	const accounts: HostAccount[] = [signerOf(owner), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), accounts, instructionData("PayRebirth"), entry).result == 0;
+	assert accounts[4].lamports == HATCH_FEE && ledgerOf(accounts[3].data).rebirths == 1;
+	const stolen: HostAccount[] = [signerOf(stranger), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), stolen, instructionData("PayRebirth"), entry).result == ProgramError.constraintHasOne().code;
+	const misdirected: HostAccount[] = [signerOf(owner), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(keyOf(13)), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), misdirected, instructionData("PayRebirth"), entry).result == ProgramError.constraintSeeds().code;
+}
+
+test "a paid rebirth hatches the dead pet's next generation off any block, once per payment" {
+	noon(5 * 86_400 + 100);
+	const accounts: HostAccount[] = [deadHolder(newborn(), 3), rebirthsHolder(1), { ...worldHolder(), writable: true }];
+	assert run(programKey(), accounts, instructionData("Rebirth"), entry).result == 0;
+	const reborn = petRecordOf(accounts[0].data);
+	assert reborn.pet.alive && reborn.diedEpoch == 0 && reborn.pet.lineageGeneration == 1;
+	assert reborn.pet.blockId == NO_BLOCK && reborn.pet.slot == NO_SEAT;
+	assert run(programKey(), accounts, instructionData("Rebirth"), entry).result == code(HibernalError.NotAwaitingRebirth);
+	const unpaid: HostAccount[] = [deadHolder(newborn(), 3), rebirthsHolder(0), { ...worldHolder(), writable: true }];
+	assert run(programKey(), unpaid, instructionData("Rebirth"), entry).result == code(HibernalError.RebirthUnpaid);
+	const living: HostAccount[] = [petHolder(newborn(), programKey()), rebirthsHolder(1), { ...worldHolder(), writable: true }];
+	assert run(programKey(), living, instructionData("Rebirth"), entry).result == code(HibernalError.NotAwaitingRebirth);
 }
