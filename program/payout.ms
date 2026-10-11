@@ -1,9 +1,7 @@
 import {
 	Account,
-	Delegated,
 	DELEGATION_PROGRAM_ID,
 	ExternalMutable,
-	InstructionAccount,
 	Mutable,
 	Owned,
 	Program,
@@ -19,16 +17,14 @@ import {
 	delegated,
 	expectAddress,
 	expectHasOne,
-	invoke,
 	mutable,
 	owned,
 	pdaWithBump,
 	programAddress,
-	putU32,
 	signed,
 } from "std/solana";
 import { accounts } from "std/solana";
-import { MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID } from "std/solana/magicblock";
+import { MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID, commit } from "std/solana/magicblock";
 import { Mint, TokenAccount, expectTokenMint, expectTokenOwner, mintTokens } from "std/solana/token";
 import {
 	Config,
@@ -54,28 +50,6 @@ export struct CommitPetAccounts {
 	config: Owned<Config>;
 }
 
-const SCHEDULE_COMMIT: uint32 = 1;
-
-function paidCommit(payer: Mutable<VrfPayer>, committed: Account, context: Account, feeVault: Account): Result<uint64, ProgramError> {
-	let storage: uint8[4] = [];
-	const length = putU32(storage, 0, SCHEDULE_COMMIT);
-	const committedAccount = committed.isWritable() ? InstructionAccount.writable(committed) : InstructionAccount.readonly(committed);
-	return signed(
-		invoke(
-			MAGIC_PROGRAM_ID,
-			[
-				InstructionAccount.writableSigner(payer.asAccount()),
-				InstructionAccount.writable(context),
-				InstructionAccount.writable(feeVault),
-				committedAccount,
-			],
-			storage,
-			length,
-		),
-		["vrf-payer", [payer.data().bump]],
-	);
-}
-
 export struct ClaimRewardAccounts {
 	owner: WritableSigner;
 	config: Owned<Config>;
@@ -96,7 +70,11 @@ export function commitPet(): Result<uint64, ProgramError> {
 	const _context = try expectAddress(x.magicContext.key(), MAGIC_CONTEXT_ID);
 	const _program = try expectAddress(x.magicProgram.key(), MAGIC_PROGRAM_ID);
 	const _payer = try pdaWithBump(x.payer, ["vrf-payer"], x.payer.data().bump);
-	return paidCommit(x.payer, x.pet.asAccount(), x.magicContext.asAccount(), x.magicFeeVault.asAccount());
+	const committed: Account[1] = [x.pet.asAccount()];
+	return signed(
+		commit(x.payer.asAccount(), committed, x.magicContext.asAccount(), x.magicFeeVault.asAccount()),
+		["vrf-payer", [x.payer.data().bump]],
+	);
 }
 
 struct Claimant {

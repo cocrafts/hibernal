@@ -19,7 +19,6 @@ import {
 	programAddress,
 	programId,
 	transferLamports,
-	unchecked,
 } from "std/solana";
 import { accounts, args } from "std/solana";
 import {
@@ -38,7 +37,7 @@ import {
 	groupMemberPointer,
 	tokenGroupMember,
 } from "std/solana/token";
-import { BlockSlot, GlobalConfig, Pet, Region, born, genesis, movedTo } from "../rules/index";
+import { BlockSlot, GlobalConfig, Pet, Region, born, genesis, movedTo, withStarterKit } from "../rules/index";
 import {
 	Block,
 	ClaimArgs,
@@ -228,11 +227,8 @@ export function delegatePet(): Result<uint64, ProgramError> {
 		systemProgram: x.systemProgram.asAccount(),
 	};
 	const _programs = try delegationPrograms(request, x.delegationProgram);
-	// std/solana delegateAt zeroes the data before signing: seeds must not point into it
-	// (~/metascript/.inbox/compiler/2026-10-09-std-solana-delegate-at-zeroes-the-seeds-it-signs-with.md).
-	const mint = record.mint;
-	const _address = try delegatedAt(request, programAddress(["pet", mint, [record.bump]]));
-	return delegate(request, ["pet", mint], record.bump, try validatorOf(config));
+	const _address = try delegatedAt(request, programAddress(["pet", record.mint, [record.bump]]));
+	return delegate(request, ["pet", record.mint], record.bump, try validatorOf(config));
 }
 
 export function delegateBlock(): Result<uint64, ProgramError> {
@@ -307,7 +303,7 @@ export function place(): Result<uint64, ProgramError> {
 	if (record.pet.alive) {
 		record.pet = record.pet.movedTo(block.id, seat as BlockSlot);
 	} else {
-		const hatched = Pet.born(block.id, seat as BlockSlot, record.pet.startRegion(), epoch, world.global);
+		const hatched = Pet.born(block.id, seat as BlockSlot, record.pet.startRegion(), epoch, world.global).withStarterKit();
 		record.pet = hatched.pet;
 		world.global = hatched.global;
 	}

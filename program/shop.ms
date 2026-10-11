@@ -26,7 +26,7 @@ import {
 } from "std/solana";
 import { accounts, args } from "std/solana";
 import { Mint, TokenAccount, transferTokens } from "std/solana/token";
-import { Food, HeirError, OwnerItem, Pet, foodItem, growthItem, heirOf, withOwnerItem, withSkin } from "../rules/index";
+import { Food, HeirError, OwnerItem, foodItem, growthItem, heirOf, withOwnerItem, withSkin } from "../rules/index";
 import {
 	BuyArgs,
 	Config,
@@ -34,7 +34,6 @@ import {
 	Ledger,
 	NO_BLOCK,
 	NO_SEAT,
-	OWNER_ITEM_KINDS,
 	PetAccount,
 	ShopItem,
 	World,
@@ -223,6 +222,8 @@ export function payRebirth(): Result<uint64, ProgramError> {
 	const _owner = try expectHasOne(record.owner, x.owner.key());
 	const ledger = x.ledger.data();
 	const _ledgerAddress = try pdaWithBump(x.ledger, ["ledger", record.mint], ledger.bump);
+	if (record.pet.alive || record.diedEpoch == 0) { return Result.err(hibernalError(HibernalError.NotAwaitingRebirth)); }
+	if (ledger.rebirths > (record.pet.lineageGeneration as uint32)) { return Result.err(hibernalError(HibernalError.RebirthPaid)); }
 	const fund = try findProgramAddress(["revenue"]);
 	if (x.fund.key() != fund.key) { return Result.err(ProgramError.constraintSeeds()); }
 	if (config.hatchFeeLamports > 0) { const _fee = try transferLamports(x.owner, x.fund, config.hatchFeeLamports); }

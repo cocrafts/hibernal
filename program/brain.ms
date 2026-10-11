@@ -1,16 +1,11 @@
 import {
 	BLOCK_SLOTS,
-	TREE_NODES,
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
 	STAKE_LEVELS,
 	FEATURE_ONE,
-	SELF_FEATURES,
-	NODE_FEATURES,
-	TARGET_FEATURES,
 	NODE_SELF_INPUTS,
 	ATTACK_SELF_INPUTS,
-	ECONOMY_INPUTS,
 	ECONOMY_HIDDEN,
 	ECONOMY_OUTPUTS,
 	NODE_INPUTS,
@@ -68,15 +63,6 @@ export struct ActContext {
 	market: MarketView;
 	economySeed: uint64;
 	trader: uint32;
-}
-
-export function buffersMatchRules(): boolean {
-	return SELF_FEATURES == 46 && NODE_FEATURES == 22 && TARGET_FEATURES == 13 &&
-		NODE_SELF_INPUTS == 8 && ATTACK_SELF_INPUTS == 12 &&
-		ECONOMY_INPUTS == 46 && ECONOMY_HIDDEN == 32 && ECONOMY_OUTPUTS == 12 &&
-		NODE_INPUTS == 30 && NODE_HIDDEN == 32 &&
-		ATTACK_INPUTS == 25 && ATTACK_HIDDEN == 32 && ATTACK_NARROW == 16 && ATTACK_OUTPUTS == 4 &&
-		BLOCK_SLOTS == 10 && ATTACK_HOLD == 40 && ALLOCATE_HOLD == 64 && TREE_NODES <= ALLOCATE_HOLD;
 }
 
 export function surroundingsIn(

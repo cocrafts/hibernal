@@ -1,5 +1,5 @@
 import { MAGIC_PROGRAM_ID, MAGIC_CONTEXT_ID } from "std/solana/magicblock";
-import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf } from "std/solana";
+import { ProgramError, Pubkey, decode, encode, instructionDiscriminator, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
 
 import { BlockSlot, EMISSION_CAP, GlobalConfig, Pet, Region, born } from "../../rules/index";
@@ -21,37 +21,6 @@ const admission = keyOf(3);
 const DAY: int64 = 86_400;
 const CAP: uint64 = 10_000_000;
 
-const stagedPets: PetAccount[] = [];
-const stagedConfigs: Config[] = [];
-const seenLedgers: Paid[] = [];
-
-function overlay(): uint64 {
-	const holder = unchecked(0);
-	return holder.ok ? holder.value.data().address + 8 : 0;
-}
-
-function stagePetEntry(): void {
-	const at = overlay() as Ptr<PetAccount>;
-	at[] = stagedPets[stagedPets.length - 1];
-}
-
-function stageConfigEntry(): void {
-	const at = overlay() as Ptr<Config>;
-	at[] = stagedConfigs[stagedConfigs.length - 1];
-}
-
-function seeLedgerEntry(): void {
-	const at = overlay() as Ptr<Paid>;
-	seenLedgers.push(at[]);
-}
-
-function blankData(tag: Discriminator, size: uint64): uint8[] {
-	const bytes: uint8[] = [];
-	for (let i = 0; i < 8; i++) { bytes.push(tag.bytes[i]); }
-	for (let offset: uint64 = 0; offset < size; offset++) { bytes.push(0); }
-	return bytes;
-}
-
 function holderOf(key: Pubkey, owner: Pubkey, data: uint8[]): HostAccount {
 	return {
 		key: key,
@@ -62,10 +31,6 @@ function holderOf(key: Pubkey, owner: Pubkey, data: uint8[]): HostAccount {
 		writable: true,
 		executable: false,
 	};
-}
-
-function scratch(data: uint8[]): HostAccount[] {
-	return [holderOf(keyOf(250), programKey(), data)];
 }
 
 struct Address {
@@ -108,10 +73,9 @@ function petHolder(gifted: uint64, holderOwner: Pubkey): HostAccount {
 		diedEpoch: 0,
 		pet: pet,
 	};
-	stagedPets.push(record);
-	const holder = scratch(blankData(PetAccount.discriminator(), sizeof(PetAccount) as uint64));
-	run(programKey(), holder, [], stagePetEntry);
-	return holderOf(petAddress().key, holderOwner, holder[0].data);
+	const encoded = encode(record);
+	if (!encoded.ok) { unreachable; }
+	return holderOf(petAddress().key, holderOwner, encoded.value);
 }
 
 function configHolder(mint: Pubkey): HostAccount {
@@ -138,10 +102,9 @@ function configHolder(mint: Pubkey): HostAccount {
 		slotMillis: 10,
 		turnGapSlots: 100,
 	};
-	stagedConfigs.push(config);
-	const staged = scratch(blankData(Config.discriminator(), sizeof(Config) as uint64));
-	run(programKey(), staged, [], stageConfigEntry);
-	return { ...holderOf(configAddress(), programKey(), staged[0].data), writable: false };
+	const encoded = encode(config);
+	if (!encoded.ok) { unreachable; }
+	return { ...holderOf(configAddress(), programKey(), encoded.value), writable: false };
 }
 
 function pushKey(bytes: uint8[], key: Pubkey): void {
@@ -216,8 +179,9 @@ function u64At(data: uint8[], offset: int32): uint64 {
 }
 
 function ledgerOf(holder: HostAccount): Paid {
-	run(programKey(), scratch(holder.data), [], seeLedgerEntry);
-	return seenLedgers[seenLedgers.length - 1];
+	const decoded = decode<Paid>(holder.data);
+	if (!decoded.ok) { unreachable; }
+	return decoded.value;
 }
 
 function code(error: HibernalError): uint64 {
@@ -332,9 +296,10 @@ test "a claim is refused for a stranger, a foreign mint, another owner's wallet 
 
 function payerHolder(): HostAccount {
 	const found = findProgramAddressOf(programKey(), ["vrf-payer"]);
-	const data = blankData(VrfPayer.discriminator(), sizeof(VrfPayer) as uint64);
-	data[8] = found.ok ? found.value.bump : 0;
-	return holderOf(found.ok ? found.value.key : Pubkey.zero(), programKey(), data);
+	if (!found.ok) { unreachable; }
+	const encoded = encode<VrfPayer>({ bump: found.value.bump, pad: [] });
+	if (!encoded.ok) { unreachable; }
+	return holderOf(found.value.key, programKey(), encoded.value);
 }
 
 test "the owner or the game authority commits a pet through the magic program and the game's payer PDA pays for it" {

@@ -263,6 +263,7 @@ export enum HibernalError {
 	AwaitingRebirth,
 	NotAwaitingRebirth,
 	RebirthUnpaid,
+	RebirthPaid,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {

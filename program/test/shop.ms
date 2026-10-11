@@ -1,4 +1,4 @@
-import { Discriminator, ProgramError, Pubkey, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf, ProgramAddress } from "std/solana";
+import { ProgramError, Pubkey, decode, encode, instructionDiscriminator, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID, DELEGATION_PROGRAM_ID, findProgramAddressOf, ProgramAddress } from "std/solana";
 import { HostAccount, invocations, run, setClock } from "std/solana/host";
 import { metadataProgram } from "../admin";
 import { BlockSlot, GlobalConfig, Insurance, OwnerItem, Pet, Region, born, ownerSlots } from "../../rules/index";
@@ -23,81 +23,16 @@ const treasury = keyOf(5);
 const source = keyOf(6);
 const validator = keyOf(7);
 
-const stagedPets: PetAccount[] = [];
-const seenPets: PetAccount[] = [];
-const stagedConfigs: Config[] = [];
-const stagedWorlds: World[] = [];
-const stagedLedgers: Ledger[] = [];
-const seenLedgers: Ledger[] = [];
-
-function overlay(): uint64 {
-	const holder = unchecked(0);
-	return holder.ok ? holder.value.data().address + 8 : 0;
+function bytesOf<T>(value: T): uint8[] {
+	const encoded = encode(value);
+	if (!encoded.ok) { unreachable; }
+	return encoded.value;
 }
 
-function stagePetEntry(): void {
-	const at = overlay() as Ptr<PetAccount>;
-	at[] = stagedPets[stagedPets.length - 1];
-}
-
-function seePetEntry(): void {
-	const at = overlay() as Ptr<PetAccount>;
-	seenPets.push(at[]);
-}
-
-function stageConfigEntry(): void {
-	const at = overlay() as Ptr<Config>;
-	at[] = stagedConfigs[stagedConfigs.length - 1];
-}
-
-function stageWorldEntry(): void {
-	const at = overlay() as Ptr<World>;
-	at[] = stagedWorlds[stagedWorlds.length - 1];
-}
-
-function stageLedgerEntry(): void {
-	const at = overlay() as Ptr<Ledger>;
-	at[] = stagedLedgers[stagedLedgers.length - 1];
-}
-
-function seeLedgerEntry(): void {
-	const at = overlay() as Ptr<Ledger>;
-	seenLedgers.push(at[]);
-}
-
-function blankData(tag: Discriminator, size: uint64): uint8[] {
-	const bytes: uint8[] = [];
-	for (let i = 0; i < 8; i++) { bytes.push(tag.bytes[i]); }
-	for (let offset: uint64 = 0; offset < size; offset++) { bytes.push(0); }
-	return bytes;
-}
-
-function scratch(data: uint8[]): HostAccount[] {
-	return [{
-		key: keyOf(250),
-		owner: programKey(),
-		lamports: 1,
-		data: data,
-		signer: false,
-		writable: true,
-		executable: false,
-	}];
-}
-
-function staged(tag: Discriminator, size: uint64, stage: () => void): uint8[] {
-	const holder = scratch(blankData(tag, size));
-	run(programKey(), holder, [], stage);
-	return holder[0].data;
-}
-
-function petRecordOf(data: uint8[]): PetAccount {
-	run(programKey(), scratch(data), [], seePetEntry);
-	return seenPets[seenPets.length - 1];
-}
-
-function ledgerOf(data: uint8[]): Ledger {
-	run(programKey(), scratch(data), [], seeLedgerEntry);
-	return seenLedgers[seenLedgers.length - 1];
+function valueOf<T>(data: uint8[]): T {
+	const decoded = decode<T>(data);
+	if (!decoded.ok) { unreachable; }
+	return decoded.value;
 }
 
 function address(found: Result<ProgramAddress, ProgramError>): Pubkey {
@@ -145,12 +80,12 @@ function petRecord(pet: Pet): PetAccount {
 }
 
 function petHolder(pet: Pet, programOwner: Pubkey): HostAccount {
-	stagedPets.push(petRecord(pet));
-	return account(petKey(), programOwner, staged(PetAccount.discriminator(), sizeof(PetAccount) as uint64, stagePetEntry), 1_000_000);
+	const data = bytesOf<PetAccount>(petRecord(pet));
+	return account(petKey(), programOwner, data, 1_000_000);
 }
 
 function configHolder(): HostAccount {
-	stagedConfigs.push({
+	const data = bytesOf<Config>({
 		authority: keyOf(9),
 		admissionGroup: keyOf(10),
 		hbrnMint: keyOf(11),
@@ -174,12 +109,11 @@ function configHolder(): HostAccount {
 		turnGapSlots: 100,
 		hatchFeeLamports: HATCH_FEE,
 	});
-	const data = staged(Config.discriminator(), sizeof(Config) as uint64, stageConfigEntry);
 	return { ...account(address(findProgramAddressOf(programKey(), ["config"])), programKey(), data, 1_000_000), writable: false };
 }
 
 function worldHolder(): HostAccount {
-	stagedWorlds.push({
+	const data = bytesOf<World>({
 		global: GlobalConfig.genesis(0),
 		epoch: 0,
 		resortEvery: 0,
@@ -193,7 +127,6 @@ function worldHolder(): HostAccount {
 		pad2: 0,
 		secondsPerDay: 86_400,
 	});
-	const data = staged(World.discriminator(), sizeof(World) as uint64, stageWorldEntry);
 	return { ...account(address(findProgramAddressOf(programKey(), ["world"])), programKey(), data, 1_000_000), writable: false };
 }
 
@@ -267,7 +200,7 @@ function buyAccounts(buyer: Pubkey, skr: uint64): HostAccount[] {
 }
 
 function ledgerHolder(bought: uint32[], skin: uint8, ledgerMint: Pubkey): HostAccount {
-	stagedLedgers.push({
+	const data = bytesOf<Ledger>({
 		mint: ledgerMint,
 		bought: [bought[0], bought[1], bought[2], bought[3], bought[4], bought[5], bought[6]],
 		skin: skin,
@@ -275,7 +208,6 @@ function ledgerHolder(bought: uint32[], skin: uint8, ledgerMint: Pubkey): HostAc
 		pad: 0,
 	});
 	const key = address(findProgramAddressOf(programKey(), ["ledger", ledgerMint]));
-	const data = staged(Ledger.discriminator(), sizeof(Ledger) as uint64, stageLedgerEntry);
 	return { ...account(key, programKey(), data, 1_000_000), writable: false };
 }
 
@@ -284,12 +216,12 @@ const HATCH_FEE: uint64 = 20_000_000;
 function fundKey(): Pubkey { return address(findProgramAddressOf(programKey(), ["revenue"])); }
 
 function deadHolder(pet: Pet, diedEpoch: uint64): HostAccount {
-	stagedPets.push({ ...petRecord({ ...pet, alive: false, hearts: 0, blockId: NO_BLOCK }), diedEpoch: diedEpoch });
-	return account(petKey(), programKey(), staged(PetAccount.discriminator(), sizeof(PetAccount) as uint64, stagePetEntry), 1_000_000);
+	const data = bytesOf<PetAccount>({ ...petRecord({ ...pet, alive: false, hearts: 0, blockId: NO_BLOCK }), diedEpoch: diedEpoch });
+	return account(petKey(), programKey(), data, 1_000_000);
 }
 
 function rebirthsHolder(rebirths: uint32): HostAccount {
-	stagedLedgers.push({
+	const data = bytesOf<Ledger>({
 		mint: mint,
 		bought: [0, 0, 0, 0, 0, 0, 0],
 		skin: 0,
@@ -297,7 +229,6 @@ function rebirthsHolder(rebirths: uint32): HostAccount {
 		pad: 0,
 		rebirths: rebirths,
 	});
-	const data = staged(Ledger.discriminator(), sizeof(Ledger) as uint64, stageLedgerEntry);
 	return { ...account(ledgerKey(), programKey(), data, 1_000_000), writable: false };
 }
 
@@ -315,13 +246,13 @@ test "buying food moves the price in SKR to the treasury and counts it in the pe
 	assert amountOf(accounts[5]) == 17_000_000;
 	assert amountOf(accounts[6]) == 3_000_000;
 	assert accounts[3].owner == programKey();
-	assert ledgerOf(accounts[3].data).bought[2] == 1;
+	assert valueOf<Ledger>(accounts[3].data).bought[2] == 1;
 	assert run(programKey(), accounts, buyData(ShopItem.Growth, 1), entry).result == 0;
 	assert run(programKey(), accounts, buyData(ShopItem.Food, 2), entry).result == 0;
-	const ledger = ledgerOf(accounts[3].data);
+	const ledger = valueOf<Ledger>(accounts[3].data);
 	assert ledger.bought[2] == 2 && ledger.bought[4] == 1 && ledger.mint == mint;
 	assert run(programKey(), accounts, buyData(ShopItem.Skin, 1), entry).result == 0;
-	assert ledgerOf(accounts[3].data).skin == 2;
+	assert valueOf<Ledger>(accounts[3].data).skin == 2;
 }
 
 test "only the pet's owner can buy for it, and only with enough SKR" {
@@ -342,16 +273,16 @@ test "loading moves paid items into the owner's two slots and leaves the rest wa
 	const accounts = [petHolder(newborn(), programKey()), ledgerHolder([0, 0, 3, 0, 1, 0, 0], 0, mint)];
 	const load = instructionData("Load");
 	assert run(programKey(), accounts, load, entry).result == 0;
-	const record = petRecordOf(accounts[0].data);
+	const record = valueOf<PetAccount>(accounts[0].data);
 	assert record.pet.ownerSlots().first == OwnerItem.LargeFood;
 	assert record.pet.ownerSlots().second == OwnerItem.LargeFood;
 	assert record.loaded[2] == 2 && record.loaded[4] == 0;
 	assert run(programKey(), accounts, load, entry).result == 0;
-	assert petRecordOf(accounts[0].data).loaded[2] == 2;
-	stagedPets.push({ ...record, pet: record.pet.withSlots({ first: OwnerItem.None, second: OwnerItem.None }) });
-	const eaten = [account(petKey(), programKey(), staged(PetAccount.discriminator(), sizeof(PetAccount) as uint64, stagePetEntry), 1_000_000), accounts[1]];
+	assert valueOf<PetAccount>(accounts[0].data).loaded[2] == 2;
+	const data = bytesOf<PetAccount>({ ...record, pet: record.pet.withSlots({ first: OwnerItem.None, second: OwnerItem.None }) });
+	const eaten = [account(petKey(), programKey(), data, 1_000_000), accounts[1]];
 	assert run(programKey(), eaten, load, entry).result == 0;
-	const refilled = petRecordOf(eaten[0].data);
+	const refilled = valueOf<PetAccount>(eaten[0].data);
 	assert refilled.loaded[2] == 3 && refilled.loaded[4] == 1;
 	assert refilled.pet.ownerSlots().first == OwnerItem.LargeFood;
 	assert refilled.pet.ownerSlots().second == OwnerItem.MediumGrowth;
@@ -360,7 +291,7 @@ test "loading moves paid items into the owner's two slots and leaves the rest wa
 test "insurance from the ledger arms at once even when both slots are full, and the skin dresses the pet" {
 	const accounts = [petHolder(newborn(), programKey()), ledgerHolder([2, 0, 0, 0, 0, 0, 1], 1, mint)];
 	assert run(programKey(), accounts, instructionData("Load"), entry).result == 0;
-	const record = petRecordOf(accounts[0].data);
+	const record = valueOf<PetAccount>(accounts[0].data);
 	assert record.pet.insurance == (Insurance.Armed as uint8);
 	assert record.loaded[6] == 1 && record.loaded[0] == 2;
 	assert record.pet.ownerSlots().first == OwnerItem.SmallFood;
@@ -371,7 +302,7 @@ test "a ledger only loads into its own pet" {
 	const other = keyOf(77);
 	const accounts = [petHolder(newborn(), programKey()), ledgerHolder([1, 0, 0, 0, 0, 0, 0], 0, other)];
 	assert run(programKey(), accounts, instructionData("Load"), entry).result == ProgramError.constraintSeeds().code;
-	assert petRecordOf(accounts[0].data).loaded[0] == 0;
+	assert valueOf<PetAccount>(accounts[0].data).loaded[0] == 0;
 }
 
 function withdrawData(amount: uint64): uint8[] {
@@ -461,21 +392,34 @@ test "only the authority creates the HBRN metadata, signed by the mint, through 
 	assert run(programKey(), metadataAccounts(keyOf(9), keyOf(11), METAPLEX), metadataData(trailing), entry).result == code(HibernalError.BadMetadata);
 }
 
+function committedDead(): HostAccount {
+	return { ...deadHolder(newborn(), 3), owner: DELEGATION_PROGRAM_ID };
+}
+
 test "paying a rebirth moves the hatch fee into the fund and counts it in the pet's ledger" {
-	const accounts: HostAccount[] = [signerOf(owner), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
+	const accounts: HostAccount[] = [signerOf(owner), configHolder(), committedDead(), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
 	assert run(programKey(), accounts, instructionData("PayRebirth"), entry).result == 0;
-	assert accounts[4].lamports == HATCH_FEE && ledgerOf(accounts[3].data).rebirths == 1;
-	const stolen: HostAccount[] = [signerOf(stranger), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
+	assert accounts[4].lamports == HATCH_FEE && valueOf<Ledger>(accounts[3].data).rebirths == 1;
+	const stolen: HostAccount[] = [signerOf(stranger), configHolder(), committedDead(), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
 	assert run(programKey(), stolen, instructionData("PayRebirth"), entry).result == ProgramError.constraintHasOne().code;
-	const misdirected: HostAccount[] = [signerOf(owner), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(keyOf(13)), executable(SYSTEM_PROGRAM_ID)];
+	const misdirected: HostAccount[] = [signerOf(owner), configHolder(), committedDead(), { ...rebirthsHolder(0), writable: true }, blank(keyOf(13)), executable(SYSTEM_PROGRAM_ID)];
 	assert run(programKey(), misdirected, instructionData("PayRebirth"), entry).result == ProgramError.constraintSeeds().code;
+}
+
+test "a rebirth is paid only for a death committed to L1, and only once per death" {
+	const living: HostAccount[] = [signerOf(owner), configHolder(), petHolder(newborn(), DELEGATION_PROGRAM_ID), { ...rebirthsHolder(0), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), living, instructionData("PayRebirth"), entry).result == code(HibernalError.NotAwaitingRebirth);
+	assert living[4].lamports == 0;
+	const twice: HostAccount[] = [signerOf(owner), configHolder(), committedDead(), { ...rebirthsHolder(1), writable: true }, blank(fundKey()), executable(SYSTEM_PROGRAM_ID)];
+	assert run(programKey(), twice, instructionData("PayRebirth"), entry).result == code(HibernalError.RebirthPaid);
+	assert twice[4].lamports == 0 && valueOf<Ledger>(twice[3].data).rebirths == 1;
 }
 
 test "a paid rebirth hatches the dead pet's next generation off any block, once per payment" {
 	noon(5 * 86_400 + 100);
 	const accounts: HostAccount[] = [deadHolder(newborn(), 3), rebirthsHolder(1), { ...worldHolder(), writable: true }];
 	assert run(programKey(), accounts, instructionData("Rebirth"), entry).result == 0;
-	const reborn = petRecordOf(accounts[0].data);
+	const reborn = valueOf<PetAccount>(accounts[0].data);
 	assert reborn.pet.alive && reborn.diedEpoch == 0 && reborn.pet.lineageGeneration == 1;
 	assert reborn.pet.blockId == NO_BLOCK && reborn.pet.slot == NO_SEAT;
 	assert run(programKey(), accounts, instructionData("Rebirth"), entry).result == code(HibernalError.NotAwaitingRebirth);

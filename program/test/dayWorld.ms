@@ -1,7 +1,7 @@
 import { VRF_PROGRAM_ID, VRF_EPHEMERAL_QUEUE_ID } from "std/solana/vrf";
 import { MAGIC_PROGRAM_ID } from "std/solana/magicblock";
 import { readLines } from "std/fs";
-import { Clock, Discriminator, Pubkey, instructionDiscriminator, SYSTEM_PROGRAM_ID, SLOTHASHES_ID, findProgramAddressOf } from "std/solana";
+import { Clock, Pubkey, decode, encode, instructionDiscriminator, SYSTEM_PROGRAM_ID, SLOTHASHES_ID, findProgramAddressOf } from "std/solana";
 import { HostAccount } from "std/solana/host";
 
 import { ACTS_PER_EPOCH, BLOCK_SLOTS, EPOCH_SECONDS, EconomyAction, GlobalConfig, Pet } from "../../rules/index";
@@ -13,7 +13,7 @@ import { Scratch, bestLegal, create, logitsInto } from "../../sim/env/actor";
 import { engineVersion } from "../../sim/digests";
 import { ALLOCATE_HOLD, ATTACK_HOLD } from "../../rules/index";
 import { Block, Config, Phase, PetAccount, Policy, VrfPayer, World as WorldAccount } from "../layout";
-import { hydraProgram, magicVault } from "../hydra";
+import { HYDRA_PROGRAM_ID, MAGIC_VAULT_ID, crankAddress } from "std/solana/hydra";
 
 export const WORLD_SEED: uint64 = 9001;
 export const PET_OFFSET: int32 = 120;
@@ -33,18 +33,16 @@ export function keyOf(seed: uint8): Pubkey {
 
 export function programKey(): Pubkey { return keyOf(200); }
 
-export function bytesAt(address: Ptr<void>, count: int32): uint8[] {
-	const source = address as Ptr<uint8>;
-	const bytes: uint8[] = [];
-	for (let position = 0; position < count; position++) { bytes.push(source[position]); }
-	return bytes;
+export function bytesOf<T>(value: T): uint8[] {
+	const encoded = encode(value);
+	if (!encoded.ok) { unreachable; }
+	return encoded.value;
 }
 
-export function withDiscriminator(discriminator: Discriminator, body: uint8[]): uint8[] {
-	const bytes: uint8[] = [];
-	for (let position = 0; position < 8; position++) { bytes.push(discriminator.bytes[position]); }
-	for (const value of body) { bytes.push(value); }
-	return bytes;
+export function valueOf<T>(data: uint8[]): T {
+	const decoded = decode<T>(data);
+	if (!decoded.ok) { unreachable; }
+	return decoded.value;
 }
 
 export function owned(key: Pubkey, data: uint8[]): HostAccount {
@@ -126,7 +124,7 @@ function policyBump(): uint8 {
 }
 
 export function configData(): uint8[] {
-	const configs: Config[] = [{
+	return bytesOf<Config>({
 		authority: keyOf(1),
 		admissionGroup: keyOf(2),
 		hbrnMint: keyOf(3),
@@ -148,20 +146,17 @@ export function configData(): uint8[] {
 		staggerSeconds: 0,
 		slotMillis: 10,
 		turnGapSlots: 100,
-	}];
-	return withDiscriminator(Config.discriminator(), bytesAt(configs[0] as Ptr<void>, sizeof Config as int32));
+	});
 }
 
 export function policyData(policy: uint8[]): uint8[] {
-	const held: Policy[] = [{ engine: engineVersion(), written: policy.length as uint32, sealed: 1, bump: 255, pad: 0, bytes: [] }];
-	let bytes = held[0].bytes;
-	for (let position = 0; position < policy.length; position++) { bytes[position] = policy[position]; }
-	held[0] = { ...held[0], bytes: bytes };
-	return withDiscriminator(Policy.discriminator(), bytesAt(held[0] as Ptr<void>, sizeof Policy as int32));
+	let held: Policy = { engine: engineVersion(), written: policy.length as uint32, sealed: 1, bump: 255, pad: 0, bytes: [] };
+	for (let position = 0; position < policy.length; position++) { held.bytes[position] = policy[position]; }
+	return bytesOf<Policy>(held);
 }
 
 export function worldData(world: World, epoch: uint64): uint8[] {
-	const held: WorldAccount[] = [{
+	return bytesOf<WorldAccount>({
 		global: world.global,
 		epoch: epoch,
 		resortEvery: 0,
@@ -174,8 +169,7 @@ export function worldData(world: World, epoch: uint64): uint8[] {
 		placed: 10,
 		pad2: 0,
 		secondsPerDay: EPOCH_SECONDS,
-	}];
-	return withDiscriminator(WorldAccount.discriminator(), bytesAt(held[0] as Ptr<void>, sizeof WorldAccount as int32));
+	});
 }
 
 export function blockData(world: World, day: uint64): uint8[] {
@@ -198,12 +192,11 @@ export function blockData(world: World, day: uint64): uint8[] {
 		listed[position] = 1;
 	}
 	block = { ...block, members: members, grudges: grudges, listings: listings, listed: listed };
-	const blocks: Block[] = [block];
-	return withDiscriminator(Block.discriminator(), bytesAt(blocks[0] as Ptr<void>, sizeof Block as int32));
+	return bytesOf<Block>(block);
 }
 
 export function petData(world: World, seat: int32): uint8[] {
-	const records: PetAccount[] = [{
+	return bytesOf<PetAccount>({
 		owner: keyOf(100),
 		mint: keyOf((40 + seat) as uint8),
 		ordinal: seat as uint32,
@@ -213,8 +206,7 @@ export function petData(world: World, seat: int32): uint8[] {
 		claimedEpoch: 1,
 		diedEpoch: world.deathEpochs[seat],
 		pet: world.pets[seat],
-	}];
-	return withDiscriminator(PetAccount.discriminator(), bytesAt(records[0] as Ptr<void>, sizeof PetAccount as int32));
+	});
 }
 
 export function vrfIdentity(): Pubkey {
@@ -229,9 +221,8 @@ export function programIdentity(): Pubkey {
 
 export function vrfPayerAccount(): HostAccount {
 	const found = findProgramAddressOf(programKey(), ["vrf-payer"]);
-	const payers: VrfPayer[] = [{ bump: found.ok ? found.value.bump : 0, pad: [] }];
-	const key = found.ok ? found.value.key : Pubkey.zero();
-	return owned(key, withDiscriminator(VrfPayer.discriminator(), bytesAt(payers[0] as Ptr<void>, sizeof VrfPayer as int32)));
+	if (!found.ok) { unreachable; }
+	return owned(found.value.key, bytesOf<VrfPayer>({ bump: found.value.bump, pad: [] }));
 }
 
 export function crankKey(blockId: uint32, seq: uint64): Pubkey {
@@ -244,8 +235,11 @@ export function crankKey(blockId: uint32, seq: uint64): Pubkey {
 		seed.bytes[8 + index] = ((seq >> shift) & 0xff) as uint8;
 	}
 	for (let index = 0; index < 16; index++) { seed.bytes[16 + index] = program.bytes[index]; }
-	const found = findProgramAddressOf(Pubkey.hydraProgram(), ["crank", seed]);
-	return found.ok ? found.value.key : Pubkey.zero();
+	const sponsor = findProgramAddressOf(programKey(), ["vrf-payer"]);
+	if (!sponsor.ok) { unreachable; }
+	const found = crankAddress(sponsor.value.key, seed);
+	if (!found.ok) { unreachable; }
+	return found.value;
 }
 
 export function turnAccounts(world: World, day: uint64, policy: uint8[]): HostAccount[] {
@@ -261,9 +255,9 @@ export function turnAccounts(world: World, day: uint64, policy: uint8[]): HostAc
 		executable(SYSTEM_PROGRAM_ID),
 		executable(VRF_PROGRAM_ID),
 		plain(crankKey(0, 1), true, false),
-		plain(Pubkey.magicVault(), true, false),
+		plain(MAGIC_VAULT_ID, true, false),
 		executable(MAGIC_PROGRAM_ID),
-		executable(Pubkey.hydraProgram()),
+		executable(HYDRA_PROGRAM_ID),
 	];
 	for (let seat = 0; seat < BLOCK_SLOTS; seat++) {
 		held.push(owned(keyOf((10 + seat) as uint8), petData(world, seat)));
@@ -351,35 +345,15 @@ export function petsOf(step: HostAccount[]): Pet[] {
 }
 
 export function petOfData(data: uint8[]): Pet {
-	const scratch = quietWorld();
-	const holder: Pet[] = [scratch.pets[0]];
-	const target = holder[0] as Ptr<void> as Ptr<uint8>;
-	for (let position = 0; position < (sizeof Pet as int32); position++) {
-		target[position] = data[8 + PET_OFFSET + position];
-	}
-	return holder[0];
+	return valueOf<PetAccount>(data).pet;
 }
 
 export function globalOf(step: HostAccount[]): GlobalConfig {
-	const scratch = quietWorld();
-	const holder: GlobalConfig[] = [scratch.global];
-	const target = holder[0] as Ptr<void> as Ptr<uint8>;
-	for (let position = 0; position < (sizeof GlobalConfig as int32); position++) {
-		target[position] = step[2].data[8 + position];
-	}
-	return holder[0];
+	return valueOf<WorldAccount>(step[2].data).global;
 }
 
 export function blockOf(step: HostAccount[]): Block {
-	const scratch: Block[] = [{
-		id: 0, filled: 0, phase: 0, round: 0, cursor: 0, epoch: 0, roundSeed: 0,
-		requests: 0, pendingRequest: 0, requestedAt: 0, rotation: 0, minStrength: 0, maxStrength: 0,
-		crankSeq: 0, dueSlot: 0, dawnedEpoch: 0, fightHead: 0, bump: 0,
-		turns: [], started: 0, pad: [], members: [], grudges: [], fights: [], listings: [], listed: [], relationships: [], pad2: 0,
-	}];
-	const target = scratch[0] as Ptr<void> as Ptr<uint8>;
-	for (let position = 0; position < (sizeof Block as int32); position++) { target[position] = step[3].data[8 + position]; }
-	return scratch[0];
+	return valueOf<Block>(step[3].data);
 }
 
 export function at(day: uint64): Clock {

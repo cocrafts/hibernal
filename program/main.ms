@@ -1,4 +1,4 @@
-import { ProgramError, failWith, selectInstruction } from "std/solana";
+import { ProgramError, failWith, securityTxt } from "std/solana";
 import { instruction } from "std/solana";
 import { Op } from "./layout";
 import { createBlock, createHbrnMetadata, delegateVrfPayer, initialize, withdrawFund, withdrawRevenue, writePolicy } from "./admin";
@@ -8,6 +8,14 @@ import { bank, engage } from "./owner";
 import { buy, load, payRebirth, rebirth } from "./shop";
 import { delegateResort, resortAssign, resortBegin, resortClear, resortFinish } from "./resort";
 import { claimReward, commitPet } from "./payout";
+
+securityTxt({
+	name: "Hibernal",
+	projectUrl: "https://github.com/cocrafts/hibernal",
+	contacts: "email:son@metacraft.studio",
+	policy: "https://github.com/cocrafts/hibernal/blob/main/SECURITY.md",
+	sourceCode: "https://github.com/cocrafts/hibernal",
+});
 
 export function dispatch(): Result<uint64, ProgramError> {
 	return match (try instruction<Op>()) {

@@ -1,5 +1,5 @@
 import { anchorIdl } from "std/solana/idl";
-import { BlockSlot, FightRecord, GlobalConfig, Listing, Pet } from "../rules/index";
+import { BlockSlot, FightRecord, GlobalConfig, Listing, Outcome, Pet } from "../rules/index";
 import { Combatant, Mod } from "../rules/stats";
 import { Gear, Item } from "../rules/items";
 import { Pantry } from "../rules/pantry";

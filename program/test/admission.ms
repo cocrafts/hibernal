@@ -2,8 +2,9 @@ import { ProgramError, Pubkey, failWith, instructionDiscriminator, selectInstruc
 import { instruction } from "std/solana";
 import { HostAccount, HostInvocation, invocations, run, setClock } from "std/solana/host";
 
-import { EPOCH_SECONDS, POLICY_FORMAT, POLICY_MAGIC } from "../../rules/index";
-import { HibernalError, MAX_PETS, NO_BLOCK, NO_SEAT, Op, POLICY_BYTES, SEATS, hibernalError } from "../layout";
+import { EPOCH_SECONDS, POLICY_FORMAT, POLICY_MAGIC, STARTER_GIFT, STARTER_HARVEST } from "../../rules/index";
+import { valueOf } from "./dayWorld";
+import { HibernalError, MAX_PETS, NO_BLOCK, NO_SEAT, Op, POLICY_BYTES, PetAccount, SEATS, hibernalError } from "../layout";
 import { associatedTokenAddress } from "std/solana/token";
 import { createBlock, initialize, withdrawFund, writePolicy } from "../admin";
 import { appearanceOf, claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "../admission";
@@ -651,6 +652,8 @@ test "place seats pets in order, births them into the world and stops at ten" {
 	assert placeRan(made, stranger, block, first) == hibernalError(HibernalError.NotAuthority).code;
 	assert placeRan(made, authority, block, first) == 0;
 	assert u32At(first[4].data, PET_BLOCK) == 0 && first[4].data[PET_SLOT] == 0 && first[4].data[PET_ALIVE] == 1;
+	const opened = valueOf<PetAccount>(first[4].data).pet;
+	assert opened.harvest == STARTER_HARVEST && opened.giftOwed == STARTER_GIFT;
 	assert contains(block[0].data, first[4].key);
 	assert block[0].data[BLOCK_FILLED] == 1;
 	assert u32At(made[3].data, WORLD_LIVING) == 1;
@@ -690,7 +693,7 @@ test "place refuses a dead pet until its owner pays its rebirth" {
 	assert placeRan(made, authority, home, dead) == 0;
 }
 
-test "place moves a living heir in with its estate" {
+test "place moves a living heir in with its estate and no second kit" {
 	now(2);
 	const made = initialized();
 	const home = blockCreated(made, authority, 0, blockKey(0));

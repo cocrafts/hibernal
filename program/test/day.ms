@@ -10,9 +10,9 @@ import { engineVersion } from "../../sim/digests";
 import { digestOf } from "../../tools/actBench";
 import { Block, HibernalError, Ledger, NO_BLOCK, Phase, PetAccount, World as WorldAccount, hibernalError } from "../layout";
 import { GRUDGE_EPOCHS, SEED_RETRY_SECONDS, seededDiscriminator } from "../day";
-import { hydraProgram, magicVault } from "../hydra";
+import { HYDRA_PROGRAM_ID, MAGIC_VAULT_ID } from "std/solana/hydra";
 import { entry } from "../main";
-import { FIRST_DUE_SLOT, PET_OFFSET, TEST_DAY, TEST_DAYS, WORLD_SEED, at, blockOf, bytesAt, crankKey, currentSeq, dueClock, executable, globalOf, instructionBytes, keyOf, owned, petOfData, petsOf, plain, policyAct, policyBytes, programKey, TURN_PET, returned, roundStartAccounts, roundStartReturned, seededAccounts, seededData, stepData, turnAccounts, withDiscriminator, withNextCrank, worldBeforeDay } from "./dayWorld";
+import { FIRST_DUE_SLOT, PET_OFFSET, TEST_DAY, TEST_DAYS, WORLD_SEED, at, blockOf, bytesOf, crankKey, currentSeq, dueClock, executable, globalOf, instructionBytes, keyOf, owned, petOfData, petsOf, plain, policyAct, policyBytes, programKey, TURN_PET, returned, roundStartAccounts, roundStartReturned, seededAccounts, seededData, stepData, turnAccounts, valueOf, withNextCrank, worldBeforeDay } from "./dayWorld";
 
 const CANCEL: uint8 = 2;
 
@@ -24,41 +24,16 @@ function refusedWith(outcome: HostRun, error: HibernalError): boolean {
 	return outcome.result == hibernalError(error).code;
 }
 
-function worldOfData(data: uint8[]): WorldAccount {
-	const scratch: WorldAccount[] = [{
-		global: { genesisTimestamp: 0, rewardPerWorkPower: 0, rewardEpoch: 0, totalWorkPower: 0, recycledPending: 0, treasury: 0, itemReserve: 0, emitted: 0, livingPets: 0, floorSlots: 0 },
-		epoch: 0, resortEvery: 0, rotation: 0, resortedEpoch: 0, bump: 0, resorting: 0, pad: 0, unplaced: 0, placed: 0, pad2: 0, secondsPerDay: 0,
-	}];
-	const target = scratch[0] as Ptr<void> as Ptr<uint8>;
-	for (let position = 0; position < (sizeof WorldAccount as int32); position++) { target[position] = data[8 + position]; }
-	return scratch[0];
-}
-
-function withWorld(data: uint8[], world: WorldAccount): uint8[] {
-	const copy: uint8[] = [];
-	for (const value of data) { copy.push(value); }
-	const worlds: WorldAccount[] = [world];
-	const source = worlds[0] as Ptr<void> as Ptr<uint8>;
-	for (let position = 0; position < (sizeof WorldAccount as int32); position++) { copy[8 + position] = source[position]; }
-	return copy;
-}
-
 function withResorting(data: uint8[]): uint8[] {
-	return withWorld(data, { ...worldOfData(data), resorting: 1 });
+	return bytesOf<WorldAccount>({ ...valueOf<WorldAccount>(data), resorting: 1 });
 }
 
 function withPet(data: uint8[], pet: Pet): uint8[] {
-	const copy: uint8[] = [];
-	for (const value of data) { copy.push(value); }
-	const pets: Pet[] = [pet];
-	const source = pets[0] as Ptr<void> as Ptr<uint8>;
-	for (let position = 0; position < (sizeof Pet as int32); position++) { copy[8 + PET_OFFSET + position] = source[position]; }
-	return copy;
+	return bytesOf<PetAccount>({ ...valueOf<PetAccount>(data), pet: pet });
 }
 
 function withBlock(step: HostAccount[], block: Block): void {
-	const blocks: Block[] = [block];
-	step[3] = { ...step[3], data: withDiscriminator(Block.discriminator(), bytesAt(blocks[0] as Ptr<void>, sizeof Block as int32)) };
+	step[3] = { ...step[3], data: bytesOf<Block>(block) };
 }
 
 function sameBytes(left: uint8[], right: uint8[]): boolean {
@@ -116,8 +91,7 @@ function withByte(account: HostAccount, key: Pubkey, offset: int32, value: uint8
 }
 
 function paidLedger(key: Pubkey, bump: uint8, mint: Pubkey, rebirths: uint32): HostAccount {
-	const ledgers: Ledger[] = [{ mint: mint, bought: [], skin: 0, bump: bump, pad: 0, rebirths: rebirths }];
-	return { ...owned(key, withDiscriminator(Ledger.discriminator(), bytesAt(ledgers[0] as Ptr<void>, sizeof Ledger as int32))), writable: false };
+	return { ...owned(key, bytesOf<Ledger>({ mint: mint, bought: [], skin: 0, bump: bump, pad: 0, rebirths: rebirths })), writable: false };
 }
 
 function rebornAfterDusk(step: HostAccount[]): boolean {
@@ -130,8 +104,8 @@ function rebornAfterDusk(step: HostAccount[]): boolean {
 		const ledgerAddress = findProgramAddressOf(programKey(), ["ledger", mint]);
 		const worldAddress = findProgramAddressOf(programKey(), ["world"]);
 		if (!petAddress.ok || !ledgerAddress.ok || !worldAddress.ok) { return false; }
-		const world = worldOfData(step[2].data);
-		const worldHolder: HostAccount = { ...step[2], key: worldAddress.value.key, data: withWorld(step[2].data, { ...world, bump: worldAddress.value.bump }) };
+		const world = valueOf<WorldAccount>(step[2].data);
+		const worldHolder: HostAccount = { ...step[2], key: worldAddress.value.key, data: bytesOf<WorldAccount>({ ...world, bump: worldAddress.value.bump }) };
 		const accounts: HostAccount[] = [
 			withByte(holder, petAddress.value.key, PET_BUMP, petAddress.value.bump),
 			paidLedger(ledgerAddress.value.key, ledgerAddress.value.bump, mint, (pet.lineageGeneration as uint32) + 1),
@@ -139,7 +113,7 @@ function rebornAfterDusk(step: HostAccount[]): boolean {
 		];
 		if (!passed(run(programKey(), accounts, instructionBytes("Rebirth"), entry))) { return false; }
 		step[TURN_PET + seat] = withByte(accounts[0], holder.key, PET_BUMP, 255);
-		step[2] = { ...step[2], data: withWorld(accounts[2].data, { ...worldOfData(accounts[2].data), bump: world.bump }) };
+		step[2] = { ...step[2], data: bytesOf<WorldAccount>({ ...valueOf<WorldAccount>(accounts[2].data), bump: world.bump }) };
 	}
 	return true;
 }
@@ -155,8 +129,8 @@ function heirsPlaced(step: HostAccount[]): boolean {
 		block.members[seat] = step[TURN_PET + seat].key;
 		block.filled = block.filled + 1;
 		withBlock(step, block);
-		const world = worldOfData(step[2].data);
-		step[2] = { ...step[2], data: withWorld(step[2].data, { ...world, placed: world.placed + 1 }) };
+		const world = valueOf<WorldAccount>(step[2].data);
+		step[2] = { ...step[2], data: bytesOf<WorldAccount>({ ...world, placed: world.placed + 1 }) };
 		step[TURN_PET + seat] = { ...step[TURN_PET + seat], data: withPet(step[TURN_PET + seat].data, pet.movedTo(block.id, seat as BlockSlot)) };
 	}
 	return true;
@@ -177,9 +151,9 @@ function startAccounts(step: HostAccount[], signer: Pubkey): HostAccount[] {
 		step[3],
 		step[0],
 		plain(crankKey(block.id, block.crankSeq), true, false),
-		plain(Pubkey.magicVault(), true, false),
+		plain(MAGIC_VAULT_ID, true, false),
 		executable(MAGIC_PROGRAM_ID),
-		executable(Pubkey.hydraProgram()),
+		executable(HYDRA_PROGRAM_ID),
 	];
 }
 
@@ -199,7 +173,7 @@ function crankHolder(key: Pubkey, owner: Pubkey, data: uint8[]): HostAccount {
 function cancelsOf(key: Pubkey): int32 {
 	let count = 0;
 	for (const call of invocations()) {
-		if (call.program == Pubkey.hydraProgram() && call.data.length > 0 && call.data[0] == CANCEL && call.accounts[1].key == key) { count += 1; }
+		if (call.program == HYDRA_PROGRAM_ID && call.data.length > 0 && call.data[0] == CANCEL && call.accounts[1].key == key) { count += 1; }
 	}
 	return count;
 }
@@ -272,7 +246,7 @@ test "a pet starved by dusk leaves half its wallet to one living mate, half to t
 	world = { ...world, global: world.global.withDeath(victim.stats().rewardWeight()) };
 	const heirsBefore = world.stats.heirs;
 	const step = turnAccounts(world, TEST_DAY, policy);
-	const placedBefore = worldOfData(step[2].data).placed;
+	const placedBefore = valueOf<WorldAccount>(step[2].data).placed;
 	for (let round = 0; round < ACTS_PER_EPOCH; round++) {
 		assert passed(roundStarted(step, TEST_DAY));
 		assert passed(seededWith(step, blockOf(step).pendingRequest));
@@ -299,7 +273,7 @@ test "a pet starved by dusk leaves half its wallet to one living mate, half to t
 	assert next.alive && next.lineageGeneration == victim.lineageGeneration + 1;
 	assert next.blockId == NO_BLOCK && next.harvest == 0 && next.burrow == 0 && next.gear.resaleValue() == 0;
 	assert blockOf(step).members[3].isZero() && blockOf(step).filled == (BLOCK_SLOTS - 1) as uint8;
-	assert worldOfData(step[2].data).placed == placedBefore - 1;
+	assert valueOf<WorldAccount>(step[2].data).placed == placedBefore - 1;
 	assert world.stats.heirs == heirsBefore + 1 && world.deathEpochs[3] == 0;
 }
 
@@ -367,7 +341,7 @@ test "while re-sorting a round start reschedules itself instead of asking for a 
 	assert passed(roundStarted(step, TEST_DAY));
 	assert blockOf(step).phase == (Phase.Idle as uint8) && blockOf(step).requests == 0 && blockOf(step).crankSeq == 2;
 	const calls = invocations();
-	assert calls[calls.length - 1].program == Pubkey.hydraProgram();
+	assert calls[calls.length - 1].program == HYDRA_PROGRAM_ID;
 }
 
 test "the VRF request and the next crank are paid and signed by the program's payer PDA, on the configured queue only" {
@@ -388,7 +362,7 @@ test "the VRF request and the next crank are paid and signed by the program's pa
 	assert request.accounts[0].key == step[0].key && request.accounts[0].signer && request.accounts[0].writable;
 	assert request.signers == 2;
 	const created = calls[calls.length - 1];
-	assert created.program == Pubkey.hydraProgram() && created.signers == 1;
+	assert created.program == HYDRA_PROGRAM_ID && created.signers == 1;
 	assert created.accounts[0].key == step[0].key && created.accounts[0].signer;
 	assert created.accounts[1].key == crankKey(0, 1);
 }
@@ -407,7 +381,7 @@ test "start block is the authority's, starts a fresh block at the current round 
 	assert blockOf(step).started == 1 && blockOf(step).epoch == TEST_DAY && blockOf(step).round == 0;
 	assert blockOf(step).crankSeq == 1 && blockOf(step).phase == (Phase.Idle as uint8);
 	const calls = invocations();
-	assert calls[calls.length - 1].program == Pubkey.hydraProgram() && calls[calls.length - 1].accounts[1].key == crankKey(0, 0);
+	assert calls[calls.length - 1].program == HYDRA_PROGRAM_ID && calls[calls.length - 1].accounts[1].key == crankKey(0, 0);
 	setClock({ ...at(TEST_DAY), slot: blockOf(step).dueSlot + 100 });
 	const alive = startAccounts(step, keyOf(1));
 	assert refusedWith(run(programKey(), alive, stepData("StartBlock", 0), entry), HibernalError.ChainAlive);
@@ -429,12 +403,12 @@ test "sweep cancels only spent cranks whose authority is the payer PDA" {
 	const orphan = keyOf(153);
 	const swept: HostAccount[] = [
 		step[0],
-		plain(Pubkey.magicVault(), true, false),
+		plain(MAGIC_VAULT_ID, true, false),
 		executable(MAGIC_PROGRAM_ID),
-		executable(Pubkey.hydraProgram()),
-		crankHolder(spent, Pubkey.hydraProgram(), crankData(payer, 0)),
-		crankHolder(live, Pubkey.hydraProgram(), crankData(payer, 1)),
-		crankHolder(foreign, Pubkey.hydraProgram(), crankData(keyOf(9), 0)),
+		executable(HYDRA_PROGRAM_ID),
+		crankHolder(spent, HYDRA_PROGRAM_ID, crankData(payer, 0)),
+		crankHolder(live, HYDRA_PROGRAM_ID, crankData(payer, 1)),
+		crankHolder(foreign, HYDRA_PROGRAM_ID, crankData(keyOf(9), 0)),
 		crankHolder(orphan, SYSTEM_PROGRAM_ID, crankData(payer, 0)),
 	];
 	assert passed(run(programKey(), swept, stepData("Sweep", 0), entry));

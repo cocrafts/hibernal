@@ -1,12 +1,10 @@
-import { Pubkey, failWith, instructionData, instructionDiscriminator, mutable, readU8, readU16, readU32, unchecked, SYSTEM_PROGRAM_ID } from "std/solana";
+import { Pubkey, decode, encode, failWith, instructionDiscriminator, SYSTEM_PROGRAM_ID } from "std/solana";
 import { HostAccount, run } from "std/solana/host";
 import { BlockSlot, GlobalConfig, Item, ItemSkill, Pet, Region, TalentGrade, TalentKind, born, genesis, minted, sellPrice } from "../../rules/index";
 import { Block, Config, HibernalError, MAX_PETS, PetAccount, RESORT_BITMAP_BYTES, Resort, World, hibernalError } from "../layout";
 import { resortAssign, resortBegin, resortClear, resortFinish } from "../resort";
 
 const COMBAT: uint8 = 2;
-
-let peeked: uint64[] = [];
 
 function keyOf(seed: uint8): Pubkey {
 	let key = Pubkey.zero();
@@ -20,12 +18,6 @@ function authorityKey(): Pubkey { return keyOf(201); }
 
 function pushU64(bytes: uint8[], value: uint64): void {
 	for (let shift: uint64 = 0; shift < 64; shift += 8) {
-		bytes.push(((value >> shift) & 255) as uint8);
-	}
-}
-
-function pushU32(bytes: uint8[], value: uint32): void {
-	for (let shift: uint32 = 0; shift < 32; shift += 8) {
 		bytes.push(((value >> shift) & 255) as uint8);
 	}
 }
@@ -77,111 +69,24 @@ function codeOf(error: HibernalError): uint64 {
 	return hibernalError(error).code;
 }
 
-function stagePetEntry(): void {
-	const data = instructionData();
-	const target = unchecked(0);
-	if (!target.ok) { failWith(target.error); return; }
-	const record = (target.value.data().address + 8) as Ptr<PetAccount>;
-	const ordinal = data.readU32(0);
-	const blockId = data.readU32(4);
-	const slot = data.readU8(8);
-	const might = data.readU16(9);
-	const alive = data.readU8(11);
-	if (!ordinal.ok || !blockId.ok || !slot.ok || !might.ok || !alive.ok) { return; }
-	const hatched = Pet.born(blockId.value, slot.value as BlockSlot, Region.Worker, 0, GlobalConfig.genesis(0));
-	record.ordinal = ordinal.value;
-	record.pet = { ...hatched.pet, might: might.value, alive: alive.value != 0, grudgeSlot: 4, rage: 2 };
+function bytesOf<T>(value: T): uint8[] {
+	const encoded = encode(value);
+	if (!encoded.ok) { unreachable; }
+	return encoded.value;
 }
 
-function stageBlockEntry(): void {
-	const data = instructionData();
-	const target = unchecked(0);
-	if (!target.ok) { failWith(target.error); return; }
-	const block = (target.value.data().address + 8) as Ptr<Block>;
-	const id = data.readU32(0);
-	const filled = data.readU8(4);
-	const freed = data.readU8(5);
-	if (!id.ok || !filled.ok || !freed.ok) { return; }
-	block.id = id.value;
-	block.filled = filled.value;
-	for (let seat = 0; seat < (filled.value as int32); seat++) {
-		const member = unchecked(1 + seat);
-		if (member.ok) { block.members[seat] = member.value.key(); }
-	}
-	if ((freed.value as int32) < 10) {
-		block.members[freed.value as int32] = Pubkey.zero();
-		block.filled = block.filled - 1;
-	}
-	block.grudges[3].robber = 7;
-	block.grudges[3].epoch = 5;
-}
-
-function listEntry(): void {
-	const target = unchecked(0);
-	const seller = unchecked(1);
-	if (!target.ok || !seller.ok) { return; }
-	const block = (target.value.data().address + 8) as Ptr<Block>;
-	const pet = (seller.value.data().address + 8) as Ptr<PetAccount>;
-	const item = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1);
-	block.listed[0] = 1;
-	block.listings[0] = { item: item, price: 50, seller: 2, sellerBorn: pet.pet.bornEpoch, listedEpoch: 1 };
-}
-
-function stageConfigEntry(): void {
-	const data = instructionData();
-	const target = unchecked(0);
-	const owner = unchecked(1);
-	if (!target.ok || !owner.ok) { return; }
-	const config = (target.value.data().address + 8) as Ptr<Config>;
-	const pets = data.readU32(0);
-	const blocks = data.readU32(4);
-	if (!pets.ok || !blocks.ok) { return; }
-	config.authority = owner.value.key();
-	config.pets = pets.value;
-	config.blocks = blocks.value;
-}
-
-function stageWorldEntry(): void {
-	const data = instructionData();
-	const target = unchecked(0);
-	if (!target.ok) { return; }
-	const world = (target.value.data().address + 8) as Ptr<World>;
-	const placedPets = data.readU32(0);
-	const treasury = data.readU64(4);
-	if (!placedPets.ok || !treasury.ok) { return; }
-	world.placed = placedPets.value;
-	world.global.itemReserve = treasury.value;
+function valueOf<T>(account: HostAccount): T {
+	const decoded = decode<T>(account.data);
+	if (!decoded.ok) { unreachable; }
+	return decoded.value;
 }
 
 function worldHolder(placedPets: uint32, treasury: uint64): HostAccount {
 	const blank = stamped(holder(keyOf(151), sizeof(World) as int32), World.discriminator().word());
-	const data: uint8[] = [];
-	pushU32(data, placedPets);
-	pushU64(data, treasury);
-	return staged([blank], data, stageWorldEntry);
-}
-
-function peekBlockEntry(): void {
-	const target = unchecked(0);
-	if (!target.ok) { return; }
-	const block = (target.value.data().address + 8) as Ptr<Block>;
-	peeked = [block.filled as uint64, block.rotation, block.minStrength, block.maxStrength, block.grudges[3].robber as uint64];
-	for (let seat = 0; seat < 10; seat++) { peeked.push(block.members[seat].bytes[0] as uint64); }
-	peeked.push(block.listed[0] as uint64);
-}
-
-function peekPetEntry(): void {
-	const target = unchecked(0);
-	if (!target.ok) { return; }
-	const record = (target.value.data().address + 8) as Ptr<PetAccount>;
-	peeked = [record.pet.blockId as uint64, record.pet.slot as uint64, record.pet.burrow, record.pet.rage as uint64];
-}
-
-function peekWorldEntry(): void {
-	const target = unchecked(0);
-	if (!target.ok) { return; }
-	const world = (target.value.data().address + 8) as Ptr<World>;
-	peeked = [world.resorting as uint64, world.rotation, world.global.itemReserve];
+	let world = valueOf<World>(blank);
+	world.placed = placedPets;
+	world.global.itemReserve = treasury;
+	return { ...blank, data: bytesOf<World>(world) };
 }
 
 function beginEntry(): void {
@@ -204,26 +109,19 @@ function finishEntry(): void {
 	if (!result.ok) { failWith(result.error); }
 }
 
-function staged(accounts: HostAccount[], data: uint8[], entry: () => void): HostAccount {
-	const outcome = run(programKey(), accounts, data, entry);
-	if (outcome.result != 0) { return { ...accounts[0], lamports: 0 }; }
-	return accounts[0];
-}
-
 function readOnly(account: HostAccount): HostAccount {
 	return { ...account, writable: false };
 }
 
 function petHolder(ordinal: uint32, blockId: uint32, slot: uint8, might: uint16, alive: boolean): HostAccount {
 	const blank = stamped(holder(keyOf(ordinal as uint8), sizeof(PetAccount) as int32), PetAccount.discriminator().word());
-	const data: uint8[] = [];
-	pushU32(data, ordinal);
-	pushU32(data, blockId);
-	data.push(slot);
-	data.push((might & 255) as uint8);
-	data.push((might >> 8) as uint8);
-	data.push(alive ? 1 : 0);
-	return staged([blank], data, stagePetEntry);
+	const hatched = Pet.born(blockId, slot as BlockSlot, Region.Worker, 0, GlobalConfig.genesis(0));
+	const record: PetAccount = {
+		...valueOf<PetAccount>(blank),
+		ordinal: ordinal,
+		pet: { ...hatched.pet, might: might, alive: alive, grudgeSlot: 4, rage: 2 },
+	};
+	return { ...blank, data: bytesOf<PetAccount>(record) };
 }
 
 function blockHolder(id: uint32, first: int32): HostAccount {
@@ -232,28 +130,23 @@ function blockHolder(id: uint32, first: int32): HostAccount {
 
 function blockHolderFreeing(id: uint32, first: int32, freed: uint8): HostAccount {
 	const blank = stamped(holder(keyOf(100 + (id as uint8)), sizeof(Block) as int32), Block.discriminator().word());
-	const data: uint8[] = [];
-	pushU32(data, id);
-	data.push(10);
-	data.push(freed);
-	const accounts: HostAccount[] = [blank];
-	for (let seat = 0; seat < 10; seat++) { accounts.push(state[PETS + first + seat]); }
-	return staged(accounts, data, stageBlockEntry);
+	let block = valueOf<Block>(blank);
+	block.id = id;
+	block.filled = 10;
+	for (let seat = 0; seat < 10; seat++) { block.members[seat] = state[PETS + first + seat].key; }
+	if ((freed as int32) < 10) {
+		block.members[freed as int32] = Pubkey.zero();
+		block.filled = block.filled - 1;
+	}
+	block.grudges[3].robber = 7;
+	block.grudges[3].epoch = 5;
+	return { ...blank, data: bytesOf<Block>(block) };
 }
 
 function configHolder(pets: uint32, blocks: uint32): HostAccount {
 	const blank = stamped(holder(keyOf(150), sizeof(Config) as int32), Config.discriminator().word());
-	const data: uint8[] = [];
-	pushU32(data, pets);
-	pushU32(data, blocks);
-	return readOnly(staged([blank, authority()], data, stageConfigEntry));
-}
-
-function peek(account: HostAccount, entry: () => void): uint64[] {
-	peeked = [];
-	const outcome = run(programKey(), [account], [], entry);
-	if (outcome.result != 0) { return []; }
-	return peeked;
+	const config: Config = { ...valueOf<Config>(blank), authority: authorityKey(), pets: pets, blocks: blocks };
+	return readOnly({ ...blank, data: bytesOf<Config>(config) });
 }
 
 const CONFIG: int32 = 0;
@@ -356,41 +249,43 @@ function range(from: int32, to: int32): int32[] {
 	return values;
 }
 
-function listed(): uint64 {
-	const accounts: HostAccount[] = [state[BLOCKS], state[PETS + 2]];
-	const outcome = run(programKey(), accounts, [], listEntry);
-	state[BLOCKS] = accounts[0];
-	return outcome.result;
+function listFromSeatTwo(): void {
+	const seller = valueOf<PetAccount>(state[PETS + 2]);
+	let block = valueOf<Block>(state[BLOCKS]);
+	const item = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1);
+	block.listed[0] = 1;
+	block.listings[0] = { item: item, price: 50, seller: 2, sellerBorn: seller.pet.bornEpoch, listedEpoch: 1 };
+	state[BLOCKS] = { ...state[BLOCKS], data: bytesOf<Block>(block) };
 }
 
 test "twenty pets re-sort into two blocks, strongest first, each pet on its new seat" {
 	fixture();
 	assert begun() == 0;
-	assert peek(state[WORLD], peekWorldEntry)[0] == 1;
+	assert valueOf<World>(state[WORLD]).resorting == 1;
 	assert cleared(0) == 0;
 	assert cleared(1) == 0;
-	assert peek(state[BLOCKS], peekBlockEntry)[4] == 0;
+	assert valueOf<Block>(state[BLOCKS]).grudges[3].robber == 0;
 	assert assigned(0, 0, 0, range(10, 15)) == 0;
 	assert assigned(0, 0, 5, range(15, 20)) == 0;
 	assert assigned(1, 0, 0, range(0, 10)) == 0;
 	assert finished() == 0;
-	const strong = peek(state[BLOCKS], peekBlockEntry);
-	assert strong[0] == 10 && strong[1] == 1;
-	for (let seat = 0; seat < 10; seat++) { assert strong[5 + seat] == (10 + seat) as uint64; }
-	const weak = peek(state[BLOCKS + 1], peekBlockEntry);
-	assert weak[2] == 0 && weak[3] < strong[2];
-	const moved = peek(state[PETS + 12], peekPetEntry);
-	assert moved[0] == 0 && moved[1] == 2 && moved[3] == 0;
-	const stayed = peek(state[PETS + 3], peekPetEntry);
-	assert stayed[0] == 1 && stayed[1] == 3;
-	assert peek(state[WORLD], peekWorldEntry)[0] == 0;
+	const strong = valueOf<Block>(state[BLOCKS]);
+	assert strong.filled == 10 && strong.rotation == 1;
+	for (let seat = 0; seat < 10; seat++) { assert strong.members[seat].bytes[0] == (10 + seat) as uint8; }
+	const weak = valueOf<Block>(state[BLOCKS + 1]);
+	assert weak.minStrength == 0 && weak.maxStrength < strong.minStrength;
+	const moved = valueOf<PetAccount>(state[PETS + 12]).pet;
+	assert moved.blockId == 0 && moved.slot == 2 && moved.rage == 0;
+	const stayed = valueOf<PetAccount>(state[PETS + 3]).pet;
+	assert stayed.blockId == 1 && stayed.slot == 3;
+	assert valueOf<World>(state[WORLD]).resorting == 0;
 }
 
 test "a block with a seat freed by a death clears its remaining pets and leaves no stale member" {
 	fixture();
 	state[BLOCKS + 1] = blockHolderFreeing(1, 10, 4);
 	state[WORLD] = worldHolder(19, FIXTURE_TREASURY);
-	assert peek(state[BLOCKS + 1], peekBlockEntry)[0] == 9;
+	assert valueOf<Block>(state[BLOCKS + 1]).filled == 9;
 	assert begunWith(19) == 0;
 	assert cleared(0) == 0;
 	assert cleared(1) == codeOf(HibernalError.NotAMember);
@@ -399,8 +294,8 @@ test "a block with a seat freed by a death clears its remaining pets and leaves 
 	assert assigned(0, 0, 5, [16, 17, 18, 19, 9]) == 0;
 	assert assigned(1, 0, 0, range(0, 9)) == 0;
 	assert finished() == 0;
-	const weak = peek(state[BLOCKS + 1], peekBlockEntry);
-	assert weak[0] == 9 && weak[5 + 9] == 0;
+	const weak = valueOf<Block>(state[BLOCKS + 1]);
+	assert weak.filled == 9 && weak.members[9].bytes[0] == 0;
 }
 
 test "a block may not be stronger than the block before it" {
@@ -425,15 +320,15 @@ test "a pet is assigned once a rotation and a block fills in order" {
 
 test "finishing early is refused and a listing goes back to its seller" {
 	fixture();
-	assert listed() == 0;
-	const before = peek(state[PETS + 2], peekPetEntry)[2];
+	listFromSeatTwo();
+	const before = valueOf<PetAccount>(state[PETS + 2]).pet.burrow;
 	assert begun() == 0;
 	assert begun() == codeOf(HibernalError.Resorting);
 	assert cleared(0) == 0;
-	assert peek(state[BLOCKS], peekBlockEntry)[15] == 0;
+	assert valueOf<Block>(state[BLOCKS]).listed[0] == 0;
 	const price = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1).sellPrice();
-	assert price > 0 && peek(state[PETS + 2], peekPetEntry)[2] == before + price;
-	assert peek(state[WORLD], peekWorldEntry)[2] == FIXTURE_TREASURY - price;
+	assert price > 0 && valueOf<PetAccount>(state[PETS + 2]).pet.burrow == before + price;
+	assert valueOf<World>(state[WORLD]).global.itemReserve == FIXTURE_TREASURY - price;
 	assert finished() == codeOf(HibernalError.Unfinished);
 }
 

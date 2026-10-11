@@ -1,4 +1,4 @@
-import { Discriminator, ProgramError, Pubkey, accountDiscriminator, instructionDiscriminator, unchecked, SYSTEM_PROGRAM_ID, findProgramAddressOf } from "std/solana";
+import { ProgramError, Pubkey, accountDiscriminator, decode, encode, instructionDiscriminator, SYSTEM_PROGRAM_ID, findProgramAddressOf } from "std/solana";
 import { HostAccount, run, setClock } from "std/solana/host";
 import { BlockSlot, GlobalConfig, Pet, Region, born } from "../../rules/index";
 import { HibernalError, PetAccount, World, hibernalError } from "../layout";
@@ -18,59 +18,16 @@ const owner = keyOf(1);
 const stranger = keyOf(2);
 const mint = keyOf(3);
 
-const stagedPets: PetAccount[] = [];
-const seenPets: PetAccount[] = [];
-const stagedWorlds: World[] = [];
-
-function overlay(): uint64 {
-	const holder = unchecked(0);
-	return holder.ok ? holder.value.data().address + 8 : 0;
-}
-
-function stagePetEntry(): void {
-	const at = overlay() as Ptr<PetAccount>;
-	at[] = stagedPets[stagedPets.length - 1];
-}
-
-function stageWorldEntry(): void {
-	const at = overlay() as Ptr<World>;
-	at[] = stagedWorlds[stagedWorlds.length - 1];
-}
-
-function seePetEntry(): void {
-	const at = overlay() as Ptr<PetAccount>;
-	seenPets.push(at[]);
-}
-
-function blankData(tag: Discriminator, size: uint64): uint8[] {
-	const bytes: uint8[] = [];
-	for (let i = 0; i < 8; i++) { bytes.push(tag.bytes[i]); }
-	for (let offset: uint64 = 0; offset < size; offset++) { bytes.push(0); }
-	return bytes;
-}
-
-function scratch(data: uint8[]): HostAccount[] {
-	return [{
-		key: keyOf(250),
-		owner: programKey(),
-		lamports: 1,
-		data: data,
-		signer: false,
-		writable: true,
-		executable: false,
-	}];
-}
-
 function petBytes(record: PetAccount): uint8[] {
-	stagedPets.push(record);
-	const holder = scratch(blankData(PetAccount.discriminator(), sizeof(PetAccount) as uint64));
-	run(programKey(), holder, [], stagePetEntry);
-	return holder[0].data;
+	const encoded = encode(record);
+	if (!encoded.ok) { unreachable; }
+	return encoded.value;
 }
 
 function petRecordOf(data: uint8[]): PetAccount {
-	run(programKey(), scratch(data), [], seePetEntry);
-	return seenPets[seenPets.length - 1];
+	const decoded = decode<PetAccount>(data);
+	if (!decoded.ok) { unreachable; }
+	return decoded.value;
 }
 
 function petKey(): Pubkey {
@@ -114,7 +71,7 @@ function petHolder(pet: Pet): HostAccount {
 }
 
 function worldHolder(genesis: uint64, secondsPerDay: uint64): HostAccount {
-	stagedWorlds.push({
+	const encoded = encode<World>({
 		global: GlobalConfig.genesis(genesis),
 		epoch: 0,
 		resortEvery: 0,
@@ -128,9 +85,16 @@ function worldHolder(genesis: uint64, secondsPerDay: uint64): HostAccount {
 		pad2: 0,
 		secondsPerDay: secondsPerDay,
 	});
-	const holder = scratch(blankData(World.discriminator(), sizeof(World) as uint64));
-	run(programKey(), holder, [], stageWorldEntry);
-	return { ...holder[0], key: keyOf(60), writable: false };
+	if (!encoded.ok) { unreachable; }
+	return {
+		key: keyOf(60),
+		owner: programKey(),
+		lamports: 1,
+		data: encoded.value,
+		signer: false,
+		writable: false,
+		executable: false,
+	};
 }
 
 function realDay(): HostAccount {
@@ -252,7 +216,7 @@ test "banking moves half the harvest to the burrow, then cools down" {
 	const accounts = [signerOf(owner), petHolder(rich), realDay(), noSession()];
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
 	const banked = petOf(accounts[1]);
-	assert banked.harvest == 500 && banked.burrow == 500 && banked.ownerBankedAt == 1_000_000;
+	assert banked.harvest == 500 && banked.burrow == 500 && banked.ownerBankReadyAt == 1_028_800;
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == code(HibernalError.CoolingDown);
 	const empty = [signerOf(owner), petHolder({ ...newborn(), harvest: 0 }), realDay(), noSession()];
 	assert run(programKey(), empty, instructionData("Bank"), entry).result == code(HibernalError.EmptyHarvest);
@@ -279,11 +243,11 @@ test "on a compressed day the bank cooldown runs in game time: 8 game hours are 
 	const accounts = [signerOf(owner), petHolder(rich), worldHolder(genesis, 1_200), noSession()];
 	noon((genesis + 1_000) as int64);
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
-	assert petOf(accounts[1]).ownerBankedAt == 72_000;
+	assert petOf(accounts[1]).ownerBankReadyAt == 100_800;
 	noon((genesis + 1_399) as int64);
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == code(HibernalError.CoolingDown);
 	noon((genesis + 1_400) as int64);
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
 	const twice = petOf(accounts[1]);
-	assert twice.ownerBankedAt == 100_800 && twice.harvest == 250 && twice.burrow == 750;
+	assert twice.ownerBankReadyAt == 129_600 && twice.harvest == 250 && twice.burrow == 750;
 }
