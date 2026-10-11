@@ -138,6 +138,9 @@ class WalletBridge(private val activity: MainActivity) {
             } catch (error: IOException) {
                 Log.e(TAG, "Owner action preflight failed: ${error.javaClass.name}: ${error.message}")
                 publishOwnerAction(OwnerSigning.Outcome.UNAVAILABLE)
+            } catch (error: LivePetRead.UnsupportedLayout) {
+                Log.e(TAG, "Owner action read refused: ${error.message}")
+                publishOwnerAction(OwnerSigning.Outcome.UNAVAILABLE)
             } catch (error: Exception) {
                 logFailure("Sign", error, rejected = false)
                 publishOwnerAction(OwnerSigning.Outcome.WALLET_FAILED)

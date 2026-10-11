@@ -299,20 +299,21 @@ object GameSync {
         }
     }
 
+    // A Config the app cannot read means the deployment changed under it: the game is updating, not the network.
     private suspend fun validateConfig(account: SolanaRpc.Account?): String {
         if (account == null || account.owner != PROGRAM || account.executable ||
             !account.data.copyOfRange(0, 8).contentEquals(CONFIG_TAG)) {
-            throw SolanaRpc.Failure("Config owner/discriminator mismatch")
+            throw LivePetRead.UnsupportedLayout("Config missing or not this program's")
         }
         if (account.data.size != CONFIG_BYTES) {
             throw LivePetRead.UnsupportedLayout("Config is ${account.data.size} bytes, the app reads $CONFIG_BYTES")
         }
         val derived = ProgramDerivedAddress.find(listOf("config".toByteArray()), SolanaPublicKey.from(PROGRAM)).getOrThrow()
         if (derived.address != CONFIG || derived.nonce.toInt() != (account.data[136].toInt() and 255)) {
-            throw SolanaRpc.Failure("Config PDA/bump mismatch")
+            throw LivePetRead.UnsupportedLayout("Config PDA/bump mismatch")
         }
         val bytes = account.data.copyOfRange(40, 72)
-        if (bytes.all { it == 0.toByte() }) throw SolanaRpc.Failure("Config admission group unset")
+        if (bytes.all { it == 0.toByte() }) throw LivePetRead.UnsupportedLayout("Config admission group unset")
         return SolanaPublicKey(bytes).address
     }
 
