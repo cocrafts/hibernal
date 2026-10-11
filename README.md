@@ -110,7 +110,7 @@ curl -fsSL https://metascriptlang.org/install.sh | sh        # MetaScript
 msc test rules/index.ms                                       # the rules
 msc test program/test/day.ms                                  # the program, on the host
 msc build program/main.ms --os=solana --release --output=out/hibernal.so
-scripts/buildAndroid.sh release                               # the APK, needs Android NDK 28
+scripts/buildAndroid.sh                                       # the APK (debug, as released), needs Android NDK 28
 cd train && uv run python bc.py && uv run python ppo.py       # train a brain
 ```
 
