@@ -44,4 +44,8 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    testImplementation("junit:junit:4.13.2")
+    // android.jar's org.json and android.util.JsonReader are stubs on the JVM: these stand in for them in unit tests.
+    testImplementation("org.json:json:20180813")
+    testImplementation("com.google.code.gson:gson:2.11.0")
 }

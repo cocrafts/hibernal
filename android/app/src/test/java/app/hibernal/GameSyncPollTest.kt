@@ -73,7 +73,7 @@ class GameSyncPollTest {
         } ?: JSONObject.NULL
     }
 
-    private fun configAccount(groupBytes: ByteArray = group) = SolanaRpc.Account(program, BigInteger.ONE, false, ByteArray(304).also {
+    private fun configAccount(groupBytes: ByteArray = group) = SolanaRpc.Account(program, BigInteger.ONE, false, ByteArray(GameSync.CONFIG_BYTES).also {
         byteArrayOf(0x9b.toByte(), 0x0c, 0xaa.toByte(), 0xe0.toByte(), 0x1e, 0xfa.toByte(), 0xcc.toByte(), 0x82.toByte()).copyInto(it)
         groupBytes.copyInto(it, 40)
         skrMint.copyInto(it, 176)

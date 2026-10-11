@@ -111,7 +111,8 @@ class SolanaRpcTransportTest {
         }
         val failure = assertThrows(SolanaRpc.Failure::class.java) { slot(timeout) }
         assertEquals("RPC transport failed: SocketTimeoutException", failure.message)
-        assertTrue(failure.cause is SocketTimeoutException)
+        // Coroutine stack-trace recovery (tests run with -ea) may wrap the thrown Failure once more.
+        assertTrue(generateSequence<Throwable>(failure) { it.cause }.any { it is SocketTimeoutException })
         assertTrue(timeout.inputClosed)
         assertEquals(0L, timeout.disconnected.count)
     }
