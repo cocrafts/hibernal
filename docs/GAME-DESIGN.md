@@ -229,7 +229,7 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 - **k = 2, not 2.5–3.** With k = 3 build differences alone pushed non-workers to ×0.3 and made the tail about effort; talent should carry the tail.
 - Hawk–dove: a ×20 worker is still robbed, and a talented fighter is what robs it. Both sides get a screenshot.
 - Sybil resistance holds: `workPower²` is convex, so splitting one pet into two loses about half the weight, and fishing for Mythic on many wallets costs a week per pet to reach the level-10 reveal.
-- **No per-pet pot cap and no week-one floor** (Decided). Both were guards for a small server, where a few pets would split the whole emission. The 500-slot floor (§10) now bounds that: a pet's share is at most its weight over 500 slots, so a ×20 pet takes ~2.4% of emission, and a common pet still earns ~×1–2.5 the median.
+- **No per-pet pot cap and no week-one floor** (Decided). Both were guards for a small server, where a few pets would split the whole emission. The 80,000-slot floor and its ceiling (§10) now bound that: a pet earns at most its weight over 80,000 slots, and a common pet still earns ~×1–2.5 the median.
 - Settles `BRIEF.md` §10 Q7 toward a steep income gap; §6 invariant 3 must be re-measured in sim S1.
 
 ## 10. Wild pets (virtual NPCs) — Decided
@@ -237,9 +237,9 @@ Consequences: `sim/determinism.ms` digests `fights`, `tree`, `odds` changed on p
 Goal: the world looks alive from day one, and one or two early players cannot take the whole daily pot.
 
 - **No accounts, no transactions.** A wild pet is a formula: stats and age from `(block, slot or index, epoch, seed)`. Empty block slots show wild pets; a real claim replaces one. Life cycle is formulaic too (age `(epoch − offset) mod 90`), so a wild death needs no instruction.
-- **Reward denominator floor: 500 slots** (Decided; a `GlobalConfig` knob). Emission is always split as if at least 500 pets play. Each empty slot counts as a bot with fixed stats `[strawman: a common level-20 pet's weight]`: `totalWeight = realWeight + max(0, 500 − realPets) × botWeight`. Real pets replace bot slots one by one; past 500 the floor no longer applies. One multiplication inside settlement, no accounts, no keeper.
-  - Why 500 and not 10,000: early players should still eat well. At 100,000 `$HBRN` per epoch a median pet gets about 1/850 of emission (~118 `$HBRN`/day) under the 500 floor versus ~10 at 10,000 pets, so the first players earn ~×10–20 more than late ones, and a ×20 talent pet takes ~2.4% of emission. A 10,000 floor would make early and late income equal.
-  - Open: where the unclaimed bot share goes (burn, back to the pot for later epochs, or not minted at all). Rolling it into the pot makes late joiners richer; not minting it keeps supply honest.
+- **Reward denominator floor: 80,000 slots, and a ceiling** (Decided by the person 2026-10-11, replacing 500). Emission is always split as if at least 80,000 pets play. Each empty slot counts as a bot with a common level-20 pet's weight: `totalWeight = realWeight + max(0, 80,000 − livingPets) × botWeight`; wild pets are living pets. Real pets replace bot slots one by one. A weight never earns more than the floor rate (`floorRate` in `rules/emission.ms`), so a pet's income is a known budget, about 1 `$HBRN` a day for a newborn and 1.5 for a common level-20 pet, and it only falls: past 80,000 players or in Winter. The bot share is not paid and stays in the treasury; past 80,000 the treasury tops pets up to the floor rate until it runs dry, rather than being released into the world at large (person: “giữ lại để bù lỗ khi thực sự có nhiều người chơi”).
+  - Why 80,000 and not 500: under 500 the first players earned ~×10–20 more than late ones and prices had to guess the population. A fixed budget lets every `$HBRN` price be set against it (all prices ÷400 on 2026-10-11, the ratio of 80,000 to the sim's 200 seats), and a scarce wallet is part of the pet's life.
+  - Measured 2026-10-11 (teacher, 200 pets, 120 epochs, `sim/episode.ms`): 11,014 fights, 204 deaths, median level 15, median wallet 77 `$HBRN`; the treasury keeps 12.29M of 12.31M emitted. `sim/ledger.ms` over 400 days: the supply drifts −38,935 base units (per-pet rounding), as before.
 - **Fighting them costs nothing extra.** The attack runs in the ER like any other fight, computes the wild pet's state on the spot and fights it with `rules/fight.ms`.
 - Holes to close before building:
   1. **Risk-free farming**: closed by VRF (§4). Wild stats are public, but the fight seed is not known when the attack is committed.
@@ -411,7 +411,7 @@ Applied on 2026-09-14 as `BRIEF.md` rev 4 (D6, D13, D18, D19, D21, D25, D26 rewr
 | BRIEF D6, §3.4, §6.1 | XP leveling, cap 20, level fee | §6 decided |
 | BRIEF §3.7, §7.1, §7.2 | lifespan 90, decline from day 50, heir package in the launch build | §7 decided |
 | BRIEF §3.1 | `Pet` fields: `talentKind` + `talentGrade` (2 bytes), `xp` (u32), `bonding` (i8), equipment (4 × 8 bytes), heirloom slots, generation bonus, persona and soft signals; `Block.relationships` (45 bytes) | §6, §7, §8, §11, §12, §13, §14 |
-| BRIEF §3.3, §10 Q7, §6.3 | convex reward weight `workPower²`, 500-slot denominator floor, wild pets | §9, §10 decided |
+| BRIEF §3.3, §10 Q7, §6.3 | convex reward weight `workPower²`, 80,000-slot denominator floor and ceiling, wild pets | §9, §10 decided |
 | ROADMAP R6 | CPI on the critical path (delegation, VRF, crank) | §12, now |
 | ROADMAP P6 | VRF is no longer optional | §4, now |
 | ROADMAP new | ER devnet spike (§12 checks) · `act(pet)` and crank · policy training pipeline on native `rules/` · integer MLP inference in the program | §12, now |
@@ -427,7 +427,7 @@ Directions are settled (§0). What is left are numbers and a few mechanics insid
 
 1. **Tree layout**: sign off the 64-node draft (§5): effects of the five new notables, the size of each attribute node, one gate or also a narrow ring-2 bridge per border.
 2. **Talent numbers**: Mythic share and draft D multipliers are the curve to lock; kinds and the stat-driven take are decided.
-3. **Wild pets**: formula pets or a real-account army driven by `act` (after the ER probe); bot weight for the 500-slot floor; where the bot share goes; loot tracking; raids on players.
+3. **Wild pets**: formula pets or a real-account army driven by `act` (after the ER probe); bot weight for the floor; loot tracking; raids on players.
 4. **Items** (§11): skill books (+1 skill point each, inside the 10 bonus points): source, price, rarity; item skill list and sizes, rarity table, mint price, buyback formula, market fee, wear, item robbery and death, storage in the ER.
 5. **Brain**: crank interval for `act(pet)` and the reward weights per persona for training (first measured set: `ON-CHAIN-AI.md` §6 package 5; loss aversion makes Cautious, Greedy and Vengeful are still one behaviour).
 6. **Social** (§13): the action list and effect sizes; same-block only or cross-block relationships; how strongly friends and pairs interact with lineage.

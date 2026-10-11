@@ -469,6 +469,39 @@ Rules change of 2026-10-06 (person: an app open is one engagement, once a round,
 - Continuation smoke, 2026-10-06, source tree `cd0c708d59589141ae2491d2423b19b65f40048a`, private msc, `msc run sim/episode.ms` (seed 7, 20 blocks, 120 epochs, teacher, fixed blocks): exit 0 in 182 s on the shared Mac; 200 pets, 158 living at the end, 205 deaths, 163 heirs, 11,078 fights, 9,290 attacker wins and 0 illegal actions. Median level 14, median wallet 30,841 HBRN, emitted 12,250,000 HBRN. Aggregate counts prove fights and lifecycle transitions occurred, not daily fight eligibility, stagger timing, `p31s5` re-sort behavior or chain parity.
 - `msc run sim/diary.ms`, same tree/compiler and seed, exited 0 in 177 s. The three followed slots show distinct heir dates: Cautious day 101, Greedy day 110, Vengeful day 119. The Vengeful pet dies of old age on day 112 and its day 119 records an heir born and a gift to the owner. An earlier reading of its day 115 as a lost revenge attack was the wild pet holding the empty seat; `sim/diary.ms` now narrates the dead pet through its grace days instead (2026-10-09). This is teacher diary evidence, not a diary driven by the deployed brain.
 
+### Package 9: a budget of a few `$HBRN` a day — Measured, `p34s8` chosen
+
+The economy of 2026-10-11 (person: an 80,000-slot floor that is also a ceiling, every price ÷400, a 5 `$HBRN` starter kit, `BRIEF.md` D34, D44) moved the engine to `2108257108454256060`, so `p31s5` is refused (`WrongEngine`). The brain sees money in `BRAIN_MONEY_UNIT` (`rules/observe.ms`, 1/400 `$HBRN`, the ratio of the floor to the sim's 200 seats), and the PPO reward counts it in thousandths of that unit (`brainMilli` in `sim/env/batch.ms`), so features and reward keep the scale `p31s5` was trained on; training logs print wealth in brain units (400 = 1 `$HBRN`). Retrained with the Package 7 commands: `bc32`, then `p32s5`–`p32s7` (30 iterations each), `evaluate.py --worlds 16` and `health.py --worlds 8` (seed 9001, fixed blocks, wilds on):
+
+| | Teacher | Clone `bc32` | PPO seeds 5 / 6 / 7 |
+|---|---|---|---|
+| Illegal actions | 0 | 0 | 0 / 0 / 0 |
+| Starved with money for a meal (health) | 0 | 0 | 0 / 0 / 0 |
+| Starved, any, per 8 worlds (health) | 70 | 71 | 221 / 147 / 116 |
+| Early deaths per 100 lives (health) | 2.26 | 3.43 | 7.70 / 5.18 / 3.91 |
+| Absent owners, early deaths per 100 lives | 6.58 | 8.35 | 21.51 / 14.67 / 11.56 |
+| Vengeful revenge within 3 days | 10.3% | 16.6% | 8.2 / 24.8 / 6.5% |
+| Persona told from one log (≥ 0.8) | 0.89 | 0.92 | 0.69 / 0.75 / 0.75 |
+| Own world: fights a pet; deaths | 55.5; 116 | 58.7; 111 | 57.0 / 57.0 / 49.4; 425 / 269 / 239 |
+| Mixed world against the teacher | −1.5% (seat noise) | −0.9% | +4.4 / +7.6 / +6.4% |
+
+- PPO gains far less than in Package 8 (+31.5 to +48.2% there) and buys it with starvation: two to three times the teacher's in its own world. The clone plays like the teacher with more fights and more revenge.
+- With `bc32` staged in `out/actProbe/policy.txt` (provisional, the brain is the person's choice): `program/test/day.ms` 634 pass and replays days 36–120 of a block on the program and in the sim byte for byte (429 fights, 11 deaths, 11 heirs, 55 sales); `dayFixture.ms` then `dayLiteSvm.mjs` on a 327,768-byte release build: 88 instructions, 0 bytes differing, 12 VRF requests, 76 Hydra creates; act with a fight 296,579–559,863 CU.
+- Thirty more iterations from the best checkpoints (`p33s6more`, `p33s7more` from `p32s6`/`p32s7`; `p33s8`, `p33s9` from `bc32`; then `p34s6`–`p34s9` from those, 90 iterations in all for s6/s7 and 60 for s8/s9) traded play for survival or the reverse; three times the death weight for Greedy and Vengeful (`p33s6death`, `p33s7death`) did not cut starvation (153 / 105). Same evaluation:
+
+| | `p33s6more` | `p34s8` | `p34s9` | `p34s7` |
+|---|---|---|---|---|
+| Starved with money for a meal | 0 | 0 | 1 | 0 |
+| Starved, any, per 8 worlds | 91 | 27 | 51 | 137 |
+| Early deaths per 100 lives; absent owners | 3.46; 10.1 | 1.10; 3.15 | 2.11; 5.90 | 5.34; 14.4 |
+| Vengeful revenge within 3 days | 12.9% | 8.4% | 4.9% | 1.2% |
+| Persona told from one log | 0.80 | 0.71 | 0.69 | 0.51 |
+| Own world: fights a pet | 54.7 | 46.2 | 49.5 | 52.1 |
+| Mixed world against the teacher | +20.3% | +12.0% | +30.3% | +68.1% |
+
+- The person chose `p34s8` on 2026-10-12, for survival: a pet dies for good, and it halves the teacher's early deaths, absent owners included, while still beating it. With it in `out/actProbe/policy.txt`: `program/test/day.ms` 634 pass, days 36–120 byte for byte (346 fights, 10 deaths, 10 heirs, 19 sales); `dayLiteSvm.mjs` 88 instructions, 0 bytes differing, act with a fight 297,287–561,891 CU.
+- Economy, teacher, `sim/episode.ms` (200 pets, 120 epochs): 11,014 fights, 204 deaths, median level 15, median wallet 77 `$HBRN`, treasury 12.29M of 12.31M emitted. `sim/ledger.ms`, 400 days: supply drift −38,935 base units (per-pet rounding, −38,910 before). `sim/curve.ms` unchanged (0.50 / 0.94 / 0.05). `sim/diary.ms` prints money to a thousandth of `$HBRN`: a first life opens with harvest 4.000 and a 1.000 gift, then earns 0.77–0.86 a day in its first week.
+
 ### Package 6: the policy on SBF — Measured (inference), observation open
 
 `tools/policyProbe.ms` (`--os=solana`) runs `rules/policy.ms` unchanged over a policy blob that stays in account data (`Ptr<PolicyBlob>` over the account, never copied onto the 4 KB stack), on fixed synthetic inputs: `checkPolicy`, one economy pass, the attack head for 9 targets and the tree head for 6 candidate nodes. `tools/chain/policyLiteSvm.mjs` runs it in LiteSVM 1.4.1 under a 1.4M limit (`npm ci` in `tools/chain` first) and writes the blob for `tools/policyHost.ms`, which runs the same inference natively. Measured 2026-09-26 on msc 0.2.55, engine `16948401298924711931`, checkpoint `p29s5` (step29), compute-unit log cost subtracted:

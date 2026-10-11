@@ -10,7 +10,7 @@ How the online game is brought up and kept running with the developer machine of
 | Config, Policy, World, VrfPayer; Pet + Paid per pet; Block per 10 pets | L1, and World/VrfPayer/Pet/Block delegated to the ER | `tools/chain/ops.mjs STAGE=bootstrap`, `tools/chain/players.mjs`, `ops.mjs STAGE=blocks` |
 | The day: one Hydra one-shot crank per block at a time, each step scheduling the next | ER | `StartBlock` once per block (by `ops.mjs`), then the chain itself |
 | VRF oracle | MagicBlock on devnet/mainnet; `localnet.sh` on localnet | — |
-| `tools/chain/gameCranker.mjs` (MagicBlock's `hydra-cranker` as a backup) | ops host | supervised process (§3) |
+| `tools/chain/gameCranker.mjs` | ops host | supervised process (§3) |
 | `ops.mjs STAGE=run` | ops host | supervised process (§3) |
 
 ## 2. Bring-up
@@ -18,9 +18,10 @@ How the online game is brought up and kept running with the developer machine of
 Localnet (mirror of devnet-as, `SOLANA.md` §7 item 20):
 
 ```bash
-tools/chain/localnet.sh up                     # L1 + ER v0.16.0 + VRF oracle + hydra-cranker, ~1.5–2.5 min
+tools/chain/localnet.sh up                     # L1 + ER v0.16.0 + VRF oracle, ~1.5–2.5 min
 source out/localnet/env.sh
 node tools/chain/deploy.mjs out/localnet/hibernal.so <program keypair> <new buffer keypair>
+tools/chain/localnet.sh cranker <program>       # gameCranker.mjs (§11) against the localnet
 SECONDS_PER_DAY=1200 STAGGER_SECONDS=30 STAGE=bootstrap node tools/chain/ops.mjs <program> train/checkpoints/p29s5.policy
 PROGRAM=<program> FIRST=0 COUNT=<n> STAGE=keys|admit|fund|claim node tools/chain/players.mjs
 PROGRAM=<program> STAGE=export PETS_FILE=out/localnet/players.json node tools/chain/players.mjs
@@ -29,7 +30,7 @@ PETS_FILE=out/localnet/players.json STAGE=run node tools/chain/ops.mjs <program>
 
 Wallets show a token's name, ticker and logo from its Metaplex metadata, not from the mint. On devnet `TOKEN_URI=https://hibernal.metascriptlang.org/tokens` makes `bootstrap` create it once for both mints: HBRN through `CreateHbrnMetadata` (the mint PDA signs as its own authority, the config authority keeps the update authority), SKR straight through Metaplex with the deploy wallet as mint authority. The admission service serves the JSON and logos from `tools/chain/tokens/`. Localnet has no Metaplex program, so it leaves `TOKEN_URI` unset.
 
-An owner's gift reaches L1 only after the ER commits its Pet, and a phone wallet refuses to sign an ER transaction (MWA on the Seeker reports a network mismatch, 2026-10-11). So `CommitPet` also accepts the config authority, and the admission service answers `POST /commit {"mint": <pet mint>}` by committing that Pet from the deploy wallet: once per mint per game day (`429 TooSoon` with `retryAfterSeconds`), `409 NothingToClaim` when `gift_owed` is 0. The game's VRF payer pays the commit. The owner then signs only `ClaimReward` on L1.
+An owner's gift reaches L1 only after the ER commits its Pet, and a phone wallet refuses to sign an ER transaction (MWA on the Seeker reports a network mismatch, 2026-10-11). So `CommitPet` also accepts the config authority, and the admission service answers `POST /commit {"mint": <pet mint>}` by committing that Pet from the deploy wallet: once per mint per game day (`429 TooSoon` with `retryAfterSeconds`), `409 NothingToCommit` when `gift_owed` is 0 and L1 already shows any death. A death the L1 copy does not show yet is committed at once, cooldown or not, because `PayRebirth` charges only for a death L1 has seen and the next commit of that death finds it seen. The game's VRF payer pays the commit. The owner then signs only `ClaimReward` or `PayRebirth` on L1.
 
 After a deploy, the IDL is published for explorers and other-language clients as a canonical Codama IDL through Program Metadata (`ProgM6JCCvbYkfKqJYHePx4xxSUSqJp7rh8Lyv7nk7S`; `localnet.sh` clones it from devnet). `msc run program/idl.cms | sed -n '/^{/p' > out/idl/hibernal.json` writes the Anchor 0.1.0 IDL (the first line is the build's); `node tools/chain/idlCheck.mjs` requires every client-built instruction in `hibernal.mjs` to carry the IDL's writable, signer and address flags; `STAGE=publish KEYPAIR=<upgrade authority> node tools/codama/publish.mjs <program>` converts it (`out/idl/hibernal.codama.json`, the program id filled in) and writes it on L1, `STAGE=fetch` reads it back. The CLI derives its websocket only for port 8899, so the script hands it a throwaway Solana config with `BASE_WS` (default: the RPC port + 1). A write cut off half-way leaves a truncated metadata account and 4.9 KiB buffers (measured on the 2026-10-06 localnet): `program-metadata close idl <program>` and `close-buffer <address>` for each one `list-buffers` shows, then write again. On that localnet the canonical Codama IDL of `6pCHTsy…` holds 0.0367 SOL and reads back equal to `out/idl/hibernal.codama.json`. The Codama IDL carries no PDAs until `std/solana` emits seeds (`~/metascript/.inbox/compiler/2026-10-06-std-solana-idl-pda-seeds-for-codama.md`). `npm install` in `tools/codama` once; it is kept apart from `tools/chain/node_modules`, which the live lanes share.
 
@@ -53,7 +54,7 @@ Tear-down, on every cluster: reclaim every lamport before a program is closed, b
 
 | Service | Does | If it stops |
 |---|---|---|
-| `gameCranker.mjs` (§11); `hydra-cranker` under `tools/chain/cranker.sh` as a backup (restart every 5 min and on exit, `WORKAROUND.md`) | fires each due crank (one trigger per step) | pets stop; restarted, it fires every overdue crank at once and the block catches up (measured: 6 min down, a round 2.4 min late, caught up in 6 s) |
+| `gameCranker.mjs` (§11) | fires each due crank (one trigger per step) | pets stop; restarted, it fires every overdue crank at once and the block catches up (measured: 6 min down, a round 2.4 min late, caught up in 6 s) |
 | `ops.mjs STAGE=run`, every `TICK_SECONDS` | places claimed pets into Idle blocks (creating blocks as needed, and delegating every created block that is not delegated yet, including one an interrupted run left behind); `StartBlock` for new blocks; `Sweep` of spent cranks (returns their rent to the vrf-payer); watchdog; re-sort when every block is Idle; `Load` on the ER for every living pet whose L1 `Ledger` counts more purchases than it has loaded and that has an owner slot free, so an owner signs only the L1 `Buy`; tops up the vrf-payer from its delegated funder; writes `opsStatus.json` | new pets wait unplaced, bought items wait until the owner sends `Load`, spent cranks keep their rent and fill the cranker's cache, a broken chain stays broken. Measured on devnet (500 pets): down 5 h 50 min after a full disk, the vrf-payer ran dry with 463 spent cranks unswept and every chain stalled; restarted, it swept and topped up in about 25 s and the overdue blocks went from 33 to 1 within a minute |
 | VRF oracle | answers each round's request | the block's first turn re-schedules itself every 1.5 s and requests again after 30 s; the round starts when an answer arrives (measured: oracle down 2.5 min across a round start, the round ran 2 s after it came back, the day-end turn 7 s after) |
 | `sentinel.mjs <program>`, every `TICK_SECONDS`; separate from `ops` so it outlives it | alarms (stderr, `sentinelStatus.json`, `ALERT_COMMAND` on stdin) when the L1 or ER slot stops, a block is more than `LAG_SECONDS` past due, the VRF payer is below one crank per block, `OPS_STATUS` goes stale, the disk falls under `DISK_FREE_GIB`, or the localnet ER index (`ER_INDEX`, `mdb_stat`) passes `ER_INDEX_PERCENT` | nobody hears of a stall: on 2026-10-05 the localnet ER index filled at 20:25Z and the disk at 01:55Z, and the world sat dead for 6 h unnoticed. Run once against that world it raised all five within 30 s; against devnet, none |
@@ -83,6 +84,8 @@ From `SOLANA.md` §7 items 20–21:
 | A commit of a pet (CommitPet, paid by the vrf-payer with the validator's fee vault) | the game | free for the first 25 commits a delegation, then 100,000 lamports |
 | The hatch fee of a claim and of each rebirth (D43) | the player, into the SOL fund at the `revenue` PDA, withdrawn by the authority (`withdraw_fund`) | `Config.hatch_fee_lamports`, 20,000,000 lamports by default (`HATCH_FEE_LAMPORTS` at bootstrap) |
 | ER transactions, VRF on the ephemeral queue | — | 0 (MagicBlock's pricing page; the devnet cranker's 0.01 SOL did not move over thousands of triggers) |
+
+On devnet the simulated owners' hatch fees go round: before a rebirth `behaviour.mjs` pays the owner what it lacks straight from the `revenue` fund (`WithdrawFund` to the owner), and from the deploy wallet only when the fund is short. The fund cannot pay the authority itself: the authority signs, so it is also the destination and std refuses the duplicate (`ConstraintDuplicateMutableAccount`, 2040). Without it the wallet drains into the fund at about 1 SOL a real day with 200 pets at `secondsPerDay` 3,600. Not on mainnet, where the fund is revenue.
 
 Rent is the same on mainnet and devnet (`solana rent` on both, 2026-10-03): about 5,080 lamports per byte.
 
@@ -146,7 +149,7 @@ Fresh world on the new program, 2026-10-06 (program `6pCHTsycBJgDYs59SWUDMEQvoQp
 - **The cache leaks closed cranks** (`hydra-cranker` 0.2.0 `cache.rs` `apply_update` evicts on an empty-data notification, which the ER never sends for an account leaving Hydra).
   - Every swept crank stays cached with `remaining` 0 and is scanned every slot.
   - After a 50,000-pet re-sort the cranker sat at 90% CPU firing 14–40 triggers/s. Each block had deferred its round about 34 times during the 17-minute re-sort, so about 170,000 cranks had been created and swept.
-  - A restart cached only the 5,006 live cranks and fired about 485 triggers/s at 14% CPU. `cranker.sh` restarts it every 5 min: during a catch-up the rate fell from ~426 to ~100 triggers/s within five minutes as closed cranks piled up in the cache.
+  - A restart cached only the 5,006 live cranks and fired about 485 triggers/s at 14% CPU. Restarted every 5 min (the retired `cranker.sh`), during a catch-up the rate fell from ~426 to ~100 triggers/s within five minutes as closed cranks piled up in the cache.
 - **Every crank due at once is the worst case.** The cranker sends one trigger at a time, about 500/s on this machine. A world where all blocks are behind catches up at that rate; spread blocks (`staggerSeconds`) so a round asks for far less.
 - **The 50,000-pet re-sort** took 17.5 min (`FORCE_RESORT=1 STAGE=resort`). Blocks defer their round while it runs: every 120 s plus their own stagger, so they come back spread over the stagger window instead of all at once.
 - **Parked cranks after a restart under load are already spent.**
