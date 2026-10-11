@@ -10,7 +10,6 @@ import {
 	clock,
 	programId,
 	pubkeyOf,
-	expectHasOne,
 	findProgramAddressOf,
 	pdaWithBump,
 } from "std/solana";
@@ -34,13 +33,7 @@ export const SESSION_TARGET_PROGRAM: uint64 = 40;
 export const SESSION_SIGNER: uint64 = 72;
 export const SESSION_VALID_UNTIL: uint64 = 136;
 
-export struct OwnerAccounts {
-	owner: Signer;
-	pet: Mutable<PetAccount>;
-	world: Owned<World>;
-}
-
-export struct EngageAccounts {
+export struct SessionAccounts {
 	signer: Signer;
 	pet: Mutable<PetAccount>;
 	world: Owned<World>;
@@ -69,13 +62,6 @@ export function ownerFailure(error: OwnerError): ProgramError {
 	return hibernalError(mapped);
 }
 
-function ownedPet(owner: Signer, pet: Mutable<PetAccount>): Result<Ptr<PetAccount>, ProgramError> {
-	const record = pet.data();
-	const _owner = try expectHasOne(record.owner, owner.key());
-	const _seeds = try pdaWithBump(pet, ["pet", record.mint], record.bump);
-	return Result.ok(record);
-}
-
 function sessionOf(session: Account, signer: Pubkey, owner: Pubkey, now: int64): Result<uint64, ProgramError> {
 	if (!session.isOwnedBy(Pubkey.sessionKeysProgram()) || session.dataLength() < SESSION_TOKEN_SIZE) {
 		return Result.err(hibernalError(HibernalError.NotTheOwner));
@@ -96,14 +82,19 @@ function sessionOf(session: Account, signer: Pubkey, owner: Pubkey, now: int64):
 	return Result.ok(0);
 }
 
-export function engage(): Result<uint64, ProgramError> {
-	const x = try accounts<EngageAccounts>();
+function ownerOrSession(x: SessionAccounts, unix: int64): Result<Ptr<PetAccount>, ProgramError> {
 	const record = x.pet.data();
 	const _seeds = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
-	const unix = clock().unixTimestamp;
 	if (x.signer.key() != record.owner) {
 		const _session = try sessionOf(x.session, x.signer.key(), record.owner, unix);
 	}
+	return Result.ok(record);
+}
+
+export function engage(): Result<uint64, ProgramError> {
+	const x = try accounts<SessionAccounts>();
+	const unix = clock().unixTimestamp;
+	const record = try ownerOrSession(x, unix);
 	const world = x.world.data();
 	const now = gameSecondsAt(world.global.genesisTimestamp, world.secondsPerDay, unix);
 	const engaged = record.pet.engagedAt(now);
@@ -113,10 +104,11 @@ export function engage(): Result<uint64, ProgramError> {
 }
 
 export function bank(): Result<uint64, ProgramError> {
-	const x = try accounts<OwnerAccounts>();
-	const record = try ownedPet(x.owner, x.pet);
+	const x = try accounts<SessionAccounts>();
+	const unix = clock().unixTimestamp;
+	const record = try ownerOrSession(x, unix);
 	const world = x.world.data();
-	const now = gameSecondsAt(world.global.genesisTimestamp, world.secondsPerDay, clock().unixTimestamp);
+	const now = gameSecondsAt(world.global.genesisTimestamp, world.secondsPerDay, unix);
 	const banked = record.pet.ownerBanked(now);
 	if (!banked.ok) { return Result.err(ownerFailure(banked.error)); }
 	record.pet = banked.value;

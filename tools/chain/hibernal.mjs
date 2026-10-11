@@ -440,8 +440,8 @@ export function hibernal(programAddress, authority) {
 				),
 			};
 		},
-		async bank(owner, mint) {
-			return call("Bank", [signer(owner), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world()))]);
+		async bank(by, mint, session = programAddress) {
+			return call("Bank", [signer(by), writable(await address(seeds.pet(mint))), readonly(await address(seeds.world())), readonly(session)]);
 		},
 		async commitPet(committer, mint) {
 			const validator = process.env.VALIDATOR ?? "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";

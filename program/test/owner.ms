@@ -200,15 +200,15 @@ function noSession(): HostAccount {
 	return { ...signerOf(programKey()), signer: false };
 }
 
-test "only the pet's owner or its session key can engage" {
+test "only the pet's owner or its session key can engage or bank" {
 	noon(10);
 	const accounts = [signerOf(stranger), petHolder({ ...newborn(), hearts: 1 }), realDay(), noSession()];
 	assert run(programKey(), accounts, instructionData("Engage"), entry).result == code(HibernalError.NotTheOwner);
 	const unsigned: HostAccount[] = [{ ...signerOf(owner), signer: false }, petHolder(newborn()), realDay(), noSession()];
 	assert run(programKey(), unsigned, instructionData("Engage"), entry).result ==
 		ProgramError.accountNotSigner().code;
-	const banking = [signerOf(stranger), petHolder({ ...newborn(), harvest: 1000 }), realDay()];
-	assert run(programKey(), banking, instructionData("Bank"), entry).result == ProgramError.constraintHasOne().code;
+	const banking = [signerOf(stranger), petHolder({ ...newborn(), harvest: 1000 }), realDay(), noSession()];
+	assert run(programKey(), banking, instructionData("Bank"), entry).result == code(HibernalError.NotTheOwner);
 }
 
 test "engaging bonds once a round, three times a day" {
@@ -249,13 +249,23 @@ test "a session key engages without the owner's wallet until it expires" {
 test "banking moves half the harvest to the burrow, then cools down" {
 	noon(1_000_000);
 	const rich: Pet = { ...newborn(), harvest: 1000, burrow: 0 };
-	const accounts = [signerOf(owner), petHolder(rich), realDay()];
+	const accounts = [signerOf(owner), petHolder(rich), realDay(), noSession()];
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
 	const banked = petOf(accounts[1]);
 	assert banked.harvest == 500 && banked.burrow == 500 && banked.ownerBankedAt == 1_000_000;
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == code(HibernalError.CoolingDown);
-	const empty = [signerOf(owner), petHolder({ ...newborn(), harvest: 0 }), realDay()];
+	const empty = [signerOf(owner), petHolder({ ...newborn(), harvest: 0 }), realDay(), noSession()];
 	assert run(programKey(), empty, instructionData("Bank"), entry).result == code(HibernalError.EmptyHarvest);
+}
+
+test "a session key banks without the owner's wallet" {
+	noon(1_000_000);
+	const rich: Pet = { ...newborn(), harvest: 1000, burrow: 0 };
+	const accounts = [signerOf(sessionSigner), petHolder(rich), realDay(), sessionHolder(programKey(), sessionSigner, 2_000_000)];
+	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
+	assert petOf(accounts[1]).burrow == 500;
+	const borrowed = [signerOf(stranger), petHolder(rich), realDay(), sessionHolder(programKey(), sessionSigner, 2_000_000)];
+	assert run(programKey(), borrowed, instructionData("Bank"), entry).result == code(HibernalError.NotTheOwner);
 }
 
 test "a dead pet cannot be engaged" {
@@ -266,7 +276,7 @@ test "a dead pet cannot be engaged" {
 test "on a compressed day the bank cooldown runs in game time: 8 game hours are 400 wall seconds at 1,200 s a day" {
 	const genesis: uint64 = 1_700_000_000;
 	const rich: Pet = { ...newborn(), harvest: 1000, burrow: 0 };
-	const accounts = [signerOf(owner), petHolder(rich), worldHolder(genesis, 1_200)];
+	const accounts = [signerOf(owner), petHolder(rich), worldHolder(genesis, 1_200), noSession()];
 	noon((genesis + 1_000) as int64);
 	assert run(programKey(), accounts, instructionData("Bank"), entry).result == 0;
 	assert petOf(accounts[1]).ownerBankedAt == 72_000;

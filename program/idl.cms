@@ -46,7 +46,7 @@ import {
 	UndelegationAccounts,
 } from "./admission";
 import { RoundStartAccounts, SeededAccounts, StartBlockAccounts, SweepAccounts, TurnAccounts } from "./day";
-import { EngageAccounts, OwnerAccounts } from "./owner";
+import { SessionAccounts } from "./owner";
 import { BuyAccounts, LoadAccounts } from "./shop";
 import { ClaimRewardAccounts, CommitPetAccounts } from "./payout";
 import {
@@ -71,8 +71,8 @@ export function hibernalIdl(): string {
 		ProcessUndelegation: [UndelegationAccounts],
 		Place: [PlaceAccounts],
 		Seeded: [SeededAccounts, SeededArgs],
-		Engage: [EngageAccounts],
-		Bank: [OwnerAccounts],
+		Engage: [SessionAccounts],
+		Bank: [SessionAccounts],
 		Buy: [BuyAccounts, BuyArgs],
 		Load: [LoadAccounts],
 		ResortBegin: [ResortBeginAccounts, ResortBeginArgs],
