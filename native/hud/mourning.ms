@@ -13,9 +13,14 @@ import { NotLive, livePet } from "./gameAvailability";
 import { petDisplayName } from "./petNames";
 import { blockRead } from "./neighbours";
 
-// Every death hatches the next generation in the same Pet account at dusk (program/day.ms dusked).
+// Dusk records a death; the heir hatches in the same Pet account once the owner pays PayRebirth and the
+// operator runs Rebirth (program/day.ms dusked, program/owner.ms payRebirth).
 export enum Mourning {
-	// Dead today, or hatched and waiting for a Block.
+	// Died today; nothing can be paid before dusk records it.
+	Dying,
+	// Recorded: the owner may pay for the heir.
+	RebirthUnpaid,
+	// Hatched and waiting for a Block.
 	HeirWaiting,
 	HeirArrived,
 }
@@ -88,11 +93,12 @@ function dying(snapshot: GameRead, seen: int32): Result<MournedPet, NotMourning>
 	const pet: GamePet = snapshot.pet;
 	const heir: GamePet = { ...pet, lineageGeneration: pet.lineageGeneration + 1 };
 	if (heir.lineageGeneration <= seen) { return Result.err(NotMourning.NoticeSeen); }
+	const stage: Mourning = pet.life == PetLife.DeathRecorded ? Mourning.RebirthUnpaid : Mourning.Dying;
 	if (pet.hearts > 0) {
-		return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting, cause: DeathCause.OldAge, slayerSlot: 0 });
+		return Result.ok({ pet: heir, mourning: stage, cause: DeathCause.OldAge, slayerSlot: 0 });
 	}
 	const slayer: int32 = slayerSlot(snapshot);
-	return Result.ok({ pet: heir, mourning: Mourning.HeirWaiting, cause: slayer > 0 ? DeathCause.Beaten : DeathCause.Starved,
+	return Result.ok({ pet: heir, mourning: stage, cause: slayer > 0 ? DeathCause.Beaten : DeathCause.Starved,
 		slayerSlot: slayer });
 }
 
@@ -176,5 +182,6 @@ test "a Pet that died today says how, before dusk hatches its heir" {
 	assert beaten.ok && beaten.value.cause == DeathCause.Beaten && beaten.value.slayerSlot == 10;
 	assert mournedLine(beaten.value) == "FELL TO SLOT 10 / THE HEIR STARTS WITH NOTHING";
 	const recorded = mourning(readOf(PetLife.DeathRecorded, 0), -1);
-	assert recorded.ok && recorded.value.mourning == Mourning.HeirWaiting;
+	assert recorded.ok && recorded.value.mourning == Mourning.RebirthUnpaid;
+	assert old.value.mourning == Mourning.Dying;
 }

@@ -1,3 +1,6 @@
+import { isShielded } from "../../rules/emission";
+import { OWNER_BANK_COOLDOWN_SECONDS } from "../../rules/owner";
+import { EPOCH_SECONDS } from "../../rules/units";
 import {
 	GameOwnerState,
 	GameRead,
@@ -150,6 +153,16 @@ export function summonInFlight(outcome: OwnerActionOutcome): boolean {
 	return outcome == OwnerActionOutcome.Requested || outcome == OwnerActionOutcome.SentPending;
 }
 
+// From the wallet's approval until the Pet sits in a Block: the transaction lands, the next read
+// finds the Pet, and the operator places it. Onboarding takes no taps meanwhile.
+export function summonWaiting(outcome: OwnerActionOutcome, named: boolean, read: Result<GameRead, GameReadError>): boolean {
+	if (summonInFlight(outcome)) { return true; }
+	if (outcome == OwnerActionOutcome.ConfirmedAwaitingRead && !named) { return true; }
+	if (!read.ok || read.value.state != GameReadState.PetFound) { return false; }
+	const live = livePet(read.value);
+	return !live.ok && live.error == NotLive.AwaitingPlacement;
+}
+
 export function summonStatus(outcome: OwnerActionOutcome): string {
 	return match (outcome) {
 		OwnerActionOutcome.Idle => "",
@@ -157,8 +170,8 @@ export function summonStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.Cancelled => "SUMMON CANCELLED. NOTHING SENT.",
 		OwnerActionOutcome.NoWallet => "NO WALLET APP FOUND. NOTHING SENT.",
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
-		OwnerActionOutcome.SentPending => "SUMMON SENT. CONFIRMING...",
-		OwnerActionOutcome.ConfirmedAwaitingRead => "SUMMON CONFIRMED. READING YOUR PET.",
+		OwnerActionOutcome.SentPending => "BRINGING YOUR PET ONTO SOLANA...",
+		OwnerActionOutcome.ConfirmedAwaitingRead => "YOUR PET IS ON SOLANA. LOOKING IT UP...",
 		OwnerActionOutcome.FailedOnChain => "SUMMON FAILED ON CHAIN.",
 		OwnerActionOutcome.Expired => "SUMMON EXPIRED BEFORE LANDING. RETRY.",
 		OwnerActionOutcome.Unknown => "SUMMON OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
@@ -166,6 +179,7 @@ export function summonStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.NoSeekerGenesisToken => "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.",
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING SENT.",
 		OwnerActionOutcome.GiftTooSoon => "",
+		OwnerActionOutcome.BankCoolingDown => "",
 	};
 }
 
@@ -185,6 +199,7 @@ export function buyStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.NoSeekerGenesisToken => "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.",
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING PAID.",
 		OwnerActionOutcome.GiftTooSoon => "",
+		OwnerActionOutcome.BankCoolingDown => "",
 	};
 }
 
@@ -249,6 +264,122 @@ export function giftStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.NoSeekerGenesisToken => "THIS WALLET HOLDS NO SEEKER GENESIS TOKEN.",
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING SENT.",
 		OwnerActionOutcome.GiftTooSoon => "TODAY'S GIFT IS ALREADY ON ITS WAY. MORE TOMORROW.",
+		OwnerActionOutcome.BankCoolingDown => "",
+	};
+}
+
+// A new owner's walk through the buttons, in order; each step lasts until the state it asks for appears. The
+// looking steps only while the Pet is a newborn (rules/emission.ms isShielded): the app keeps no record of them.
+export enum CoachStep {
+	Claim,
+	Stash,
+	Shop,
+	Neighbours,
+	Wallpaper,
+}
+
+export enum CoachDone {
+	AllUsed,
+}
+
+export function coachStep(pet: GamePet, shopSeen: boolean, neighboursSeen: boolean, wallpaperOn: boolean): Result<CoachStep, CoachDone> {
+	if (giftStep(pet) != GiftStep.Nothing) { return Result.ok(CoachStep.Claim); }
+	if (pet.harvest > 0 && pet.burrow == 0) { return Result.ok(CoachStep.Stash); }
+	if (!isShielded(pet.blockEpoch, pet.bornEpoch)) { return Result.err(CoachDone.AllUsed); }
+	if (!shopSeen) { return Result.ok(CoachStep.Shop); }
+	if (!neighboursSeen) { return Result.ok(CoachStep.Neighbours); }
+	if (!wallpaperOn) { return Result.ok(CoachStep.Wallpaper); }
+	return Result.err(CoachDone.AllUsed);
+}
+
+function coachIs(step: Result<CoachStep, CoachDone>, expected: CoachStep): boolean {
+	return step.ok && step.value == expected;
+}
+
+test "the coach asks for the first button the owner has not used yet" {
+	const pet: GamePet = { ...noGamePet(), harvest: 250, giftOwed: 10 };
+	assert coachIs(coachStep(pet, false, false, false), CoachStep.Claim);
+	const claimed: GamePet = { ...pet, giftOwed: 0 };
+	assert coachIs(coachStep(claimed, false, false, false), CoachStep.Stash);
+	const stashed: GamePet = { ...claimed, harvest: 125, burrow: 125 };
+	assert coachIs(coachStep(stashed, false, false, false), CoachStep.Shop);
+	assert coachIs(coachStep(stashed, true, false, false), CoachStep.Neighbours);
+	assert coachIs(coachStep(stashed, true, true, false), CoachStep.Wallpaper);
+	assert !coachStep(stashed, true, true, true).ok;
+	const grown: GamePet = { ...stashed, blockEpoch: 10, bornEpoch: 2 };
+	assert !coachStep(grown, false, false, false).ok;
+	assert coachIs(coachStep({ ...grown, giftOwed: 5 }, false, false, false), CoachStep.Claim);
+}
+
+// The hatch fee for a dead Pet's heir, from the tap until the operator hatches it.
+export function rebirthStatus(outcome: OwnerActionOutcome): string {
+	return match (outcome) {
+		OwnerActionOutcome.Idle => "",
+		OwnerActionOutcome.Requested => "APPROVE THE HATCH FEE IN YOUR WALLET.",
+		OwnerActionOutcome.Cancelled => "CANCELLED. NOTHING PAID.",
+		OwnerActionOutcome.NoWallet => "NO WALLET OR PET READ. NOTHING PAID.",
+		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
+		OwnerActionOutcome.SentPending => "PAYING THE HATCH FEE...",
+		OwnerActionOutcome.ConfirmedAwaitingRead => "PAID. THE HEIR HATCHES IN A MINUTE.",
+		OwnerActionOutcome.FailedOnChain => "HATCH FEE REFUSED BY THE PROGRAM. NOTHING PAID.",
+		OwnerActionOutcome.Expired => "EXPIRED BEFORE LANDING. RETRY.",
+		OwnerActionOutcome.Unknown => "OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
+		OwnerActionOutcome.Unavailable => "HATCH PREFLIGHT FAILED. NOTHING PAID.",
+		OwnerActionOutcome.NoSeekerGenesisToken => "",
+		OwnerActionOutcome.AdmissionFailed => "",
+		OwnerActionOutcome.GiftTooSoon => "",
+		OwnerActionOutcome.BankCoolingDown => "",
+	};
+}
+
+const MINUTE: uint64 = 60;
+const HOUR: uint64 = 3600;
+const DAY: uint64 = 86400;
+
+// A span of game time as the owner waits it: a game day lasts World.seconds_per_day, shorter on a sped-up devnet.
+export function realSpan(gameSeconds: uint64, secondsPerDay: uint64): string {
+	if (secondsPerDay == 0) {
+		console.log("realSpan: no World read, game time shown");
+		return (gameSeconds / HOUR).toString() + " GAME HOURS";
+	}
+	const seconds: uint64 = gameSeconds * secondsPerDay / EPOCH_SECONDS;
+	if (seconds >= 2 * DAY) { return (seconds / DAY).toString() + " DAYS"; }
+	if (seconds >= DAY) { return "A DAY"; }
+	if (seconds >= 2 * HOUR) { return (seconds / HOUR).toString() + " HOURS"; }
+	if (seconds >= HOUR) { return "AN HOUR"; }
+	if (seconds >= 2 * MINUTE) { return (seconds / MINUTE).toString() + " MINUTES"; }
+	return "A MINUTE";
+}
+
+test "game time reads in the owner's time at the World's day length" {
+	assert realSpan(3 * EPOCH_SECONDS, DAY) == "3 DAYS";
+	assert realSpan(EPOCH_SECONDS, DAY) == "A DAY";
+	assert realSpan(OWNER_BANK_COOLDOWN_SECONDS, DAY) == "8 HOURS";
+	assert realSpan(3 * EPOCH_SECONDS, HOUR) == "3 HOURS";
+	assert realSpan(EPOCH_SECONDS, HOUR) == "AN HOUR";
+	assert realSpan(OWNER_BANK_COOLDOWN_SECONDS, HOUR) == "20 MINUTES";
+	assert realSpan(OWNER_BANK_COOLDOWN_SECONDS, 60) == "A MINUTE";
+}
+
+// STASH moves half the harvest into the burrow, where fights cannot take it (rules/owner.ms ownerBanked).
+export function bankStatus(outcome: OwnerActionOutcome, secondsPerDay: uint64): string {
+	return match (outcome) {
+		OwnerActionOutcome.Idle => "",
+		OwnerActionOutcome.Requested => "STASHING. ONCE A WEEK, YOUR WALLET APPROVES THE APP FIRST.",
+		OwnerActionOutcome.Cancelled => "STASH CANCELLED. NOTHING SENT.",
+		OwnerActionOutcome.NoWallet => "NO WALLET OR PET READ. NOTHING SENT.",
+		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
+		OwnerActionOutcome.SentPending => "STASHING...",
+		OwnerActionOutcome.ConfirmedAwaitingRead => "HALF THE HARVEST IS SAFE IN THE BURROW.",
+		OwnerActionOutcome.FailedOnChain => "STASH REFUSED BY THE PROGRAM. NOTHING MOVED.",
+		OwnerActionOutcome.Expired => "EXPIRED BEFORE LANDING. RETRY.",
+		OwnerActionOutcome.Unknown => "OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
+		OwnerActionOutcome.Unavailable => "STASH PREFLIGHT FAILED. NOTHING SENT.",
+		OwnerActionOutcome.NoSeekerGenesisToken => "",
+		OwnerActionOutcome.AdmissionFailed => "",
+		OwnerActionOutcome.GiftTooSoon => "",
+		OwnerActionOutcome.BankCoolingDown => "STASH WORKS ONCE IN " + realSpan(OWNER_BANK_COOLDOWN_SECONDS, secondsPerDay)
+			+ ". TRY LATER.",
 	};
 }
 
@@ -294,6 +425,42 @@ test "summon asks the wallet only with no Pet or a claimed Pet awaiting delegati
 	assert !summonAllowed(snapshot);
 	assert summonInFlight(OwnerActionOutcome.SentPending);
 	assert !summonInFlight(OwnerActionOutcome.Unknown);
+}
+
+test "summon waits from the wallet's approval until the Pet sits in a Block" {
+	const none: Result<GameRead, GameReadError> = Result.err(GameReadError.Updating);
+	let snapshot: GameRead = {
+		ownerRevision: 2,
+		state: GameReadState.NoPet,
+		baseSlot: 1,
+		ephemeralSlot: 2,
+		admissionHoldings: 1,
+		admissionMembers: 1,
+		unclaimedMembers: 0,
+		detail: "",
+		ageSeconds: 0,
+		pet: noGamePet(),
+		seats: [],
+		fights: [],
+	};
+	assert !summonWaiting(OwnerActionOutcome.Idle, false, Result.ok(snapshot));
+	assert summonWaiting(OwnerActionOutcome.Requested, false, Result.ok(snapshot));
+	assert summonWaiting(OwnerActionOutcome.SentPending, false, none);
+	assert summonWaiting(OwnerActionOutcome.ConfirmedAwaitingRead, false, Result.ok(snapshot));
+	assert !summonWaiting(OwnerActionOutcome.Cancelled, false, Result.ok(snapshot));
+	assert !summonWaiting(OwnerActionOutcome.WalletFailed, false, Result.ok(snapshot));
+	snapshot.state = GameReadState.PetFound;
+	snapshot.pet.life = PetLife.ClaimedUnplaced;
+	snapshot.pet.delegated = true;
+	assert summonWaiting(OwnerActionOutcome.ConfirmedAwaitingRead, true, Result.ok(snapshot));
+	assert summonWaiting(OwnerActionOutcome.Idle, true, Result.ok(snapshot));
+	snapshot.pet.delegated = false;
+	assert !summonWaiting(OwnerActionOutcome.Idle, true, Result.ok(snapshot));
+	snapshot.pet.life = PetLife.FirstLifeActive;
+	snapshot.pet.delegated = true;
+	snapshot.pet.member = true;
+	snapshot.pet.blockStarted = true;
+	assert !summonWaiting(OwnerActionOutcome.ConfirmedAwaitingRead, true, Result.ok(snapshot));
 }
 
 test "read results never turn a found or unsupported Pet into game ready" {

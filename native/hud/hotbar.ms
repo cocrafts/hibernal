@@ -101,9 +101,9 @@ function centredText(ui: Ui, kit: Kit, id: int32, line: string, centreX: float32
 
 // `slots` holds HOTBAR_SLOTS item piece names, EMPTY_SLOT for an empty one. An empty owner slot shows "+" only when
 // `shopSlots`, since it opens the shop; xpToNext 0 hides the XP numbers. `rarities` is each slot's Item.rarity,
-// 0 for none, and rims the slot in its grade's colour.
+// 0 for none, and rims the slot in its grade's colour. `plusFade` dims the "+" slots, 1.0 for none.
 export function hotbar(ui: Ui, kit: Kit, id: int32, y: float32, level: int32, xp: uint32, xpToNext: uint32, slots: string[],
-	rarities: int32[], shopSlots: boolean): HotbarTap {
+	rarities: int32[], shopSlots: boolean, plusFade: float32): HotbarTap {
 	if (slots.length != HOTBAR_SLOTS || rarities.length != HOTBAR_SLOTS) {
 		console.log("hotbar: " + (slots.length as int32).toString() + " slots and " + (rarities.length as int32).toString()
 			+ " rarities, not " + HOTBAR_SLOTS.toString());
@@ -132,8 +132,10 @@ export function hotbar(ui: Ui, kit: Kit, id: int32, y: float32, level: int32, xp
 	for (let slot: int32 = 0; slot < HOTBAR_SLOTS; slot += 1) {
 		const slotX: float32 = SLOT_X + SLOT_STEP * (slot as float32);
 		const empty: boolean = slots[slot] == EMPTY_SLOT;
+		const plus: boolean = empty && shopSlots && slot >= PET_SLOTS;
 		pressedLook(kit, subId(id + 6, slot), held(ui, subId(id + 6, slot), slotX, y + SLOT_Y, slotWidth, slotHeight));
-		piece(kit, subId(id + 2, slot), PieceLayer.Frames, empty && shopSlots && slot >= PET_SLOTS ? "plusSlot" : "slot", slotX, y + SLOT_Y);
+		if (plus) { kit.fade = Math.min(kit.fade, plusFade); }
+		piece(kit, subId(id + 2, slot), PieceLayer.Frames, plus ? "plusSlot" : "slot", slotX, y + SLOT_Y);
 		if (pressable(ui, subId(id + 6, slot), slotX, y + SLOT_Y, slotWidth, slotHeight)) {
 			result = { ...result, kind: HotbarTapKind.Slot, slot: slot };
 		}

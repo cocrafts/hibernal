@@ -1,3 +1,4 @@
+import { NEWBORN_EPOCHS, isShielded } from "../../rules/emission";
 import { Color, rgba } from "@metascript/void/src/void2d/types";
 import {
 	Ui, PetHead, PetHeadHidden, box, createUi, beginUi, endUi, beginOverlay, endOverlay, held, pressable, DESIGN_W, DESIGN_H,
@@ -34,14 +35,14 @@ import { mournedLine, mournedName, mournedPet } from "./mourning";
 import { Gesture, Taps, noTaps, gestureOf } from "./gestures";
 import { groupedAmount, hbrnAmount, heartShare, HeartCountError, levelProgress } from "./gameNumbers";
 import {
-	GiftStep, IncomeUnknown, buyStatus, currentLivePet, dailyIncome, giftOwedToOwner, giftStatus, giftStep, summonInFlight,
+	CoachDone, CoachStep, GiftStep, IncomeUnknown, bankStatus, coachStep, realSpan, buyStatus, currentLivePet, dailyIncome, giftOwedToOwner, giftStatus, giftStep, summonInFlight,
 } from "./gameAvailability";
 import { NeighbourBlock, currentNeighbourBlock, fightActivities } from "./neighbours";
 import {
 	NeighbourVisit, neighbourVisitState, HOME_SEAT, canVisit, stepVisit, visitCaption, visitHome, visitedNeighbour, neighbourName,
 	neighbourCard,
 } from "./neighbourVisit";
-import { BPS } from "../../rules/units";
+import { BPS, EPOCH_SECONDS } from "../../rules/units";
 import { Region } from "../../rules/stats";
 import { GameNeighbour, GamePet, PetLife, noGamePet, OwnerAction, OwnerActionOutcome, ownerActionOutcome, requestOwnerAction } from "../host/host";
 
@@ -72,6 +73,12 @@ interface Home {
 	buyAsked: boolean;
 	buyOutcome: OwnerActionOutcome;
 	giftOutcome: OwnerActionOutcome;
+	bankAsked: boolean;
+	// What the coach line has seen the owner do while the app ran.
+	shopSeen: boolean;
+	neighboursSeen: boolean;
+	coach: Result<CoachStep, CoachDone>;
+	bankOutcome: OwnerActionOutcome;
 	onboardingNameId: uint8;
 	// The last live Pet read, at most one; the chain keeps no record of gear or level changes, so the app logs those it sees.
 	seen: SeenPet[];
@@ -119,6 +126,11 @@ export function initHudHome(): void {
 		buyAsked: false,
 		buyOutcome: OwnerActionOutcome.Idle,
 		giftOutcome: OwnerActionOutcome.Idle,
+		bankAsked: false,
+		shopSeen: false,
+		neighboursSeen: false,
+		coach: Result.err(CoachDone.AllUsed),
+		bankOutcome: OwnerActionOutcome.Idle,
 		onboardingNameId: randomPetName(NO_PET_NAME),
 	};
 	homes.push(home);
@@ -201,6 +213,7 @@ const GROWTH_ID: int32 = 2971;
 const BURROW_ROW: int32 = 0;
 const GIFT_ROW: int32 = 2;
 const CLAIM_ID: int32 = 2950;
+const STASH_ID: int32 = 2973;
 const CLAIM_GAP: float32 = 4.0;
 const HEAD_HEARTS_ID: int32 = 2962;
 // In the scene's pixels, so the bar reads as part of the pixel-art scene.
@@ -481,10 +494,10 @@ function petBanners(pet: GamePet): Banner[] {
 	] }];
 }
 
-// Right of the BURROW row while a growth dose is working.
-function growthBanner(home: Home, pet: GamePet, left: float32): void {
-	if (!growthActive(pet)) { return; }
-	banner(home.ui, home.kit, GROWTH_ID, BannerArt.Display, left, COLUMNS_TOP + BANNER_STEP * (BURROW_ROW as float32), [
+// Right of the BURROW row while a growth dose is working; returns where the next banner starts.
+function growthBanner(home: Home, pet: GamePet, left: float32): float32 {
+	if (!growthActive(pet)) { return left; }
+	return CLAIM_GAP + banner(home.ui, home.kit, GROWTH_ID, BannerArt.Display, left, COLUMNS_TOP + BANNER_STEP * (BURROW_ROW as float32), [
 		{ text: "GROWTH", colour: HOLO_BLUE },
 		{ text: "+" + (((pet.growthMultiplierBps - BPS) / 100) as int32).toString() + "%", colour: HOLO_GREEN },
 	]);
@@ -510,6 +523,7 @@ function claimBanner(home: Home, pet: GamePet, left: float32, y: float32): void 
 		GiftStep.Claim => "CLAIM",
 	};
 	pressedLook(home.kit, subId(CLAIM_ID, 15), enabled && home.ui.down && home.ui.activeId == subId(CLAIM_ID, 15));
+	coachLook(home, CoachStep.Claim);
 	const right: float32 = banner(home.ui, home.kit, CLAIM_ID, enabled ? BannerArt.Pressable : BannerArt.Display, left, y,
 		[{ text: label, colour: enabled ? INK_BRIGHT : INK_MUTED }]);
 	plainLook(home.kit);
@@ -517,6 +531,22 @@ function claimBanner(home: Home, pet: GamePet, left: float32, y: float32): void 
 	if (pressable(home.ui, subId(CLAIM_ID, 15), left, y, right - left, height) && enabled) {
 		home.giftAsked = true;
 		requestOwnerAction(OwnerAction.ClaimReward, 0);
+	}
+}
+
+// On the BURROW row while there is harvest to move into it; orange while it can be pressed.
+function stashBanner(home: Home, pet: GamePet, left: float32): void {
+	if (pet.harvest == 0) { return; }
+	const enabled: boolean = !(home.bankAsked && summonInFlight(ownerActionOutcome()));
+	const y: float32 = COLUMNS_TOP + BANNER_STEP * (BURROW_ROW as float32);
+	pressedLook(home.kit, subId(STASH_ID, 15), enabled && home.ui.down && home.ui.activeId == subId(STASH_ID, 15));
+	coachLook(home, CoachStep.Stash);
+	const right: float32 = banner(home.ui, home.kit, STASH_ID, enabled ? BannerArt.Pressable : BannerArt.Display, left, y,
+		[{ text: "STASH", colour: enabled ? INK_BRIGHT : INK_MUTED }]);
+	plainLook(home.kit);
+	if (pressable(home.ui, subId(STASH_ID, 15), left, y, right - left, pieceHeight(home.kit, "bannerBody")) && enabled) {
+		home.bankAsked = true;
+		requestOwnerAction(OwnerAction.Bank, 0);
 	}
 }
 
@@ -629,19 +659,58 @@ function notePetChanges(home: Home, pet: GamePet): void {
 	home.seen = [now];
 }
 
+const COACH_PULSE_SECONDS: float64 = 1.2;
+const COACH_DIMMEST: float32 = 0.4;
+
+// The widget the coach line names breathes, so the owner finds it.
+function coachFade(home: Home, step: CoachStep): float32 {
+	if (!home.coach.ok || home.coach.value != step) { return 1.0; }
+	const phase: float64 = performance.now() / 1000.0 / COACH_PULSE_SECONDS * Math.PI * 2.0;
+	return COACH_DIMMEST + (1.0 - COACH_DIMMEST) * (0.5 + 0.5 * Math.cos(phase)) as float32;
+}
+
+// Call between a look and plainLook.
+function coachLook(home: Home, step: CoachStep): void {
+	home.kit.fade = Math.min(home.kit.fade, coachFade(home, step));
+}
+
+// At the top of the log until the owner has used every button once.
+function coachRows(home: Home): PetActivity[] {
+	const step = home.coach;
+	const rows: PetActivity[] = [];
+	if (!step.ok) { return rows; }
+	const row: PetActivity = match (step.value) {
+		CoachStep.Claim => ({ day: 0, glyph: "gift", line: "TAP CLAIM: YOUR PET'S GIFT GOES TO YOUR WALLET.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Stash => ({ day: 0, glyph: "lock", line: "FIGHTS STEAL HARVEST. TAP STASH TO SAVE HALF.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Shop => ({ day: 0, glyph: "gearBought", line: "TAP + ON THE BAR TO BUY GEAR WITH YOUR SKR.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Neighbours => ({ day: 0, glyph: "fightWon", line: "SWIPE SIDEWAYS TO MEET YOUR NEIGHBOURS.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Wallpaper => ({ day: 0, glyph: "worked", line: "TICK SET AS WALLPAPER TO WATCH IT LIVE.", amount: 0, slot: NO_NEIGHBOUR }),
+	};
+	rows.push(row);
+	return rows;
+}
+
 // The chain records fights only; gear and level changes come from what the app saw while it ran.
 function liveActivities(home: Home, block: NeighbourBlock): PetActivity[] {
-	const rows: PetActivity[] = [];
+	const live = currentLivePet();
+	const rows: PetActivity[] = coachRows(home);
 	for (const row of home.petChanges) { rows.push(row); }
 	for (const row of fightActivities(block)) { rows.push(row); }
 	if ((rows.length as int32) > 0) { return rows; }
-	return [{ day: 0, glyph: "lock", line: "NO FIGHTS OR CHANGES SEEN YET", amount: 0, slot: NO_NEIGHBOUR }];
+	// rules/emission.ms isShielded: a newborn neither fights nor is fought; income lands at the next dawn.
+	const secondsPerDay: uint64 = live.ok ? live.value.secondsPerDay : 0;
+	const line: string = isShielded(block.epoch, block.me.bornEpoch)
+		? "SAFE FROM FIGHTS UP TO " + realSpan((block.me.bornEpoch + NEWBORN_EPOCHS - block.epoch) * EPOCH_SECONDS, secondsPerDay)
+			+ " MORE. FIRST HARVEST WITHIN " + realSpan(EPOCH_SECONDS, secondsPerDay) + "."
+		: "IT FORAGES AND FIGHTS ON ITS OWN. CHECK BACK LATER.";
+	return [{ day: 0, glyph: "lock", line: line, amount: 0, slot: NO_NEIGHBOUR }];
 }
 
 function toastOutcome(home: Home, outcome: OwnerActionOutcome, status: string): void {
 	if (status == "") { return; }
 	pushToast(home.toasts, status, outcome != OwnerActionOutcome.SentPending && outcome != OwnerActionOutcome.Requested
-		&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead && outcome != OwnerActionOutcome.GiftTooSoon);
+		&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead && outcome != OwnerActionOutcome.GiftTooSoon
+		&& outcome != OwnerActionOutcome.BankCoolingDown);
 }
 
 function settled(outcome: OwnerActionOutcome): boolean {
@@ -666,6 +735,16 @@ function followGift(home: Home): void {
 	if (settled(outcome)) { home.giftAsked = false; }
 }
 
+// The same for a STASH tap.
+function followBank(home: Home): void {
+	const outcome = ownerActionOutcome();
+	if (!home.bankAsked || outcome == home.bankOutcome) { return; }
+	home.bankOutcome = outcome;
+	const live = currentLivePet();
+	toastOutcome(home, outcome, bankStatus(outcome, live.ok ? live.value.secondsPerDay : 0));
+	if (settled(outcome)) { home.bankAsked = false; }
+}
+
 // Registered before the widgets over the area, so a press that starts on one of them belongs to it.
 function pageGesture(home: Home, top: float32, bottom: float32): Gesture {
 	if (!pressable(home.ui, PAGE_GESTURE_ID, 0.0, top, DESIGN_W, bottom - top)) { return Gesture.None; }
@@ -683,6 +762,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	if (block.ok) {
 		const visiting = visitedNeighbour(home.visit, block.value);
 		if (visiting.ok) {
+			home.neighboursSeen = true;
 			neighbourFrame(home, block.value, visiting.value, petHead);
 			return;
 		}
@@ -692,6 +772,10 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	if (live.ok) { notePetChanges(home, live.value); }
 	followPurchase(home);
 	followGift(home);
+	followBank(home);
+	if (home.shopOpen) { home.shopSeen = true; }
+	home.coach = live.ok ? coachStep(live.value, home.shopSeen, home.neighboursSeen, wallpaperPlace() != WallpaperPlace.Off)
+		: Result.err(CoachDone.AllUsed);
 	home.ui.blockBase = home.shopOpen;
 	const numbers: HomeNumbers = homeNumbers(home);
 	const heartMeterShare: Result<float32, HeartCountError> = heartShare(numbers.hearts, numbers.maxHearts);
@@ -701,7 +785,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	}
 	const barTop: float32 = DESIGN_H - HOTBAR_HEIGHT - HOTBAR_BOTTOM_PADDING;
 	const tapped: HotbarTap = hotbar(home.ui, home.kit, HOTBAR_ID, barTop, numbers.level, numbers.xp, numbers.xpToNext,
-		home.inventory, slotRarities(live.ok ? live.value.gear : previewGear()), true);
+		home.inventory, slotRarities(live.ok ? live.value.gear : previewGear()), true, coachFade(home, CoachStep.Shop));
 	const heldItem: int32 = tapped.held != NO_SLOT && home.inventory[tapped.held] != EMPTY_SLOT ? tapped.held : NO_SLOT;
 	if (heldItem != NO_SLOT) {
 		itemPeek(home.ui, home.kit, ITEM_CARD_ID, hotbarSlotCentreX(home.kit, heldItem), barTop + hotbarTopEdge() - ITEM_CARD_GAP,
@@ -716,10 +800,11 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	const treeToggleTop: float32 = COLUMNS_TOP + STAT_COLUMN_HEIGHT + CHARACTER_STATS_GAP;
 	const wallpaperTop: float32 = treeToggleTop + STACKED_ROW_HEIGHT;
 	// One action for both: the system picker asks for the home screen, the lock screen or both.
-	if (toggleRow(home.ui, home.kit, WALLPAPER_ACTION_ID, DESIGN_W - COLUMN_RIGHT_PADDING, wallpaperTop, STACKED_ROW_HEIGHT,
-		WALLPAPER_LABEL, wallpaperPlace() != WallpaperPlace.Off, true)) {
-		requestWallpaperPicker();
-	}
+	coachLook(home, CoachStep.Wallpaper);
+	const wallpaperTapped: boolean = toggleRow(home.ui, home.kit, WALLPAPER_ACTION_ID, DESIGN_W - COLUMN_RIGHT_PADDING, wallpaperTop, STACKED_ROW_HEIGHT,
+		WALLPAPER_LABEL, wallpaperPlace() != WallpaperPlace.Off, true);
+	plainLook(home.kit);
+	if (wallpaperTapped) { requestWallpaperPicker(); }
 	// Gone once Android lets the news through; turning it off again is Android's Settings.
 	if (numbers.live && !petNewsAllowed() && toggleRow(home.ui, home.kit, PET_NEWS_ID, DESIGN_W - COLUMN_RIGHT_PADDING,
 		wallpaperTop + STACKED_ROW_HEIGHT, STACKED_ROW_HEIGHT, PET_NEWS_LABEL, false, true)) {
@@ -740,7 +825,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 		if (income.ok) {
 			incomeBanner(home, live.ok ? hbrnAmount(income.value) : groupedAmount(income.value), rights[HARVEST_ROW] + CLAIM_GAP);
 		}
-		if (live.ok) { growthBanner(home, live.value, rights[BURROW_ROW] + CLAIM_GAP); }
+		if (live.ok) { stashBanner(home, live.value, growthBanner(home, live.value, rights[BURROW_ROW] + CLAIM_GAP)); }
 	}
 	if (live.ok && !home.treeShown) {
 		claimBanner(home, live.value, rights[GIFT_ROW] + CLAIM_GAP, COLUMNS_TOP + BANNER_STEP * (GIFT_ROW as float32));
@@ -788,6 +873,7 @@ function titleName(home: Home, name: string, region: Result<Region, NoLeaning>):
 
 function arrowButton(home: Home, id: int32, art: string, x: float32): boolean {
 	pressedLook(home.kit, id, visitHeld(home, id, x, VISIT_BUTTON));
+	if (id == VISIT_NEXT_ID) { coachLook(home, CoachStep.Neighbours); }
 	pieceSized(home.kit, id, PieceLayer.Frames, art, x, TITLE_TOP, VISIT_BUTTON, VISIT_BUTTON);
 	plainLook(home.kit);
 	return visitPress(home, id, x, VISIT_BUTTON);
@@ -826,7 +912,7 @@ function neighbourFrame(home: Home, block: NeighbourBlock, seat: GameNeighbour, 
 	const inventory: string[] = neighbourInventory(seat);
 	// The Pet account keeps no XP to the next level for a neighbour's bar to show.
 	const tapped: HotbarTap = hotbar(home.ui, home.kit, HOTBAR_ID, barTop, seat.level, 0, 0, inventory,
-		slotRarities(seat.gear), false);
+		slotRarities(seat.gear), false, 1.0);
 	const heldItem: int32 = tapped.held != NO_SLOT && inventory[tapped.held] != EMPTY_SLOT ? tapped.held : NO_SLOT;
 	if (heldItem != NO_SLOT) {
 		itemPeek(home.ui, home.kit, ITEM_CARD_ID, hotbarSlotCentreX(home.kit, heldItem), barTop + hotbarTopEdge() - ITEM_CARD_GAP,
