@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { promisify } from "node:util";
 import { address, getBase58Decoder, getProgramDerivedAddress } from "@solana/kit";
 import {
 	DELEGATION_PROGRAM,
@@ -42,6 +44,8 @@ const CRANKS_PER_BLOCK = BigInt(process.env.CRANKS_PER_BLOCK ?? 8);
 const FUNDER_LAMPORTS = BigInt(process.env.FUNDER_LAMPORTS ?? 2_000_000_000);
 const BLOCKS_PER_TRANSACTION = Number(process.env.BLOCKS_PER_TRANSACTION ?? 2);
 const PLACES_PER_TRANSACTION = Number(process.env.PLACES_PER_TRANSACTION ?? 5);
+const FILL_MASTER = process.env.FILL_MASTER;
+const FILL_LAMPORTS = process.env.FILL_LAMPORTS ?? "35000000";
 const SWEEP_BATCH = Number(process.env.SWEEP_BATCH ?? 20);
 const PARALLEL = Number(process.env.PARALLEL ?? 16);
 const WATCHDOG_SLOTS = BigInt(process.env.WATCHDOG_SLOTS ?? 6_000);
@@ -753,12 +757,35 @@ async function loads() {
 	if (reborn.length > 0) note("rebirth", `reborn ${reborn.length} pets`);
 }
 
+async function playersStage(stage, first, count, registry) {
+	const env = { ...process.env, STAGE: stage, FIRST: String(first), COUNT: String(count), MASTER: FILL_MASTER, FUND_LAMPORTS: FILL_LAMPORTS, PETS_FILE: registry };
+	await promisify(execFile)(process.execPath, [new URL("./players.mjs", import.meta.url).pathname], { env, maxBuffer: 64 << 20 });
+}
+
+async function filledForPlayers() {
+	if (!FILL_MASTER) return { skipped: "no FILL_MASTER" };
+	const registry = process.env.PETS_FILE ?? `${NET_DIR}/players.json`;
+	const simulated = JSON.parse(readFileSync(registry, "utf8"));
+	const simulatedPets = new Set(await Promise.all(simulated.map((player) => petAddress(address(player.mint)))));
+	state.filledBlocks ??= {};
+	const withPlayers = (await allBlocks()).filter((block) => !block.missing && !state.filledBlocks[block.id] && block.members.some((member) => member && !simulatedPets.has(member)));
+	const empty = withPlayers.reduce((total, block) => total + block.members.filter((member) => member === null).length, 0);
+	if (empty > 0) {
+		const next = simulated.length;
+		for (const stage of ["admit", "fund", "claim"]) await playersStage(stage, next, empty, registry);
+		await playersStage("export", 0, next + empty, registry);
+		note("fill", `${empty} simulated owners joined for real players in blocks ${withPlayers.map((block) => block.id).join(",")}`);
+	}
+	for (const block of withPlayers) state.filledBlocks[block.id] = true;
+	return { filled: empty };
+}
+
 async function run() {
 	if (delegated(await read(baseRead, await vrfPayerAddress()))) await sweep();
 	await bootstrap();
 	for (;;) {
 		const started = Date.now();
-		for (const [name, work] of [["blocks", blocks], ["sweep", sweep], ["watchdog", watchdog], ["resort", resort], ["load", loads], ["fund", bootstrap], ["status", status]]) {
+		for (const [name, work] of [["blocks", blocks], ["fill", filledForPlayers], ["sweep", sweep], ["watchdog", watchdog], ["resort", resort], ["load", loads], ["fund", bootstrap], ["status", status]]) {
 			try {
 				await work();
 			} catch (error) {
@@ -770,7 +797,7 @@ async function run() {
 	}
 }
 
-const stages = { bootstrap, blocks, sweep, watchdog, resort, load: loads, status, run };
+const stages = { bootstrap, blocks, fill: filledForPlayers, sweep, watchdog, resort, load: loads, status, run };
 if (!stages[STAGE]) throw new Error(`unknown stage ${STAGE}`);
 const outcome = await stages[STAGE]();
 if (outcome !== undefined && STAGE !== "run") console.log(json(outcome));

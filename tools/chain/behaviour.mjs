@@ -45,6 +45,7 @@ const STAGE = process.env.STAGE ?? "run";
 const PETS = Number(process.env.PETS ?? 20);
 const SEED = BigInt(process.env.SEED ?? 3);
 const POLL_MS = Number(process.env.POLL_MS ?? 3000);
+const RESEND_EVERY_POLLS = 8;
 const MINUTES = Number(process.env.MINUTES ?? 22);
 const PARALLEL = Number(process.env.PARALLEL ?? 8);
 const BLOCK_PARALLEL = Number(process.env.BLOCK_PARALLEL ?? 1);
@@ -60,8 +61,8 @@ const LEDGER_SETTLE_MS = 1000;
 const ITEM = { Food: 0, Growth: 1, Insurance: 2 };
 
 const HABITS = {
-	Devoted: { visitPercent: 90n, opensPercent: 50n, feedBelowBps: 7000n, foodTier: 2, growthPercent: 30n, growthSteps: 3, insurePercent: 100n },
-	Casual: { visitPercent: 35n, opensPercent: 10n, feedBelowBps: 5000n, foodTier: 1, growthPercent: 10n, growthSteps: 1, insurePercent: 5n },
+	Devoted: { visitPercent: 70n, opensPercent: 30n, feedBelowBps: 7000n, foodTier: 2, growthPercent: 30n, growthSteps: 3, insurePercent: 100n },
+	Casual: { visitPercent: 25n, opensPercent: 5n, feedBelowBps: 5000n, foodTier: 1, growthPercent: 10n, growthSteps: 1, insurePercent: 5n },
 	Absent: { visitPercent: 0n, opensPercent: 0n, feedBelowBps: 0n, foodTier: 0, growthPercent: 0n, growthSteps: 1, insurePercent: 0n },
 };
 
@@ -125,16 +126,22 @@ async function derivedSigner(master, domain, index) {
 	return await createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(bytes));
 }
 
+function masterSeed() {
+	return Buffer.from(readFileSync(process.env.MASTER ?? "out/localnet/playersMaster.hex", "utf8").trim(), "hex");
+}
+
+async function ownerAt(master, index) {
+	const owner = await derivedSigner(master, "player", index);
+	const mint = await derivedSigner(master, "mint", index);
+	return { index, owner, mint: mint.address, kind: ownerKindFor(SEED, index) };
+}
+
 async function ownersOf() {
 	const owners = [];
 	if (process.env.PLAYERS) {
 		const [first, count] = process.env.PLAYERS.split(":").map(Number);
-		const master = Buffer.from(readFileSync(process.env.MASTER ?? "out/localnet/playersMaster.hex", "utf8").trim(), "hex");
-		for (let index = first; index < first + count; index++) {
-			const owner = await derivedSigner(master, "player", index);
-			const mint = await derivedSigner(master, "mint", index);
-			owners.push({ index, owner, mint: mint.address, kind: ownerKindFor(SEED, index) });
-		}
+		const master = masterSeed();
+		for (let index = first; index < first + count; index++) owners.push(await ownerAt(master, index));
 		return owners;
 	}
 	const lines = readFileSync("out/admission/mints.txt", "utf8").trim().split("\n").slice(0, PETS);
@@ -190,12 +197,14 @@ async function submitOnce(rpc, instructions, feePayer, units) {
 	);
 	const transaction = await signTransactionMessageWithSigners(message);
 	const signature = getSignatureFromTransaction(transaction);
+	const wire = getBase64EncodedWireTransaction(transaction);
 	try {
-		await rpc.sendTransaction(getBase64EncodedWireTransaction(transaction), { encoding: "base64", skipPreflight: true }).send();
+		await rpc.sendTransaction(wire, { encoding: "base64", skipPreflight: true }).send();
 	} catch (error) {
 		return { ok: false, error: `send: ${error.message}`, signature, cloneFailed: cloneRejected(error) };
 	}
 	for (let attempt = 0; attempt < 120; attempt++) {
+		if (attempt > 0 && attempt % RESEND_EVERY_POLLS === 0) await rpc.sendTransaction(wire, { encoding: "base64", skipPreflight: true }).send().catch(() => {});
 		const { value } = await rpc.getSignatureStatuses([signature]).send();
 		const status = value[0];
 		if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) {
@@ -286,8 +295,8 @@ async function onramp(owners, config) {
 	console.log(`onramp: ${distinct.length} owners hold at least ${ONRAMP_SKR} SKR`);
 }
 
-async function petState(entry) {
-	const holder = await read(ephemeral, await program.address(program.seeds.pet(entry.mint)));
+async function petState(entry, rpc = ephemeral) {
+	const holder = await read(rpc, await program.address(program.seeds.pet(entry.mint)));
 	if (!holder) return null;
 	const field = (name) => fieldOf(holder.data, name);
 	return {
@@ -343,15 +352,30 @@ async function claimed(entry, config, epoch) {
 	}
 }
 
+async function fundPaid(epoch, owner, lamports) {
+	const fund = await program.address(program.seeds.revenue());
+	const pooled = (await baseRead.getBalance(fund).send()).value;
+	const kept = await baseRead.getMinimumBalanceForRentExemption(0n).send();
+	if (pooled < kept + lamports) return false;
+	return recorded(epoch, "rebirth:fund", await submit(base, [await program.withdrawFund(lamports, owner)], wallet)).ok;
+}
+
 async function reborn(entry, config, epoch, pet) {
 	const ledger = await read(baseRead, await program.address(program.seeds.ledger(entry.mint)));
 	if (ledger && BigInt(readU32(ledger.data, ledgerAt.rebirths)) > pet.lineage) return;
 	const balance = (await baseRead.getBalance(entry.owner.address).send()).value;
 	const needed = config.hatchFeeLamports + REBIRTH_HEADROOM_LAMPORTS;
-	if (balance < needed) {
+	if (balance < needed && !(await fundPaid(epoch, entry.owner.address, needed - balance))) {
 		const topUp = { programAddress: SYSTEM_PROGRAM, accounts: [writableSigner(wallet), writable(entry.owner.address)], data: joined(u32(2), u64(needed - balance)) };
 		const funded = recorded(epoch, "rebirth:topUp", await submit(base, [topUp], wallet));
 		if (!funded.ok) return;
+	}
+	const committed = recorded(epoch, "rebirth:commit", await submit(ephemeral, [await program.commitPet(entry.owner, entry.mint)], entry.owner));
+	if (!committed.ok) return;
+	let onBase = await petState(entry, baseRead);
+	for (let wait = 0; wait < 24 && !(onBase && !onBase.alive && onBase.diedEpoch > 0n); wait++) {
+		await sleep(1000);
+		onBase = await petState(entry, baseRead);
 	}
 	recorded(epoch, "rebirth", await submit(base, [await program.payRebirth(entry.owner, entry.mint)], entry.owner));
 }
@@ -395,6 +419,17 @@ async function blockState(id) {
 	return { phase: holder.data[blockAt.phase], round: holder.data[blockAt.round], epoch: readU64(holder.data, blockAt.epoch) };
 }
 
+async function joinedOwners(owners) {
+	const registry = process.env.PETS_FILE;
+	if (!registry || !process.env.PLAYERS || !existsSync(registry)) return [];
+	const listed = JSON.parse(readFileSync(registry, "utf8")).length;
+	const next = owners[owners.length - 1].index + 1;
+	const master = masterSeed();
+	const joined = [];
+	for (let index = next; index < listed; index++) joined.push(await ownerAt(master, index));
+	return joined;
+}
+
 async function run(owners, config) {
 	const kinds = owners.reduce((count, entry) => ({ ...count, [entry.kind]: (count[entry.kind] ?? 0) + 1 }), {});
 	status.owners = kinds;
@@ -417,6 +452,13 @@ async function run(owners, config) {
 	status.handled ??= {};
 	const until = Date.now() + MINUTES * 60_000;
 	while (Date.now() < until) {
+		const joined = await joinedOwners(owners);
+		if (joined.length > 0) {
+			await onramp(joined, config);
+			owners.push(...joined);
+			unplaced.push(...joined);
+			console.log(`${new Date().toISOString()} ${joined.length} owners joined to fill a real player's block, ${owners.length} in all`);
+		}
 		if (unplaced.length > 0) {
 			const waiting = unplaced.length;
 			unplaced = await placeInto(unplaced);

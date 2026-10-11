@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import {
 	address,
 	appendTransactionMessageInstructions,
@@ -355,7 +355,8 @@ async function claim() {
 async function exported() {
 	const players = await playersIn(FIRST, COUNT);
 	const path = process.env.PETS_FILE ?? "out/localnet/players.json";
-	writeFileSync(path, JSON.stringify(players.map((player) => ({ index: player.index, owner: player.owner.address, mint: player.mint.address }))));
+	writeFileSync(`${path}.tmp`, JSON.stringify(players.map((player) => ({ index: player.index, owner: player.owner.address, mint: player.mint.address }))));
+	renameSync(`${path}.tmp`, path);
 	console.log(`wrote ${players.length} players to ${path}`);
 }
 
