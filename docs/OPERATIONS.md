@@ -45,6 +45,8 @@ Recovery on 2026-10-04 uses `tools/chain/localnet.sh` `l1`/`er`: L1 retention is
 
 L1 retention also executed on the 50k run: its real `getFirstAvailableBlock` returned 8,674 at current slot 11,831, so old blocks had been purged. Later `du -sh` reported 7.7 GiB for the L1 ledger (7.3 GiB RocksDB, 261 MiB accounts) and 2.2 GiB ER storage; `df` had 151 GiB free. These physical sizes are not the configured quota: RocksDB metadata/compaction and logs add space beyond retained shreds, and logs remain unbounded.
 
+Tear-down, on every cluster: reclaim every lamport before a program is closed, because only the owning program can debit its accounts and a closed program id can never be deployed again. Six devnet worlds closed this way before 2026-10-11 left about 5 SOL each in Pet, Paid, Ledger, Block, World, Config and Policy rent. The order is: stop the lanes; sweep the cranks; undelegate every delegated account so its delegation deposit returns; close the program's accounts through the program; `STAGE=refund` in `players.mjs` for the simulated owners; drain `WithdrawFund`, the ops funder and the cranker wallet; close leftover buffers; close the program last. The program has no instruction that closes its own accounts yet, so until it does, a reset loses that rent.
+
 `Config.secondsPerDay` sets the length of a game day: 86,400 on mainnet, compressed on localnet and devnet. It is fixed at `Initialize`, which refuses a day shorter than four seconds, a zero slot time and a zero turn gap.
 
 ## 3. Services and what they repair

@@ -56,6 +56,10 @@ Repo-specific on top of it:
 
 A MetaScript or runtime limitation follows the workspace compiler boundary in `~/metascript/CLAUDE.md`, read it first: smallest repro on the installed `msc`, a card in `~/metascript/.inbox/compiler/`, the blocked work parked at a named site that points at the card. Nothing is edited, built or committed under `~/metascript/recompiler` or a worktree of it from here.
 
+## Chain operations
+
+- Before closing a program on any cluster, reclaim everything it and its accounts hold, in the tear-down order of `docs/OPERATIONS.md` §2, because a closed program's accounts can never be closed and their rent is lost.
+
 ## Git
 
 Never commit without asking. When asked, use `/split-commit`.
