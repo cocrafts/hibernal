@@ -35,6 +35,7 @@ object VoidNative {
     external fun setWalletState(state: Int, address: String)
     external fun takeOwnerActionRequest(): Int
     external fun setOwnerActionState(state: Int)
+    external fun setOwnerActionRefusal(code: Int)
     external fun setGameOwner(state: Int, publicKey: ByteArray)
     external fun gameOwnerRevision(): Int
     external fun setGameRead(

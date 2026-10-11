@@ -12,6 +12,7 @@ import {
 	PetLife,
 	gameRead,
 	noGamePet,
+	ownerActionRefusal,
 } from "../host/host";
 import { levelForXp } from "../../rules/level";
 import { EMISSION_START, pendingReward } from "../../rules/emission";
@@ -165,6 +166,44 @@ export function summonWaiting(outcome: OwnerActionOutcome, named: boolean, read:
 	return !live.ok && live.error == NotLive.AwaitingPlacement;
 }
 
+export enum NoRefusalLine {
+	Unknown,
+}
+
+// The refusals an owner can meet, by code: 6000 + HibernalError's index (program/layout.ms), or the
+// shell's FUNDS_SHORT. Any other code keeps the action's own line.
+export function refusalLine(code: int32): Result<string, NoRefusalLine> {
+	return match (code) {
+		1 => Result.ok("NOT ENOUGH SOL OR SKR IN YOUR WALLET. NOTHING SENT."),
+		6005 => Result.ok("THIS TOKEN IS NOT ADMITTED TO THE GAME. NOTHING SENT."),
+		6018 => Result.ok("YOUR PET HAS DIED. NOTHING SENT."),
+		6024 => Result.ok("NO GIFT TO CLAIM YET. NOTHING SENT."),
+		6031 => Result.ok("NO HARVEST TO STASH YET."),
+		6032 => Result.ok("STASH IS RESTING. TRY AGAIN LATER."),
+		6034 => Result.ok("THE DAILY GIFT LIMIT IS REACHED. TRY AGAIN LATER."),
+		6040 => Result.ok("THE WORLD IS FULL FOR NOW. TRY AGAIN LATER."),
+		6042 => Result.ok("ALL HBRN HAS BEEN MINTED. NO MORE GIFTS."),
+		6044 => Result.ok("BOTH ITEM SLOTS ARE FULL. YOUR PET USES THEM UP OVER TIME."),
+		6046 => Result.ok("THE APP'S 7-DAY APPROVAL ENDED. TAP AGAIN TO RENEW IT."),
+		6050 => Result.ok("ITS DEATH IS NOT RECORDED YET. TRY AGAIN SOON."),
+		6052 => Result.ok("THIS HEIR IS ALREADY PAID FOR. NOTHING PAID."),
+		_ => Result.err(NoRefusalLine.Unknown),
+	};
+}
+
+function refusedOr(fallback: string): string {
+	const line = refusalLine(ownerActionRefusal());
+	return line.ok ? line.value : fallback;
+}
+
+test "a refusal the owner can meet reads as its reason" {
+	const paid = refusalLine(6052);
+	assert paid.ok && paid.value == "THIS HEIR IS ALREADY PAID FOR. NOTHING PAID.";
+	assert refusalLine(1).ok;
+	assert !refusalLine(6017).ok;
+	assert !refusalLine(0).ok;
+}
+
 export function summonStatus(outcome: OwnerActionOutcome): string {
 	return match (outcome) {
 		OwnerActionOutcome.Idle => "",
@@ -174,7 +213,7 @@ export function summonStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
 		OwnerActionOutcome.SentPending => "BRINGING YOUR PET ONTO SOLANA...",
 		OwnerActionOutcome.ConfirmedAwaitingRead => "YOUR PET IS ON SOLANA. LOOKING IT UP...",
-		OwnerActionOutcome.FailedOnChain => "SUMMON FAILED ON CHAIN.",
+		OwnerActionOutcome.FailedOnChain => refusedOr("SUMMON FAILED ON CHAIN."),
 		OwnerActionOutcome.Expired => "SUMMON EXPIRED BEFORE LANDING. RETRY.",
 		OwnerActionOutcome.Unknown => "SUMMON OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
 		OwnerActionOutcome.Unavailable => "SUMMON PREFLIGHT FAILED. NOTHING SENT.",
@@ -195,7 +234,7 @@ export function buyStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
 		OwnerActionOutcome.SentPending => "PURCHASE SENT. CONFIRMING ON DEVNET.",
 		OwnerActionOutcome.ConfirmedAwaitingRead => "PAID. ITEMS REACH SLOTS 5 AND 6 WITHIN A MINUTE.",
-		OwnerActionOutcome.FailedOnChain => "PURCHASE REFUSED BY THE PROGRAM. NOTHING PAID.",
+		OwnerActionOutcome.FailedOnChain => refusedOr("PURCHASE REFUSED BY THE PROGRAM. NOTHING PAID."),
 		OwnerActionOutcome.Expired => "EXPIRED BEFORE LANDING. RETRY.",
 		OwnerActionOutcome.Unknown => "OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
 		OwnerActionOutcome.Unavailable => "PURCHASE PREFLIGHT FAILED. NOTHING PAID.",
@@ -261,7 +300,7 @@ export function giftStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
 		OwnerActionOutcome.SentPending => "SENT. CONFIRMING ON DEVNET.",
 		OwnerActionOutcome.ConfirmedAwaitingRead => "CONFIRMED. WAITING FOR THE NEXT READ.",
-		OwnerActionOutcome.FailedOnChain => "CLAIM REFUSED BY THE PROGRAM. NOTHING PAID.",
+		OwnerActionOutcome.FailedOnChain => refusedOr("CLAIM REFUSED BY THE PROGRAM. NOTHING PAID."),
 		OwnerActionOutcome.Expired => "EXPIRED BEFORE LANDING. RETRY.",
 		OwnerActionOutcome.Unknown => "OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
 		OwnerActionOutcome.Unavailable => "CLAIM PREFLIGHT FAILED. NOTHING SENT.",
@@ -323,13 +362,13 @@ test "the coach asks for the first button the owner has not used yet" {
 export function rebirthStatus(outcome: OwnerActionOutcome): string {
 	return match (outcome) {
 		OwnerActionOutcome.Idle => "",
-		OwnerActionOutcome.Requested => "APPROVE THE HATCH FEE IN YOUR WALLET.",
+		OwnerActionOutcome.Requested => "CHECKING ITS DEATH ON SOLANA. THE WALLET OPENS NEXT.",
 		OwnerActionOutcome.Cancelled => "CANCELLED. NOTHING PAID.",
 		OwnerActionOutcome.NoWallet => "NO WALLET OR PET READ. NOTHING PAID.",
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
 		OwnerActionOutcome.SentPending => "PAYING THE HATCH FEE...",
 		OwnerActionOutcome.ConfirmedAwaitingRead => "PAID. THE HEIR HATCHES IN A MINUTE.",
-		OwnerActionOutcome.FailedOnChain => "HATCH FEE REFUSED BY THE PROGRAM. NOTHING PAID.",
+		OwnerActionOutcome.FailedOnChain => refusedOr("HATCH FEE REFUSED BY THE PROGRAM. NOTHING PAID."),
 		OwnerActionOutcome.Expired => "EXPIRED BEFORE LANDING. RETRY.",
 		OwnerActionOutcome.Unknown => "OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
 		OwnerActionOutcome.Unavailable => "HATCH PREFLIGHT FAILED. NOTHING PAID.",
@@ -397,7 +436,7 @@ export function bankStatus(outcome: OwnerActionOutcome, secondsPerDay: uint64): 
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
 		OwnerActionOutcome.SentPending => "STASHING...",
 		OwnerActionOutcome.ConfirmedAwaitingRead => "HALF THE HARVEST IS SAFE IN THE BURROW.",
-		OwnerActionOutcome.FailedOnChain => "STASH REFUSED BY THE PROGRAM. NOTHING MOVED.",
+		OwnerActionOutcome.FailedOnChain => refusedOr("STASH REFUSED BY THE PROGRAM. NOTHING MOVED."),
 		OwnerActionOutcome.Expired => "EXPIRED BEFORE LANDING. RETRY.",
 		OwnerActionOutcome.Unknown => "OUTCOME UNKNOWN. WAIT FOR THE NEXT READ.",
 		OwnerActionOutcome.Unavailable => "STASH PREFLIGHT FAILED. NOTHING SENT.",

@@ -186,7 +186,7 @@ class WalletBridge(private val activity: MainActivity) {
             GameSync.CONFIG, nameId, hbrnMint, hbrnTokenProgram), owner, GameSync.PROGRAM)
         preview.simulation.value.error?.let { error ->
             Log.e(TAG, "Summon simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
-            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            VoidNative.setOwnerActionRefusal(OwnerSigning.refusalCode(error))
             return
         }
         signAndConfirm(preview, ownerKey)
@@ -245,7 +245,7 @@ class WalletBridge(private val activity: MainActivity) {
             GameSync.CONFIG, hbrnMint, tokenProgram), owner, GameSync.PROGRAM)
         preview.simulation.value.error?.let { error ->
             Log.e(TAG, "Claim simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
-            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            VoidNative.setOwnerActionRefusal(OwnerSigning.refusalCode(error))
             return
         }
         signAndConfirm(preview, ownerKey)
@@ -280,7 +280,7 @@ class WalletBridge(private val activity: MainActivity) {
             GameSync.CONFIG, config, skrTokenProgram, OwnerShop.cart(cartCode)), owner, GameSync.PROGRAM)
         preview.simulation.value.error?.let { error ->
             Log.e(TAG, "Buy simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
-            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            VoidNative.setOwnerActionRefusal(OwnerSigning.refusalCode(error))
             return
         }
         signAndConfirm(preview, ownerKey)
@@ -327,7 +327,7 @@ class WalletBridge(private val activity: MainActivity) {
             OwnerOnboarding.payRebirth(owner, pet.mint, GameSync.PROGRAM, GameSync.CONFIG), owner, GameSync.PROGRAM)
         preview.simulation.value.error?.let { error ->
             Log.e(TAG, "Rebirth simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
-            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            VoidNative.setOwnerActionRefusal(OwnerSigning.refusalCode(error))
             return
         }
         signAndConfirm(preview, ownerKey)
@@ -394,7 +394,7 @@ class WalletBridge(private val activity: MainActivity) {
         val simulation = base.simulateTransaction(unsigned, blockhash.slot).value
         simulation.error?.let { error ->
             Log.e(TAG, "Session simulation failed: $error ${simulation.logs?.takeLast(6)}")
-            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            VoidNative.setOwnerActionRefusal(OwnerSigning.refusalCode(error))
             return null
         }
         if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {

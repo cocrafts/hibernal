@@ -75,6 +75,13 @@ class OwnerSigningTest {
 
     private fun refused(answer: OwnerSigning.WalletAnswer) = answer as OwnerSigning.WalletAnswer.Refused
 
+    @Test fun aRefusalCarriesTheProgramsCodeOrFundsShort() {
+        assertEquals(6052, OwnerSigning.refusalCode(org.json.JSONObject("""{"InstructionError":[2,{"Custom":6052}]}""")))
+        assertEquals(OwnerSigning.FUNDS_SHORT, OwnerSigning.refusalCode("InsufficientFundsForFee"))
+        assertEquals(0, OwnerSigning.refusalCode(org.json.JSONObject("""{"InstructionError":[0,"InvalidAccountData"]}""")))
+        assertEquals(0, OwnerSigning.refusalCode("AccountNotFound"))
+    }
+
     @Test fun walletSignsReviewedEnvelopeThroughSignTransactionsOnly() = runBlocking {
         val wallet = signingWallet()
         val answer = OwnerSigning.sign(preview(), wallet) as OwnerSigning.WalletAnswer.Signed

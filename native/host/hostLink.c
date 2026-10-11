@@ -24,6 +24,7 @@ static char s_walletAddress[45];
 static atomic_int s_ownerActionState;
 static atomic_int s_ownerActionRequest;
 static atomic_int s_ownerActionRevision;
+static atomic_int s_ownerActionRefusal;
 static atomic_int s_gameOwnerState;
 static atomic_int s_gameOwnerRevision;
 static pthread_mutex_t s_gameOwnerMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -130,11 +131,12 @@ int hostWalletAddressByte(int index) {
 
 void hostRequestOwnerAction(int action, int item) {
 	int state = atomic_load(&s_ownerActionState);
-	if (state == 1 || state == 5) return;
+	if (state == 1 || state == 5 || state == 15) return;
 	if (action < 0 || action > 8 || item < 0 || item > 0xffff) {
 		hostSetOwnerAction(9);
 		return;
 	}
+	atomic_store(&s_ownerActionRefusal, 0);
 	atomic_store(&s_ownerActionState, 1);
 	atomic_fetch_add(&s_ownerActionRevision, 1);
 	atomic_store(&s_ownerActionRequest, (action + 1) | (item << 8));
@@ -143,9 +145,18 @@ void hostRequestOwnerAction(int action, int item) {
 int hostTakeOwnerActionRequest(void) { return atomic_exchange(&s_ownerActionRequest, 0); }
 
 void hostSetOwnerAction(int state) {
+	atomic_store(&s_ownerActionRefusal, 0);
 	atomic_store(&s_ownerActionState, state < 0 || state > 15 ? 9 : state);
 	atomic_fetch_add(&s_ownerActionRevision, 1);
 }
+
+void hostSetOwnerActionRefusal(int code) {
+	atomic_store(&s_ownerActionRefusal, code < 0 ? 0 : code);
+	atomic_store(&s_ownerActionState, 7);
+	atomic_fetch_add(&s_ownerActionRevision, 1);
+}
+
+int hostOwnerActionRefusal(void) { return atomic_load(&s_ownerActionRefusal); }
 
 int hostOwnerActionState(void) { return atomic_load(&s_ownerActionState); }
 int hostOwnerActionRevision(void) { return atomic_load(&s_ownerActionRevision); }

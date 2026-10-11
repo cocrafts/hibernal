@@ -55,6 +55,10 @@ int hostTakeOwnerActionRequest(void);
 // State 0..13 is host.ms OwnerActionOutcome; anything else publishes Unknown (9).
 void hostSetOwnerAction(int state);
 int hostOwnerActionState(void);
+// FailedOnChain with the program's error code (6000 + HibernalError, or 1 for funds short), 0 when unknown;
+// any other outcome clears it.
+void hostSetOwnerActionRefusal(int code);
+int hostOwnerActionRefusal(void);
 int hostOwnerActionRevision(void);
 
 // Read-only game identity, independent of wallet authorization and disconnect.

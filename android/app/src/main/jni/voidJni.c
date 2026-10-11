@@ -24,6 +24,7 @@ extern int hostTakeWalletRequest(void);
 extern void hostSetWallet(int state, const char *address);
 extern int hostTakeOwnerActionRequest(void);
 extern void hostSetOwnerAction(int state);
+extern void hostSetOwnerActionRefusal(int code);
 extern void hostSetGameOwner(int state, const unsigned char *publicKey, int length);
 extern int hostGameOwnerRevision(void);
 extern int hostSetGameRead(int ownerRevision, int state, uint64_t baseSlot,
@@ -157,6 +158,12 @@ JNIEXPORT void JNICALL
 Java_app_hibernal_VoidNative_setOwnerActionState(JNIEnv *env, jobject thiz, jint state) {
 	(void)env; (void)thiz;
 	hostSetOwnerAction((int)state);
+}
+
+JNIEXPORT void JNICALL
+Java_app_hibernal_VoidNative_setOwnerActionRefusal(JNIEnv *env, jobject thiz, jint code) {
+	(void)env; (void)thiz;
+	hostSetOwnerActionRefusal((int)code);
 }
 
 JNIEXPORT void JNICALL

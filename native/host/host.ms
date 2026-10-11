@@ -30,6 +30,8 @@ extern function hostWalletRevision(): int32;
 extern function hostWalletAddressByte(index: int32): int32;
 extern function hostRequestOwnerAction(action: int32, item: int32): void;
 extern function hostOwnerActionState(): int32;
+extern function hostOwnerActionRefusal(): int32;
+extern function hostSetOwnerActionRefusal(code: int32): void;
 extern function hostOwnerActionRevision(): int32;
 extern function hostTakeOwnerActionRequest(): int32;
 extern function hostSetOwnerAction(state: int32): void;
@@ -222,6 +224,18 @@ export function requestOwnerAction(action: OwnerAction, item: int32): void {
 		unreachable;
 	}
 	hostRequestOwnerAction(action as int32, item);
+}
+
+// With FailedOnChain: the program's error code (hostLink.h hostSetOwnerActionRefusal), 0 when unknown.
+export function ownerActionRefusal(): int32 {
+	return hostOwnerActionRefusal();
+}
+
+test "a refusal code rides with FailedOnChain and clears with the next outcome" {
+	hostSetOwnerActionRefusal(6052);
+	assert ownerActionOutcome() == OwnerActionOutcome.FailedOnChain && ownerActionRefusal() == 6052;
+	hostSetOwnerAction(OwnerActionOutcome.Idle as int32);
+	assert ownerActionRefusal() == 0;
 }
 
 export function ownerActionOutcome(): OwnerActionOutcome {

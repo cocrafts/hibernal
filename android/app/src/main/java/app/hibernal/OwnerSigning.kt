@@ -11,6 +11,8 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import java.io.IOException
 import java.math.BigInteger
+import org.json.JSONArray
+import org.json.JSONObject
 
 object OwnerSigning {
     // Ordinals are the host ABI: native/host/host.ms OwnerAction and OwnerActionOutcome.
@@ -144,6 +146,17 @@ object OwnerSigning {
 
     fun remoteCode(error: Throwable): Int? =
         generateSequence(error) { it.cause }.take(8).filterIsInstance<JsonRpc20RemoteException>().firstOrNull()?.code
+
+    // The code native turns into a reason (hostLink.h hostSetOwnerActionRefusal): a program's
+    // {"InstructionError":[index,{"Custom":code}]}, 1 when the fee or rent is short (as the System and Token
+    // programs' own code 1), else 0.
+    const val FUNDS_SHORT = 1
+
+    fun refusalCode(error: Any?): Int = when (error) {
+        "InsufficientFundsForFee", "InsufficientFundsForRent" -> FUNDS_SHORT
+        is JSONObject -> ((error.opt("InstructionError") as? JSONArray)?.opt(1) as? JSONObject)?.optInt("Custom", 0) ?: 0
+        else -> 0
+    }
 
     const val POLL_MILLIS = 2_000L
     const val MAX_POLLS = 300
