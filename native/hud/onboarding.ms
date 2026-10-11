@@ -2,7 +2,7 @@ import { Color, rgba } from "@metascript/void/src/void2d/types";
 import { Ui, DESIGN_W, DESIGN_H, box, pressable, held, beginOverlay, endOverlay } from "../ui/ui";
 import {
 	Kit, PieceLayer, say, fill, pieceSized, capsCentredY, measure, beginKitOverlay, endKitOverlay,
-	INK_BRIGHT, INK_MUTED, HOLO_BLUE, DISABLED_INK,
+	INK_BRIGHT, INK_MUTED, HOLO_BLUE, DISABLED_INK, EMBER_HOT,
 } from "./kit";
 import { connectLabel, connectWallet, ownerKnown, walletLine, walletPending, walletStatus } from "./walletConnection";
 import { randomPetName, petDisplayName } from "./petNames";
@@ -50,6 +50,7 @@ const WAITING_Y: float32 = 715.0;
 const WAITING_MASK: Color = rgba(0.0, 0.02, 0.06, 0.6);
 const INTRO_Y: float32 = 538.0;
 const INTRO: string = "YOUR PET LIVES ON SOLANA, EVEN WHILE THIS APP IS CLOSED. IT FORAGES, FIGHTS ITS NEIGHBOURS AND GROWS ON ITS OWN.";
+const PERMADEATH: string = "IF IT DIES, IT STAYS DEAD.";
 // Under Summon before it is pressed: what signing costs on devnet.
 const SUMMON_COST: string = "ONE WALLET SIGNATURE. DEVNET, NO REAL MONEY.";
 export const PET_PREVIEW_X: float32 = HOLOGRAM_X + HOLOGRAM_WIDTH * 0.5;
@@ -157,7 +158,10 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	say(ui, kit, id + 7, dead.ok ? mournedLine(dead.value)
 		: (named.ok ? "YOUR PET" : "PICK A NAME. IT STAYS FOR LIFE."), LEFT, 504.0, WIDTH, 8.0,
 		HOLO_BLUE, 0.5);
-	if (picking) { say(ui, kit, id + 8, INTRO, LEFT, INTRO_Y, WIDTH, 8.0, INK_MUTED, 0.5); }
+	if (picking) {
+		say(ui, kit, id + 8, INTRO, LEFT, INTRO_Y, WIDTH, 8.0, INK_MUTED, 0.5);
+		say(ui, kit, id + 31, PERMADEATH, LEFT, INTRO_Y + 30.0, WIDTH, 8.0, EMBER_HOT, 0.5);
+	}
 	const heirName: string = petDisplayName(nameId, heirGeneration as uint16);
 	const summoned: string = !dead.ok ? "SUMMON " + name
 		: dead.value.mourning == Mourning.Dying ? "HATCH AFTER DUSK"

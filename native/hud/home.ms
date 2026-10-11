@@ -42,7 +42,7 @@ import {
 	NeighbourVisit, neighbourVisitState, HOME_SEAT, canVisit, stepVisit, visitCaption, visitHome, visitedNeighbour, neighbourName,
 	neighbourCard,
 } from "./neighbourVisit";
-import { BPS, EPOCH_SECONDS } from "../../rules/units";
+import { ACTS_PER_EPOCH, BPS, EPOCH_SECONDS } from "../../rules/units";
 import { Region } from "../../rules/stats";
 import { GameNeighbour, GamePet, PetLife, noGamePet, OwnerAction, OwnerActionOutcome, ownerActionOutcome, requestOwnerAction } from "../host/host";
 
@@ -676,10 +676,10 @@ function coachRows(home: Home): PetActivity[] {
 	const rows: PetActivity[] = [];
 	if (!step.ok) { return rows; }
 	const row: PetActivity = match (step.value) {
-		CoachStep.Claim => ({ day: 0, glyph: "gift", line: "TAP CLAIM: YOUR PET'S GIFT GOES TO YOUR WALLET.", amount: 0, slot: NO_NEIGHBOUR }),
-		CoachStep.Stash => ({ day: 0, glyph: "lock", line: "FIGHTS STEAL HARVEST. TAP STASH TO SAVE HALF.", amount: 0, slot: NO_NEIGHBOUR }),
-		CoachStep.Shop => ({ day: 0, glyph: "gearBought", line: "TAP + ON THE BAR TO BUY GEAR WITH YOUR SKR.", amount: 0, slot: NO_NEIGHBOUR }),
-		CoachStep.Neighbours => ({ day: 0, glyph: "fightWon", line: "SWIPE SIDEWAYS TO MEET YOUR NEIGHBOURS.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Claim => ({ day: 0, glyph: "gift", line: "TAP CLAIM: YOUR PET'S GIFT GOES TO YOUR WALLET AS HBRN.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Stash => ({ day: 0, glyph: "lock", line: "FIGHTS STEAL HARVEST, NOT BURROW. TAP STASH TO SAVE HALF.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Shop => ({ day: 0, glyph: "gearBought", line: "TAP +: FOOD HEALS IT, GEAR MAKES IT STRONGER. PAID IN SKR.", amount: 0, slot: NO_NEIGHBOUR }),
+		CoachStep.Neighbours => ({ day: 0, glyph: "fightWon", line: "SWIPE SIDEWAYS: NEIGHBOURS RAID YOU, AND YOU RAID THEM.", amount: 0, slot: NO_NEIGHBOUR }),
 		CoachStep.Wallpaper => ({ day: 0, glyph: "worked", line: "TICK SET AS WALLPAPER TO WATCH IT LIVE.", amount: 0, slot: NO_NEIGHBOUR }),
 	};
 	rows.push(row);
@@ -695,11 +695,17 @@ function liveActivities(home: Home, block: NeighbourBlock): PetActivity[] {
 	if ((rows.length as int32) > 0) { return rows; }
 	// rules/emission.ms isShielded: a newborn neither fights nor is fought; income lands at the next dawn.
 	const secondsPerDay: uint64 = live.ok ? live.value.secondsPerDay : 0;
-	const line: string = isShielded(block.epoch, block.me.bornEpoch)
-		? "SAFE FROM FIGHTS UP TO " + realSpan((block.me.bornEpoch + NEWBORN_EPOCHS - block.epoch) * EPOCH_SECONDS, secondsPerDay)
-			+ " MORE. FIRST HARVEST WITHIN " + realSpan(EPOCH_SECONDS, secondsPerDay) + "."
-		: "IT FORAGES AND FIGHTS ON ITS OWN. CHECK BACK LATER.";
-	return [{ day: 0, glyph: "lock", line: line, amount: 0, slot: NO_NEIGHBOUR }];
+	if (!isShielded(block.epoch, block.me.bornEpoch)) {
+		return [{ day: 0, glyph: "lock", line: "IT FORAGES AND FIGHTS ON ITS OWN. CHECK BACK LATER.", amount: 0, slot: NO_NEIGHBOUR }];
+	}
+	// The coach is done with a newborn: each visit a round apart counts (rules/owner.ms engagedAt).
+	const basics = "YOU KNOW THE BASICS. CHECK BACK EVERY " + realSpan(EPOCH_SECONDS / (ACTS_PER_EPOCH as uint64), secondsPerDay) + ".";
+	const shield = "SAFE FROM FIGHTS UP TO " + realSpan((block.me.bornEpoch + NEWBORN_EPOCHS - block.epoch) * EPOCH_SECONDS, secondsPerDay)
+		+ " MORE. NEXT HARVEST WITHIN " + realSpan(EPOCH_SECONDS, secondsPerDay) + ".";
+	return [
+		{ day: 0, glyph: "worked", line: basics, amount: 0, slot: NO_NEIGHBOUR },
+		{ day: 0, glyph: "lock", line: shield, amount: 0, slot: NO_NEIGHBOUR },
+	];
 }
 
 function toastOutcome(home: Home, outcome: OwnerActionOutcome, status: string): void {
