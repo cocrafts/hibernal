@@ -46,6 +46,7 @@ const PETS = Number(process.env.PETS ?? 20);
 const SEED = BigInt(process.env.SEED ?? 3);
 const POLL_MS = Number(process.env.POLL_MS ?? 3000);
 const RESEND_EVERY_POLLS = 8;
+const COMMIT_WAIT_SECONDS = 30;
 const MINUTES = Number(process.env.MINUTES ?? 22);
 const PARALLEL = Number(process.env.PARALLEL ?? 8);
 const BLOCK_PARALLEL = Number(process.env.BLOCK_PARALLEL ?? 1);
@@ -82,6 +83,7 @@ const petTypes = Object.fromEntries(idl.types.find((entry) => entry.name === "Pe
 const blockAt = accountOffsets(idl, "Block");
 const configAt = accountOffsets(idl, "Config");
 const ledgerAt = accountOffsets(idl, "Ledger");
+const paidAt = accountOffsets(idl, "Paid");
 const REBIRTH_HEADROOM_LAMPORTS = 1_000_000n;
 const errorNames = Object.fromEntries(idl.errors.map((entry) => [entry.code, entry.name]));
 
@@ -337,9 +339,27 @@ async function bought(entry, config, epoch, item, tier, wholeSkr, label) {
 	recorded(epoch, `load:${label}`, await submit(ephemeral, [await program.load(entry.mint)], entry.owner));
 }
 
+async function paidTotal(entry) {
+	const paid = await read(baseRead, await program.address(program.seeds.paid(entry.mint)));
+	return paid ? readU64(paid.data, paidAt.total) : 0n;
+}
+
+async function committedOnL1(entry, paid) {
+	for (let wait = 0; wait < COMMIT_WAIT_SECONDS; wait++) {
+		if (((await petState(entry, baseRead))?.giftOwed ?? 0n) > paid) return true;
+		await sleep(1000);
+	}
+	return false;
+}
+
 async function claimed(entry, config, epoch) {
+	const paid = await paidTotal(entry);
+	if (((await petState(entry))?.giftOwed ?? 0n) <= paid) return;
 	recorded(epoch, "commit", await submit(ephemeral, [await program.commitPet(entry.owner, entry.mint)], entry.owner));
-	await sleep(3000);
+	if (!(await committedOnL1(entry, paid))) {
+		recorded(epoch, "claim", { ok: false, error: `commit not on L1 after ${COMMIT_WAIT_SECONDS} s` });
+		return;
+	}
 	const destination = await associated(entry.owner.address, config.hbrnMint);
 	const before = await tokenBalance(destination);
 	const instructions = [];
