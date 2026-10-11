@@ -339,7 +339,10 @@ object GameSync {
     }
 
     private fun publish(revision: Int, publication: Publication): Boolean = with(publication) {
-        livePet?.takeIf { state == 3 }?.let { VoidNative.setDeathNoticeSeen(DeathNoticeStore.seen(it.owner, it.address)) }
+        livePet?.takeIf { state == 3 }?.let {
+            VoidNative.setDeathNoticeSeen(DeathNoticeStore.seen(it.owner, it.address))
+            VoidNative.setCoachSeen(CoachStore.seen(it.owner))
+        }
         VoidNative.setGameRead(revision, state, baseSlot, ephemeralSlot, holdings, members, unclaimed, detail, pet.toLongArray(),
             seats.toLongArray(), fights.toLongArray())
     }

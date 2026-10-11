@@ -26,7 +26,7 @@ import {
 } from "./character";
 import { toggleRow } from "./toggles";
 import { Talent, TalentKind, TalentGrade } from "../../rules/talent";
-import { petNewsAllowed, requestPetNews, requestWallpaperPicker, wallpaperPlace, WallpaperPlace } from "../host/host";
+import { CoachLook, coachSeen, markCoachSeen, petNewsAllowed, requestPetNews, requestWallpaperPicker, wallpaperPlace, WallpaperPlace } from "../host/host";
 import { INFO_PANEL_HEIGHT } from "./shapes";
 import { ActivityLog, activityLogState, activityLog } from "./activityLog";
 import { NO_NEIGHBOUR, PetActivity, STAND_IN_ACTIVITIES } from "./activity";
@@ -75,8 +75,6 @@ interface Home {
 	giftOutcome: OwnerActionOutcome;
 	bankAsked: boolean;
 	// What the coach line has seen the owner do while the app ran.
-	shopSeen: boolean;
-	neighboursSeen: boolean;
 	coach: Result<CoachStep, CoachDone>;
 	bankOutcome: OwnerActionOutcome;
 	onboardingNameId: uint8;
@@ -127,8 +125,6 @@ export function initHudHome(): void {
 		buyOutcome: OwnerActionOutcome.Idle,
 		giftOutcome: OwnerActionOutcome.Idle,
 		bankAsked: false,
-		shopSeen: false,
-		neighboursSeen: false,
 		coach: Result.err(CoachDone.AllUsed),
 		bankOutcome: OwnerActionOutcome.Idle,
 		onboardingNameId: randomPetName(NO_PET_NAME),
@@ -710,11 +706,12 @@ function toastOutcome(home: Home, outcome: OwnerActionOutcome, status: string): 
 	if (status == "") { return; }
 	pushToast(home.toasts, status, outcome != OwnerActionOutcome.SentPending && outcome != OwnerActionOutcome.Requested
 		&& outcome != OwnerActionOutcome.ConfirmedAwaitingRead && outcome != OwnerActionOutcome.GiftTooSoon
-		&& outcome != OwnerActionOutcome.BankCoolingDown);
+		&& outcome != OwnerActionOutcome.BankCoolingDown && outcome != OwnerActionOutcome.SessionApproval);
 }
 
 function settled(outcome: OwnerActionOutcome): boolean {
-	return outcome != OwnerActionOutcome.Requested && outcome != OwnerActionOutcome.SentPending;
+	return outcome != OwnerActionOutcome.Requested && outcome != OwnerActionOutcome.SentPending
+		&& outcome != OwnerActionOutcome.SessionApproval;
 }
 
 // Each change of the Buy outcome after a Purchase tap is told once, as a toast.
@@ -762,7 +759,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	if (block.ok) {
 		const visiting = visitedNeighbour(home.visit, block.value);
 		if (visiting.ok) {
-			home.neighboursSeen = true;
+			markCoachSeen(CoachLook.Neighbours);
 			neighbourFrame(home, block.value, visiting.value, petHead);
 			return;
 		}
@@ -773,8 +770,8 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	followPurchase(home);
 	followGift(home);
 	followBank(home);
-	if (home.shopOpen) { home.shopSeen = true; }
-	home.coach = live.ok ? coachStep(live.value, home.shopSeen, home.neighboursSeen, wallpaperPlace() != WallpaperPlace.Off)
+	if (home.shopOpen) { markCoachSeen(CoachLook.Shop); }
+	home.coach = live.ok ? coachStep(live.value, coachSeen(), wallpaperPlace() != WallpaperPlace.Off)
 		: Result.err(CoachDone.AllUsed);
 	home.ui.blockBase = home.shopOpen;
 	const numbers: HomeNumbers = homeNumbers(home);

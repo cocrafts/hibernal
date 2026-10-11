@@ -402,6 +402,7 @@ class WalletBridge(private val activity: MainActivity) {
             return null
         }
         val ownerBytes = SolanaPublicKey.from(owner).bytes
+        publishOwnerAction(OwnerSigning.Outcome.SESSION_APPROVAL)
         val result = ownerWallet.run { operations, authorization ->
             if (authorization.accounts.none { it.publicKey.contentEquals(ownerBytes) }) throw OwnerSigning.OwnerNotAuthorized()
             operations.signTransactions(arrayOf(unsigned)).signedPayloads.single()

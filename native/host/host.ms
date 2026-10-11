@@ -19,6 +19,10 @@ extern function hostPetNewsAllowed(): int32;
 extern function hostRequestPetNews(): void;
 extern function hostDeathNoticeSeen(): int32;
 extern function hostMarkDeathNoticeSeen(generation: int32): void;
+extern function hostCoachSeen(): int32;
+extern function hostMarkCoachSeen(looks: int32): void;
+extern function hostSetCoachSeen(looks: int32): void;
+extern function hostTakeCoachMark(): int32;
 extern function hostRequestWalletConnect(): void;
 extern function hostRequestWalletDisconnect(): void;
 extern function hostWalletState(): int32;
@@ -91,6 +95,34 @@ export function markDeathNoticeSeen(generation: int32): void {
 		unreachable;
 	}
 	hostMarkDeathNoticeSeen(generation);
+}
+
+// What the coach asks a new owner to open once; the shell keeps what was opened per owner (CoachStore in Kotlin).
+export enum CoachLook {
+	Shop,
+	Neighbours,
+}
+
+export function coachSeen(): BitSet<CoachLook> {
+	return (hostCoachSeen() as uint8) as BitSet<CoachLook>;
+}
+
+export function markCoachSeen(look: CoachLook): void {
+	const seen = coachSeen();
+	if (seen.has(look)) { return; }
+	hostMarkCoachSeen((seen.incl(look) as uint8) as int32);
+}
+
+test "a coach look is kept once and handed to the shell to persist" {
+	hostSetCoachSeen(0);
+	assert hostTakeCoachMark() == -1;
+	markCoachSeen(CoachLook.Neighbours);
+	assert coachSeen().has(CoachLook.Neighbours) && !coachSeen().has(CoachLook.Shop);
+	assert hostTakeCoachMark() == 2;
+	markCoachSeen(CoachLook.Neighbours);
+	assert hostTakeCoachMark() == -1;
+	hostSetCoachSeen(1);
+	assert coachSeen().has(CoachLook.Shop) && !coachSeen().has(CoachLook.Neighbours);
 }
 
 export enum WalletState {
@@ -177,6 +209,7 @@ export enum OwnerActionOutcome {
 	GiftTooSoon,
 	// The Pet banked within the last 8 game hours (rules/owner.ms ownerBanked); nothing was sent.
 	BankCoolingDown,
+	SessionApproval,
 }
 
 // Only Buy reads item and tier; other actions pass 0.
@@ -209,6 +242,7 @@ export function ownerActionOutcome(): OwnerActionOutcome {
 		12 => { return OwnerActionOutcome.AdmissionFailed; },
 		13 => { return OwnerActionOutcome.GiftTooSoon; },
 		14 => { return OwnerActionOutcome.BankCoolingDown; },
+		15 => { return OwnerActionOutcome.SessionApproval; },
 		_ => {},
 	};
 	console.log("host: unknown owner action outcome " + state.toString());
@@ -233,8 +267,10 @@ test "one owner action is in flight until the shell publishes its outcome" {
 	hostSetOwnerAction(OwnerActionOutcome.ConfirmedAwaitingRead as int32);
 	requestOwnerAction(OwnerAction.ClaimReward, 0);
 	assert hostTakeOwnerActionRequest() == 8;
-	hostSetOwnerAction(15);
+	hostSetOwnerAction(16);
 	assert ownerActionOutcome() == OwnerActionOutcome.Unknown;
+	hostSetOwnerAction(OwnerActionOutcome.SessionApproval as int32);
+	assert ownerActionOutcome() == OwnerActionOutcome.SessionApproval;
 	hostSetOwnerAction(OwnerActionOutcome.BankCoolingDown as int32);
 	assert ownerActionOutcome() == OwnerActionOutcome.BankCoolingDown;
 	hostSetOwnerAction(OwnerActionOutcome.AdmissionFailed as int32);

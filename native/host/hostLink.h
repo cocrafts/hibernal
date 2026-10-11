@@ -34,6 +34,11 @@ int hostDeathNoticeSeen(void);
 void hostMarkDeathNoticeSeen(int generation);
 // The generation marked since the last take, -1 when none.
 int hostTakeDeathNoticeMark(void);
+// The same for the coach: a bit per CoachLook (native/host/host.ms) the owner has opened once, kept per owner.
+void hostSetCoachSeen(int looks);
+int hostCoachSeen(void);
+void hostMarkCoachSeen(int looks);
+int hostTakeCoachMark(void);
 
 void hostRequestWalletConnect(void);
 void hostRequestWalletDisconnect(void);

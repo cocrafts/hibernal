@@ -32,6 +32,8 @@ object OwnerSigning {
         ADMISSION_FAILED,
         GIFT_TOO_SOON,
         BANK_COOLING_DOWN,
+        // The wallet is asked to approve the app's session key before the action itself.
+        SESSION_APPROVAL,
     }
 
     data class Request(val action: OwnerAction, val item: Int)

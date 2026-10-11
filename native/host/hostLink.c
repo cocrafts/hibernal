@@ -14,6 +14,8 @@ static atomic_int s_petNewsAllowed;
 static atomic_int s_petNewsRequested;
 static atomic_int s_deathNoticeSeen = -1;
 static atomic_int s_deathNoticeMark = -1;
+static atomic_int s_coachSeen;
+static atomic_int s_coachMark = -1;
 static atomic_int s_walletState;
 static atomic_int s_walletRequest;
 static atomic_int s_walletRevision;
@@ -75,6 +77,13 @@ void hostMarkDeathNoticeSeen(int generation) {
 	atomic_store(&s_deathNoticeMark, generation);
 }
 int hostTakeDeathNoticeMark(void) { return atomic_exchange(&s_deathNoticeMark, -1); }
+void hostSetCoachSeen(int looks) { atomic_store(&s_coachSeen, looks); }
+int hostCoachSeen(void) { return atomic_load(&s_coachSeen); }
+void hostMarkCoachSeen(int looks) {
+	atomic_store(&s_coachSeen, looks);
+	atomic_store(&s_coachMark, looks);
+}
+int hostTakeCoachMark(void) { return atomic_exchange(&s_coachMark, -1); }
 
 void hostRequestWalletConnect(void) {
 	int state = atomic_load(&s_walletState);
@@ -134,7 +143,7 @@ void hostRequestOwnerAction(int action, int item) {
 int hostTakeOwnerActionRequest(void) { return atomic_exchange(&s_ownerActionRequest, 0); }
 
 void hostSetOwnerAction(int state) {
-	atomic_store(&s_ownerActionState, state < 0 || state > 14 ? 9 : state);
+	atomic_store(&s_ownerActionState, state < 0 || state > 15 ? 9 : state);
 	atomic_fetch_add(&s_ownerActionRevision, 1);
 }
 

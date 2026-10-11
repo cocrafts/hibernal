@@ -29,6 +29,8 @@ object VoidNative {
     external fun takePetNewsRequest(): Boolean
     external fun setDeathNoticeSeen(generation: Int)
     external fun takeDeathNoticeMark(): Int
+    external fun setCoachSeen(looks: Int)
+    external fun takeCoachMark(): Int
     external fun takeWalletRequest(): Int
     external fun setWalletState(state: Int, address: String)
     external fun takeOwnerActionRequest(): Int
@@ -58,6 +60,7 @@ object VoidNative {
     fun prepare(context: Context) {
         if (prepared) return
         DeathNoticeStore.prepare(context)
+        CoachStore.prepare(context)
         GameOwnerStore.restore(context)
         TiltSensor.prepare(context)
         copyAssets(context, "", File(context.filesDir, "assets"))

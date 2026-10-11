@@ -2,6 +2,7 @@ import { isShielded } from "../../rules/emission";
 import { OWNER_BANK_COOLDOWN_SECONDS } from "../../rules/owner";
 import { EPOCH_SECONDS } from "../../rules/units";
 import {
+	CoachLook,
 	GameOwnerState,
 	GameRead,
 	GameReadError,
@@ -150,7 +151,8 @@ export function summonAllowed(snapshot: GameRead): boolean {
 }
 
 export function summonInFlight(outcome: OwnerActionOutcome): boolean {
-	return outcome == OwnerActionOutcome.Requested || outcome == OwnerActionOutcome.SentPending;
+	return outcome == OwnerActionOutcome.Requested || outcome == OwnerActionOutcome.SentPending
+		|| outcome == OwnerActionOutcome.SessionApproval;
 }
 
 // From the wallet's approval until the Pet sits in a Block: the transaction lands, the next read
@@ -180,6 +182,7 @@ export function summonStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING SENT.",
 		OwnerActionOutcome.GiftTooSoon => "",
 		OwnerActionOutcome.BankCoolingDown => "",
+		OwnerActionOutcome.SessionApproval => "",
 	};
 }
 
@@ -200,6 +203,7 @@ export function buyStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING PAID.",
 		OwnerActionOutcome.GiftTooSoon => "",
 		OwnerActionOutcome.BankCoolingDown => "",
+		OwnerActionOutcome.SessionApproval => "",
 	};
 }
 
@@ -265,14 +269,15 @@ export function giftStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.AdmissionFailed => "ADMISSION SERVICE FAILED. NOTHING SENT.",
 		OwnerActionOutcome.GiftTooSoon => "TODAY'S GIFT IS ALREADY ON ITS WAY. MORE TOMORROW.",
 		OwnerActionOutcome.BankCoolingDown => "",
+		OwnerActionOutcome.SessionApproval => "",
 	};
 }
 
 // A new owner's walk through the buttons, in order; each step lasts until the state it asks for appears. The
 // looking steps only while the Pet is a newborn (rules/emission.ms isShielded): the app keeps no record of them.
 export enum CoachStep {
-	Claim,
 	Stash,
+	Claim,
 	Shop,
 	Neighbours,
 	Wallpaper,
@@ -282,12 +287,12 @@ export enum CoachDone {
 	AllUsed,
 }
 
-export function coachStep(pet: GamePet, shopSeen: boolean, neighboursSeen: boolean, wallpaperOn: boolean): Result<CoachStep, CoachDone> {
-	if (giftStep(pet) != GiftStep.Nothing) { return Result.ok(CoachStep.Claim); }
+export function coachStep(pet: GamePet, seen: BitSet<CoachLook>, wallpaperOn: boolean): Result<CoachStep, CoachDone> {
 	if (pet.harvest > 0 && pet.burrow == 0) { return Result.ok(CoachStep.Stash); }
+	if (giftStep(pet) != GiftStep.Nothing) { return Result.ok(CoachStep.Claim); }
 	if (!isShielded(pet.blockEpoch, pet.bornEpoch)) { return Result.err(CoachDone.AllUsed); }
-	if (!shopSeen) { return Result.ok(CoachStep.Shop); }
-	if (!neighboursSeen) { return Result.ok(CoachStep.Neighbours); }
+	if (!seen.has(CoachLook.Shop)) { return Result.ok(CoachStep.Shop); }
+	if (!seen.has(CoachLook.Neighbours)) { return Result.ok(CoachStep.Neighbours); }
 	if (!wallpaperOn) { return Result.ok(CoachStep.Wallpaper); }
 	return Result.err(CoachDone.AllUsed);
 }
@@ -297,18 +302,21 @@ function coachIs(step: Result<CoachStep, CoachDone>, expected: CoachStep): boole
 }
 
 test "the coach asks for the first button the owner has not used yet" {
+	const none = 0 as BitSet<CoachLook>;
+	const shopOnly = none.incl(CoachLook.Shop);
+	const both = shopOnly.incl(CoachLook.Neighbours);
 	const pet: GamePet = { ...noGamePet(), harvest: 250, giftOwed: 10 };
-	assert coachIs(coachStep(pet, false, false, false), CoachStep.Claim);
-	const claimed: GamePet = { ...pet, giftOwed: 0 };
-	assert coachIs(coachStep(claimed, false, false, false), CoachStep.Stash);
-	const stashed: GamePet = { ...claimed, harvest: 125, burrow: 125 };
-	assert coachIs(coachStep(stashed, false, false, false), CoachStep.Shop);
-	assert coachIs(coachStep(stashed, true, false, false), CoachStep.Neighbours);
-	assert coachIs(coachStep(stashed, true, true, false), CoachStep.Wallpaper);
-	assert !coachStep(stashed, true, true, true).ok;
+	assert coachIs(coachStep(pet, none, false), CoachStep.Stash);
+	const banked: GamePet = { ...pet, harvest: 125, burrow: 125 };
+	assert coachIs(coachStep(banked, none, false), CoachStep.Claim);
+	const stashed: GamePet = { ...banked, giftOwed: 0 };
+	assert coachIs(coachStep(stashed, none, false), CoachStep.Shop);
+	assert coachIs(coachStep(stashed, shopOnly, false), CoachStep.Neighbours);
+	assert coachIs(coachStep(stashed, both, false), CoachStep.Wallpaper);
+	assert !coachStep(stashed, both, true).ok;
 	const grown: GamePet = { ...stashed, blockEpoch: 10, bornEpoch: 2 };
-	assert !coachStep(grown, false, false, false).ok;
-	assert coachIs(coachStep({ ...grown, giftOwed: 5 }, false, false, false), CoachStep.Claim);
+	assert !coachStep(grown, none, false).ok;
+	assert coachIs(coachStep({ ...grown, giftOwed: 5 }, none, false), CoachStep.Claim);
 }
 
 // The hatch fee for a dead Pet's heir, from the tap until the operator hatches it.
@@ -329,6 +337,7 @@ export function rebirthStatus(outcome: OwnerActionOutcome): string {
 		OwnerActionOutcome.AdmissionFailed => "",
 		OwnerActionOutcome.GiftTooSoon => "",
 		OwnerActionOutcome.BankCoolingDown => "",
+		OwnerActionOutcome.SessionApproval => "",
 	};
 }
 
@@ -382,7 +391,7 @@ test "game time reads in the owner's time at the World's day length" {
 export function bankStatus(outcome: OwnerActionOutcome, secondsPerDay: uint64): string {
 	return match (outcome) {
 		OwnerActionOutcome.Idle => "",
-		OwnerActionOutcome.Requested => "STASHING. ONCE A WEEK, YOUR WALLET APPROVES THE APP FIRST.",
+		OwnerActionOutcome.Requested => "STASHING...",
 		OwnerActionOutcome.Cancelled => "STASH CANCELLED. NOTHING SENT.",
 		OwnerActionOutcome.NoWallet => "NO WALLET OR PET READ. NOTHING SENT.",
 		OwnerActionOutcome.WalletFailed => "WALLET DID NOT SIGN. CONNECT AND RETRY.",
@@ -395,6 +404,7 @@ export function bankStatus(outcome: OwnerActionOutcome, secondsPerDay: uint64): 
 		OwnerActionOutcome.NoSeekerGenesisToken => "",
 		OwnerActionOutcome.AdmissionFailed => "",
 		OwnerActionOutcome.GiftTooSoon => "",
+		OwnerActionOutcome.SessionApproval => "APPROVE: THIS APP MAY STASH AND PLAY FOR 7 DAYS.",
 		OwnerActionOutcome.BankCoolingDown => "STASH WORKS ONCE IN " + realSpan(OWNER_BANK_COOLDOWN_SECONDS, secondsPerDay)
 			+ ". TRY LATER.",
 	};

@@ -84,7 +84,7 @@ export function waitingLine(ui: Ui, kit: Kit, id: int32, status: string): void {
 	say(ui, kit, id, status, left, WAITING_Y - 4.0, width + 8.0, 8.0, INK_MUTED, 0.0);
 }
 
-const PLACING: string = "FINDING YOUR PET A HOME. USUALLY UNDER A MINUTE.";
+const PLACING: string = "FINDING YOUR PET A HOME...";
 
 // The Summon landed and the operator has yet to seat the Pet in a Block.
 function placing(read: Result<GameRead, GameReadError>): boolean {

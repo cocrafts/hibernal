@@ -18,6 +18,8 @@ extern void hostSetPetNewsAllowed(int allowed);
 extern int hostTakePetNewsRequest(void);
 extern void hostSetDeathNoticeSeen(int generation);
 extern int hostTakeDeathNoticeMark(void);
+extern void hostSetCoachSeen(int looks);
+extern int hostTakeCoachMark(void);
 extern int hostTakeWalletRequest(void);
 extern void hostSetWallet(int state, const char *address);
 extern int hostTakeOwnerActionRequest(void);
@@ -98,6 +100,18 @@ JNIEXPORT jint JNICALL
 Java_app_hibernal_VoidNative_takeDeathNoticeMark(JNIEnv *env, jobject thiz) {
 	(void)env; (void)thiz;
 	return hostTakeDeathNoticeMark();
+}
+
+JNIEXPORT void JNICALL
+Java_app_hibernal_VoidNative_setCoachSeen(JNIEnv *env, jobject thiz, jint looks) {
+	(void)env; (void)thiz;
+	hostSetCoachSeen(looks);
+}
+
+JNIEXPORT jint JNICALL
+Java_app_hibernal_VoidNative_takeCoachMark(JNIEnv *env, jobject thiz) {
+	(void)env; (void)thiz;
+	return hostTakeCoachMark();
 }
 
 JNIEXPORT jboolean JNICALL
