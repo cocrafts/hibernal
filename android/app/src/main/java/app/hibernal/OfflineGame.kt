@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 // HUD can be built and debugged with no RPC, wallet or deployment. Nothing here is signed or sent.
 //   adb shell am broadcast -p app.hibernal -a app.hibernal.OFFLINE --es scene newborn
 // Scenes are Scene's names in lower case; `live` hands the app back to the chain.
+//   adb shell am broadcast -p app.hibernal -a app.hibernal.OFFLINE --ei refuse 6034
+// makes the next owner action fail on chain with that code (hostLink.h hostSetOwnerActionRefusal).
 object OfflineGame {
     private const val TAG = "HibernalOffline"
     const val ACTION = "app.hibernal.OFFLINE"
@@ -49,6 +51,7 @@ object OfflineGame {
     private var bankedAtMillis = 0L
     private var label: (String?) -> Unit = {}
     private var registered = false
+    private var nextRefusal = 0
 
     fun attach(context: Context, show: (String?) -> Unit) {
         if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
@@ -59,6 +62,10 @@ object OfflineGame {
         registered = true
         context.registerReceiver(object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                if (intent.hasExtra("refuse")) {
+                    nextRefusal = intent.getIntExtra("refuse", 0)
+                    return Unit.also { Log.i(TAG, "Next owner action refused with $nextRefusal") }
+                }
                 val name = intent.getStringExtra("scene") ?: return Unit.also { Log.e(TAG, "No scene extra") }
                 if (name == "live") return leave(context)
                 val chosen = Scene.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
@@ -129,8 +136,17 @@ object OfflineGame {
 
     fun ownerAction(request: Int) {
         val decoded = OwnerSigning.request(request)
+        Log.i(TAG, "Owner action ${decoded.action} item ${decoded.item}")
         script?.cancel()
         script = scope.launch {
+            if (nextRefusal != 0) {
+                outcome(OwnerSigning.Outcome.REQUESTED)
+                delay(STEP_MS)
+                Log.i(TAG, "Refused $nextRefusal")
+                VoidNative.setOwnerActionRefusal(nextRefusal)
+                nextRefusal = 0
+                return@launch
+            }
             when (decoded.action) {
                 OwnerSigning.OwnerAction.CLAIM -> {
                     signed()
@@ -139,8 +155,9 @@ object OfflineGame {
                     pet.putAll(mapOf(LivePetRead.Field.LIFE to 0L, LivePetRead.Field.MEMBER to 0L,
                         LivePetRead.Field.BLOCK_STARTED to 0L, LivePetRead.Field.HARVEST to 0L))
                     scene = Scene.NEWBORN
+                    label(Scene.NEWBORN.name)
                     read = { publishPet() }
-                    read()
+                    confirmed()
                     delay(4 * STEP_MS)
                     pet = placed
                     read()
@@ -187,6 +204,7 @@ object OfflineGame {
                     delay(4 * STEP_MS)
                     pet = petOf(Scene.HEIR)
                     scene = Scene.HEIR
+                    label(Scene.HEIR.name)
                     read()
                 }
                 else -> outcome(OwnerSigning.Outcome.UNAVAILABLE)
@@ -206,7 +224,18 @@ object OfflineGame {
         read()
     }
 
-    private fun outcome(outcome: OwnerSigning.Outcome) = VoidNative.setOwnerActionState(outcome.ordinal)
+    private fun outcome(outcome: OwnerSigning.Outcome) {
+        Log.i(TAG, "Outcome $outcome")
+        VoidNative.setOwnerActionState(outcome.ordinal)
+    }
+
+    // MainActivity's visit on resume: a living Pet's next read counts one more Engage, as WalletBridge.engage would.
+    fun engage() {
+        if (scene !in setOf(Scene.NEWBORN, Scene.GROWN, Scene.DYING)) return
+        if (field(LivePetRead.Field.ENGAGED_TODAY) >= OwnerSession.ENGAGES_PER_DAY) return
+        pet[LivePetRead.Field.ENGAGED_TODAY] = field(LivePetRead.Field.ENGAGED_TODAY) + 1
+        Log.i(TAG, "Engaged")
+    }
 
     private fun field(name: LivePetRead.Field) = pet[name] ?: 0L
 

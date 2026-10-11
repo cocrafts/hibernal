@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         super.onResume()
         reportWallpaperPlaces()
         reportPetNews()
-        if (!OfflineGame.active) walletBridge.engage()
+        if (OfflineGame.active) OfflineGame.engage() else walletBridge.engage()
     }
 
     fun handleWalletRequest(request: Int) {
