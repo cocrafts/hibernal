@@ -2,7 +2,7 @@
 
 A Tamagotchi-like pet with a life of its own, one per Seeker. It works, eats, fights its neighbours and spends its own money, decided by a trained neural network that runs on chain. Its owner cares for it but cannot control it. Death is permanent: the owner sees it mourned, and can hatch the next generation, which keeps the same name and inherits what the dead pet left behind.
 
-Built for CLOCK IN, the Solana Mobile hackathon. Every line of the game is [MetaScript](https://metascriptlang.org): the Solana program, the phone's renderer and HUD, the simulator and the training environment.
+Built for CLOCK IN, the Solana Mobile hackathon. The game is one language, [MetaScript](https://metascriptlang.org), end to end: the Solana program, the rules it shares with the phone, the phone's renderer and HUD, the simulator and the training environment, about 34,000 lines. The program runs on [Project Geass](https://geass.metascriptlang.org), MetaScript's Solana toolkit and our Colosseum submission. Around that core: Kotlin for the Android shell and wallet, JavaScript for chain operations, Python for training.
 
 **[Demo video](https://www.youtube.com/watch?v=mqqPngghPBg) · [APK](TODO-APK-LINK) · [Pitch deck](https://metascript-talk.pages.dev/clockIn) · [Verify it on devnet](#verify-it-in-two-minutes)**
 
