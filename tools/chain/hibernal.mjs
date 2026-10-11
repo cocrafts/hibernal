@@ -289,7 +289,8 @@ export function hibernal(programAddress, authority) {
 	];
 	const crankOf = async (blockId, seq) => {
 		const seed = joined(u64(blockId), u64(seq), encoder.encode(programAddress).subarray(0, 16));
-		return await address(pda(HYDRA_PROGRAM, "crank", seed));
+		const sponsor = encoder.encode(await address(seeds.vrfPayer()));
+		return await address(pda(HYDRA_PROGRAM, "crank", sponsor, seed));
 	};
 	return {
 		programAddress,

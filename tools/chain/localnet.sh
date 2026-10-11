@@ -137,11 +137,18 @@ vrfOracle() {
 	RPC_URL="http://127.0.0.1:$erPort" WEBSOCKET_URL="ws://127.0.0.1:$((erPort + 1))" RUST_LOG="${RUST_LOG:-info}" exec "$vrfRepository/target/release/vrf-oracle"
 }
 
-hydraCranker() {
+gameCranker() {
 	local cranker="$here/out/hydraCranker.json"
 	solana transfer --allow-unfunded-recipient "$(solana address -k "$cranker")" 1 -u "http://127.0.0.1:$l1Port" >/dev/null
-	exec "$here/tools/chain/cranker.sh" "http://127.0.0.1:$erPort" "ws://127.0.0.1:$((erPort + 1))" \
-		"http://127.0.0.1:$l1Port" "$cranker"
+	PROGRAMS="$(cat "$state/program.txt")" CRANKER="$cranker" BASE_RPC="http://127.0.0.1:$l1Port" \
+		ER_RPC="http://127.0.0.1:$erPort" ER_WS="ws://127.0.0.1:$((erPort + 1))" exec node "$here/tools/chain/gameCranker.mjs"
+}
+
+cranker() {
+	echo "${1:?usage: localnet.sh cranker <program>}" > "$state/program.txt"
+	stopService game-cranker
+	launch game-cranker
+	echo "game-cranker firing $1, log $state/game-cranker.log"
 }
 
 launch() {
@@ -171,7 +178,7 @@ stopService() {
 }
 
 down() {
-	for name in hydra-cranker vrf-oracle er l1; do stopService "$name"; done
+	for name in game-cranker vrf-oracle er l1; do stopService "$name"; done
 }
 
 up() {
@@ -184,9 +191,8 @@ up() {
 	launch er
 	waitForRpc "$erPort"
 	launch vrf-oracle
-	launch hydra-cranker
 	cat > "$state/env.sh" <<-EOF
-	export BASE_RPC=http://127.0.0.1:$l1Port BASE_READ_RPC=http://127.0.0.1:$l1Port ER_RPC=http://127.0.0.1:$erPort
+	export BASE_RPC=http://127.0.0.1:$l1Port BASE_READ_RPC=http://127.0.0.1:$l1Port ER_RPC=http://127.0.0.1:$erPort ER_WS=ws://127.0.0.1:$((erPort + 1))
 	export VALIDATOR=mAGicPQYBMvcYveUZA5F5UNNwyHvfYh5xkLS2Fr1mev
 	export GROUP=$(solana address -k "$state/admissionGroup.json") VRF_QUEUE=$(cat "$state/vrfQueue.txt")
 	EOF
@@ -203,6 +209,7 @@ case "${1:-}" in
 	seed) seed ;;
 	vrf-setup) vrfSetup ;;
 	vrf-oracle) vrfOracle ;;
-	hydra-cranker) hydraCranker ;;
-	*) echo "usage: localnet.sh up|down|stop <service>|restart <service>|l1|er|seed|vrf-setup|vrf-oracle|hydra-cranker" >&2; exit 2 ;;
+	cranker) cranker "${2:-}" ;;
+	game-cranker) gameCranker ;;
+	*) echo "usage: localnet.sh up|down|stop <service>|restart <service>|l1|er|seed|vrf-setup|vrf-oracle|cranker <program>" >&2; exit 2 ;;
 esac

@@ -76,7 +76,8 @@ function u64(value) {
 
 async function crankAddress(seq) {
 	const seedBytes = Buffer.concat([u64(BLOCK_ID), u64(seq), Buffer.from(encoder.encode(program)).subarray(0, 16)]);
-	const [found] = await getProgramDerivedAddress({ programAddress: HYDRA_PROGRAM, seeds: ["crank", seedBytes] });
+	const [sponsor] = await getProgramDerivedAddress({ programAddress: program, seeds: ["vrf-payer"] });
+	const [found] = await getProgramDerivedAddress({ programAddress: HYDRA_PROGRAM, seeds: ["crank", encoder.encode(sponsor), seedBytes] });
 	return found;
 }
 
