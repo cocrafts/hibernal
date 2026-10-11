@@ -17,7 +17,7 @@ import {
 import { levelForXp } from "../../rules/level";
 import { EMISSION_START, pendingReward } from "../../rules/emission";
 import { BlockSlot, Pet, stats } from "../../rules/layout";
-import { born, settle } from "../../rules/life";
+import { BOT_WEIGHT, born, settle } from "../../rules/life";
 import { rewardWeight, Region } from "../../rules/stats";
 
 // GameSync refreshes every 30 s; four missed refreshes is no longer a live read.
@@ -693,7 +693,7 @@ test "level, XP and hearts that disagree with the rules are not live" {
 	assert refusedAs(hearts, NotLive.Inconsistent);
 }
 
-test "a Pet alone in the World earns the whole day's emission; an unplaced one has no income yet" {
+test "a Pet alone in the World earns its weight at the floor rate; an unplaced one has no income yet" {
 	assert !dailyIncome(noGamePet()).ok;
 	// Forage 100: work power 10 + 30, reward weight (40 + 50)^2.
 	const alone: GamePet = {
@@ -704,7 +704,8 @@ test "a Pet alone in the World earns the whole day's emission; an unplaced one h
 		world: { ...noGamePet().world, genesisTimestamp: 1, totalWorkPower: 8100, livingPets: 1, floorSlots: 1 },
 	};
 	const income = dailyIncome(alone);
-	assert income.ok && income.value <= EMISSION_START && income.value + 1 >= EMISSION_START;
+	const floorPay = EMISSION_START * 8100 / BOT_WEIGHT;
+	assert income.ok && income.value <= floorPay && income.value + 1 >= floorPay;
 }
 
 test "the campfire waits until a read says whether there is a live Pet" {
