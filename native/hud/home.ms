@@ -788,7 +788,7 @@ function homeFrame(home: Home, petHead: Result<PetHead, PetHeadHidden>, seconds:
 	followGift(home);
 	followBank(home);
 	if (home.shopOpen) { markCoachSeen(CoachLook.Shop); }
-	home.coach = live.ok ? coachStep(live.value, coachSeen(), wallpaperPlace() != WallpaperPlace.Off)
+	home.coach = live.ok ? coachStep(live.value, coachSeen(), block.ok && canVisit(block.value), wallpaperPlace() != WallpaperPlace.Off)
 		: Result.err(CoachDone.AllUsed);
 	home.ui.blockBase = home.shopOpen;
 	const numbers: HomeNumbers = homeNumbers(home);

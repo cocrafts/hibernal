@@ -326,12 +326,13 @@ export enum CoachDone {
 	AllUsed,
 }
 
-export function coachStep(pet: GamePet, seen: BitSet<CoachLook>, wallpaperOn: boolean): Result<CoachStep, CoachDone> {
+// hasNeighbours: a Pet alone in its Block has nobody to swipe to yet, so that step waits for a neighbour.
+export function coachStep(pet: GamePet, seen: BitSet<CoachLook>, hasNeighbours: boolean, wallpaperOn: boolean): Result<CoachStep, CoachDone> {
 	if (pet.harvest > 0 && pet.burrow == 0) { return Result.ok(CoachStep.Stash); }
 	if (giftStep(pet) != GiftStep.Nothing) { return Result.ok(CoachStep.Claim); }
 	if (!isShielded(pet.blockEpoch, pet.bornEpoch)) { return Result.err(CoachDone.AllUsed); }
 	if (!seen.has(CoachLook.Shop)) { return Result.ok(CoachStep.Shop); }
-	if (!seen.has(CoachLook.Neighbours)) { return Result.ok(CoachStep.Neighbours); }
+	if (hasNeighbours && !seen.has(CoachLook.Neighbours)) { return Result.ok(CoachStep.Neighbours); }
 	if (!wallpaperOn) { return Result.ok(CoachStep.Wallpaper); }
 	return Result.err(CoachDone.AllUsed);
 }
@@ -345,17 +346,19 @@ test "the coach asks for the first button the owner has not used yet" {
 	const shopOnly = none.incl(CoachLook.Shop);
 	const both = shopOnly.incl(CoachLook.Neighbours);
 	const pet: GamePet = { ...noGamePet(), harvest: 250, giftOwed: 10 };
-	assert coachIs(coachStep(pet, none, false), CoachStep.Stash);
+	assert coachIs(coachStep(pet, none, true, false), CoachStep.Stash);
 	const banked: GamePet = { ...pet, harvest: 125, burrow: 125 };
-	assert coachIs(coachStep(banked, none, false), CoachStep.Claim);
+	assert coachIs(coachStep(banked, none, true, false), CoachStep.Claim);
 	const stashed: GamePet = { ...banked, giftOwed: 0 };
-	assert coachIs(coachStep(stashed, none, false), CoachStep.Shop);
-	assert coachIs(coachStep(stashed, shopOnly, false), CoachStep.Neighbours);
-	assert coachIs(coachStep(stashed, both, false), CoachStep.Wallpaper);
-	assert !coachStep(stashed, both, true).ok;
+	assert coachIs(coachStep(stashed, none, true, false), CoachStep.Shop);
+	assert coachIs(coachStep(stashed, shopOnly, true, false), CoachStep.Neighbours);
+	assert coachIs(coachStep(stashed, shopOnly, false, false), CoachStep.Wallpaper);
+	assert coachIs(coachStep(stashed, both, true, false), CoachStep.Wallpaper);
+	assert !coachStep(stashed, both, true, true).ok;
+	assert !coachStep(stashed, shopOnly, false, true).ok;
 	const grown: GamePet = { ...stashed, blockEpoch: 10, bornEpoch: 2 };
-	assert !coachStep(grown, none, false).ok;
-	assert coachIs(coachStep({ ...grown, giftOwed: 5 }, none, false), CoachStep.Claim);
+	assert !coachStep(grown, none, true, false).ok;
+	assert coachIs(coachStep({ ...grown, giftOwed: 5 }, none, true, false), CoachStep.Claim);
 }
 
 // The hatch fee for a dead Pet's heir, from the tap until the operator hatches it.
