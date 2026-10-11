@@ -1,6 +1,6 @@
 import { Color, rgba } from "@metascript/void/src/void2d/types";
 import { Ui, box, beginOverlay, endOverlay, DESIGN_W, DESIGN_H } from "../ui/ui";
-import { Kit, TextSize, subId, measure, frame, fill, beginKitOverlay, endKitOverlay, iconTinted, say, INK, INK_MUTED, EMBER_HOT, ALERT_RED, DISABLED_INK, DIMMED,
+import { Kit, TextSize, subId, measure, measureWrapped, frame, fill, beginKitOverlay, endKitOverlay, iconTinted, say, INK, INK_MUTED, EMBER_HOT, ALERT_RED, DISABLED_INK, DIMMED,
 	WHITE } from "./kit";
 import { FrameLook } from "./frame";
 import { spinner } from "./buttons";
@@ -12,8 +12,8 @@ const TOAST_FADE_OUT_FRAMES: int32 = 12;
 const TOAST_HEIGHT: float32 = 36.0;
 // The skill tree's shade: the whole screen steps back behind the line.
 const TOAST_SHADE: Color = rgba(0.0, 0.01, 0.03, 0.7);
-const TOAST_SIZE: float32 = 16.0;
-const TOAST_SMALL_SIZE: float32 = 8.0;
+// One size for every toast; a long line wraps instead of shrinking.
+const TOAST_SIZE: float32 = 11.2;
 const PILL_HEIGHT: float32 = 20.0;
 
 export interface Toast {
@@ -67,8 +67,8 @@ export function drawToasts(ui: Ui, kit: Kit, id: int32, toasts: Toasts, x: float
 	beginKitOverlay(kit);
 	fill(kit, subId(id, 1), 0.0, 0.0, DESIGN_W, DESIGN_H, withAlpha(TOAST_SHADE, TOAST_SHADE.a * alpha));
 	const ink: Color = shown.alert ? ALERT_RED : INK;
-	const size: float32 = measure(kit, shown.line, TOAST_SIZE).width <= width ? TOAST_SIZE : TOAST_SMALL_SIZE;
-	say(ui, kit, id, shown.line, x, centredY(kit, shown.line, size, y, TOAST_HEIGHT), width, size, withAlpha(ink, alpha), 0.5);
+	const height: float32 = measureWrapped(kit, shown.line, TOAST_SIZE, width).height;
+	say(ui, kit, id, shown.line, x, y + (TOAST_HEIGHT - height) * 0.5, width, TOAST_SIZE, withAlpha(ink, alpha), 0.5);
 	endKitOverlay(kit);
 	endOverlay(ui);
 	toasts.framesLeft -= 1;
