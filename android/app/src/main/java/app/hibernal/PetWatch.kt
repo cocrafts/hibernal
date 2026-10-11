@@ -124,12 +124,12 @@ object PetWatch {
     // Fights land when the Block turns its day, all of a day's at once, so a later epoch is a new fight.
     internal fun news(before: Seen, now: Seen, fights: List<Fight>, seat: Long): List<String> {
         if (before.owner != now.owner || now.generation < before.generation) return emptyList()
-        // Every death hatches the heir at dusk, when the chain records it (program/day.ms dusked).
+        // The heir hatches once the owner pays for it in the app and the operator runs Rebirth.
         if (now.generation > before.generation) {
             return listOfNotNull("YOUR PET HAS DIED".takeIf { !dead(before) }, "ITS HEIR HAS HATCHED")
         }
         val lines = mutableListOf<String>()
-        if (dead(now) && !dead(before)) lines += "${deathLine(before, now, fights, seat)}. ITS HEIR IS COMING"
+        if (dead(now) && !dead(before)) lines += "${deathLine(before, now, fights, seat)}. OPEN THE APP TO HATCH ITS HEIR"
         if (now.insurance == INSURANCE_USED && before.insurance != INSURANCE_USED) lines += "INSURANCE SAVED YOUR PET"
         fights.filter { it.epoch > before.lastFightEpoch && it.defenderSeat == seat }.forEach {
             val slot = it.attackerSeat + 1

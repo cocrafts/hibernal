@@ -94,12 +94,12 @@ object OwnerTransaction {
     }
 
     fun canonicalClaim(program: String, owner: String, config: String, admissionMint: String,
-        heldToken: String, pet: String, paid: String, systemProgram: String, ledger: String, nameId: Int): SourceInstruction {
+        heldToken: String, pet: String, paid: String, systemProgram: String, ledger: String, fund: String, nameId: Int): SourceInstruction {
         system(systemProgram)
         require(nameId in 0..255) { "Pet name id outside 0..255" }
         return canonical(program, "claim", "3ec6d6c1d59f6cd2", listOf(
             writableSigner(owner), writable(config), readonly(admissionMint), readonly(heldToken),
-            writable(pet), writable(paid), readonly(systemProgram), writable(ledger)), byteArrayOf(nameId.toByte()))
+            writable(pet), writable(paid), readonly(systemProgram), writable(ledger), writable(fund)), byteArrayOf(nameId.toByte()))
     }
 
     fun canonicalDelegatePet(program: String, payer: String, config: String, pet: String,
@@ -137,6 +137,13 @@ object OwnerTransaction {
 
     fun canonicalLoad(program: String, pet: String, ledger: String) =
         canonical(program, "load", "53ecbb4ce79f56ac", listOf(writable(pet), readonly(ledger)))
+
+    fun canonicalPayRebirth(program: String, owner: String, config: String, pet: String, ledger: String,
+        fund: String, systemProgram: String): SourceInstruction {
+        system(systemProgram)
+        return canonical(program, "pay_rebirth", "a2d1663855a89fac", listOf(writableSigner(owner), readonly(config),
+            readonly(pet), writable(ledger), writable(fund), readonly(systemProgram)))
+    }
 
     fun canonicalClaimReward(program: String, owner: String, config: String, pet: String,
         paid: String, hbrnMint: String, destinationToken: String, tokenProgram: String,

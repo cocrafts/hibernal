@@ -13,8 +13,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class GameSyncPollTest {
-    private val program = "239hXbhBXz9wz4LGjdq98S6EyGcbqm9wAZt7KG9WPDcR"
-    private val config = "7hS8Uu238NTQ8Aw6yHYaWyrX5bFRcS863gFqwV8vsdSi"
+    private val program = GameSync.PROGRAM
+    private val config = GameSync.CONFIG
     private val owner = ByteArray(32) { 8 }
     private val mint = ByteArray(32) { 7 }
     private val group = ByteArray(32) { 9 }

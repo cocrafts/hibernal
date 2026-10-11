@@ -10,7 +10,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiscoveryIdentityTest {
-    private val program = SolanaPublicKey.from("239hXbhBXz9wz4LGjdq98S6EyGcbqm9wAZt7KG9WPDcR")
+    private val program = SolanaPublicKey.from(GameSync.PROGRAM)
     private val owner = ByteArray(32) { 8 }
     private val mint = ByteArray(32) { 7 }
     private fun derive(seed: String) = runBlocking {

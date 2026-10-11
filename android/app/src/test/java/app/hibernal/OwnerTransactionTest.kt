@@ -51,9 +51,13 @@ class OwnerTransactionTest {
     }
 
     @Test fun everyCanonicalBuilderHasExactWireAccountOrderPrivilegesAndDiscriminator() {
-        verify(OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), system, address(7), 255),
+        verify(OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), system, address(7), address(8), 255),
             "claim", "3ec6d6c1d59f6cd2ff", listOf(owner to "WS", address(2) to "W", address(3) to "R",
-                address(4) to "R", address(5) to "W", address(6) to "W", system to "R", address(7) to "W"))
+                address(4) to "R", address(5) to "W", address(6) to "W", system to "R", address(7) to "W", address(8) to "W"))
+        // Account order and privileges as the rebirth IDL (pay_rebirth) lists them.
+        verify(OwnerTransaction.canonicalPayRebirth(program, owner, address(2), address(3), address(4), address(5), system),
+            "pay_rebirth", "a2d1663855a89fac", listOf(owner to "WS", address(2) to "R", address(3) to "R",
+                address(4) to "W", address(5) to "W", system to "R"))
         verify(OwnerTransaction.canonicalDelegatePet(program, owner, address(2), address(3), program, address(4), address(5), address(6), delegation, system),
             "delegate_pet", "824f91bdf70a6ac7", listOf(owner to "WS", address(2) to "R", address(3) to "W",
                 program to "R", address(4) to "W", address(5) to "W", address(6) to "W", delegation to "R", system to "R"))
@@ -143,8 +147,8 @@ class OwnerTransactionTest {
         refuses { OwnerTransaction.canonicalOwnerEngage(program, owner, address(2), address(3), address(4)) }
         refuses { OwnerTransaction.canonicalDelegatePet(program, owner, address(2), address(3), address(4), address(5), address(6), address(7), delegation, system) }
         refuses { OwnerTransaction.canonicalDelegatePet(program, owner, address(2), address(3), program, address(5), address(6), address(7), address(8), system) }
-        refuses { OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), address(7), address(8), 0) }
-        refuses { OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), system, address(7), 256) }
+        refuses { OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), address(7), address(8), address(9), 0) }
+        refuses { OwnerTransaction.canonicalClaim(program, owner, address(2), address(3), address(4), address(5), address(6), system, address(7), address(8), 256) }
         refuses { OwnerTransaction.canonicalBuy(program, owner, address(2), address(3), address(4), address(5), address(6), address(7), address(8), system, 0, 0) }
         refuses { OwnerTransaction.prepareSourceOnly(buy(0, 0), "", program, blockhash, TEST_COMPUTE_UNIT_LIMIT) }
         refuses { OwnerTransaction.prepareSourceOnly(buy(0, 0), owner, address(80), blockhash, TEST_COMPUTE_UNIT_LIMIT) }

@@ -30,11 +30,19 @@ object OwnerOnboarding {
                 OwnerReward.associated(owner, hbrnMint, hbrnTokenProgram), hbrnMint, hbrnTokenProgram),
                 OwnerTransaction.canonicalClaim(program, owner, config, ticket,
                 heldToken(owner, ticket), pet, derived(program, "paid", ticket), OwnerTransaction.SYSTEM_PROGRAM,
-                derived(program, "ledger", ticket), nameId), delegate)
+                derived(program, "ledger", ticket), revenue(program), nameId), delegate)
             Step.DELEGATE -> listOf(delegate)
             Step.ALREADY_DELEGATED -> throw IllegalStateException("Pet is already delegated")
         }
     }
+
+    // The hatch fee's destination (program Claim and PayRebirth `fund`).
+    suspend fun revenue(program: String): String =
+        ProgramDerivedAddress.find(listOf("revenue".toByteArray()), SolanaPublicKey.from(program)).getOrThrow().address
+
+    suspend fun payRebirth(owner: String, ticket: String, program: String, config: String) =
+        OwnerTransaction.canonicalPayRebirth(program, owner, config, petAddress(ticket, program),
+            derived(program, "ledger", ticket), revenue(program), OwnerTransaction.SYSTEM_PROGRAM)
 
     suspend fun petAddress(ticket: String, program: String) = derived(program, "pet", ticket)
 

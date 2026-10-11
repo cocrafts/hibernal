@@ -1,6 +1,7 @@
 package app.hibernal
 
 import android.os.SystemClock
+import android.util.Log
 import com.solana.publickey.SolanaPublicKey
 import com.solana.publickey.ProgramDerivedAddress
 import kotlinx.coroutines.CancellationException
@@ -17,9 +18,11 @@ import kotlin.coroutines.coroutineContext
 import kotlin.random.Random
 
 object GameSync {
-    internal const val PROGRAM = "3USaBvy8KmgWJvKoC8BuTd66Lrow942E35SD7DREBctT"
+    private const val TAG = "HibernalSync"
+    internal const val PROGRAM = "Cq4iAp7YLg6U31rk5ZHJUhXzkcK1Qa6YScft7n3DGhsX"
     private const val DELEGATION = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
-    internal const val CONFIG = "HfAcsUuqfbvzaTztCQ1qvpyJ5tcJxbKHdGUzsRbP2iSW"
+    const val CONFIG_BYTES = 312
+    internal const val CONFIG = "DT6h8v75W2C5AN1Wh1M2khVetk8AELhiNuNNMsAbpQTf"
     private const val DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
     internal const val DISCOVERY_TTL_MS = 600_000L
     internal const val REFRESH_INTERVAL_MS = 30_000L
@@ -50,7 +53,10 @@ object GameSync {
         val revision = VoidNative.gameOwnerRevision()
         selection = scope.launch {
             val poll = Poll(owner, SolanaRpc(SolanaRpc.DEVNET), SolanaRpc(SolanaRpc.DEVNET_ER),
-                SystemClock::elapsedRealtime, Random.Default, shown = sameOwner) { publish(revision, it) }
+                SystemClock::elapsedRealtime, Random.Default, shown = sameOwner) {
+                if (it.state >= 4) Log.w(TAG, "Read state ${it.state}: ${it.detail}")
+                publish(revision, it)
+            }
             while (true) delay(poll.cycle() ?: return@launch)
         }
     }
@@ -115,7 +121,8 @@ object GameSync {
             } catch (error: Exception) {
                 coroutineContext.ensureActive()
                 failures += 1
-                Publication(5, detail = when (error) {
+                if (error is LivePetRead.UnsupportedLayout) Publication(4, detail = error.message ?: "DEPLOYED LAYOUT NOT ACCEPTED")
+                else Publication(5, detail = when (error) {
                     is SolanaRpc.RemoteFailure -> "RPC ERROR ${error.code}"
                     is SolanaRpc.Failure -> error.message ?: "RPC VALIDATION FAILED"
                     else -> "RPC FAILURE ${error.javaClass.simpleName}"
@@ -294,8 +301,11 @@ object GameSync {
 
     private suspend fun validateConfig(account: SolanaRpc.Account?): String {
         if (account == null || account.owner != PROGRAM || account.executable ||
-            account.data.size != 304 || !account.data.copyOfRange(0, 8).contentEquals(CONFIG_TAG)) {
-            throw SolanaRpc.Failure("Config owner/discriminator/length mismatch")
+            !account.data.copyOfRange(0, 8).contentEquals(CONFIG_TAG)) {
+            throw SolanaRpc.Failure("Config owner/discriminator mismatch")
+        }
+        if (account.data.size != CONFIG_BYTES) {
+            throw LivePetRead.UnsupportedLayout("Config is ${account.data.size} bytes, the app reads $CONFIG_BYTES")
         }
         val derived = ProgramDerivedAddress.find(listOf("config".toByteArray()), SolanaPublicKey.from(PROGRAM)).getOrThrow()
         if (derived.address != CONFIG || derived.nonce.toInt() != (account.data[136].toInt() and 255)) {

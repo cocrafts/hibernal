@@ -17,6 +17,7 @@ class OwnerOnboardingTest {
     private val record = "DEEown9AK7sAkBrdA7ZKF28EwiWZGC4w9NzxRRS1KX9g"
     private val metadata = "8j2CVGuCSMVRr2ta8SnkZqwC5SaP1KxkrQd3R4wWJjSo"
     private val ledger = "5gSMmwT9eZQHT9PZwCDQkQXYGWqNay4sBHUCifqiQ6Gw"
+    private val fund = "GcQJXcQxZnxttXbNemDZLmixFygr5gGd3Ben1at7FKgB"
     private val held = "GKnzC96m5gPN5ti85Nn4eqfeQPcRowbNxSB8YVu92WVV"
     private val system = OwnerTransaction.SYSTEM_PROGRAM
     private val delegation = OwnerTransaction.DELEGATION_PROGRAM
@@ -37,8 +38,8 @@ class OwnerOnboardingTest {
         val (account, claim, delegate) = OwnerOnboarding.instructions(OwnerOnboarding.Step.CLAIM_AND_DELEGATE, owner, ticket, program, config, 7, hbrnMint, tokenProgram)
         assertEquals(listOf(owner, hbrnAccount, owner, hbrnMint, system, tokenProgram),
             account.instruction.accounts.map { it.publicKey.address })
-        assertEquals(listOf(owner, config, ticket, held, pet, paid, system, ledger), claim.instruction.accounts.map { it.publicKey.address })
-        assertEquals(listOf(true, true, false, false, true, true, false, true), claim.instruction.accounts.map { it.isWritable })
+        assertEquals(listOf(owner, config, ticket, held, pet, paid, system, ledger, fund), claim.instruction.accounts.map { it.publicKey.address })
+        assertEquals(listOf(true, true, false, false, true, true, false, true, true), claim.instruction.accounts.map { it.isWritable })
         assertEquals(listOf(owner, config, pet, program, buffer, record, metadata, delegation, system),
             delegate.instruction.accounts.map { it.publicKey.address })
         assertEquals(listOf(true, false, true, false, true, true, true, false, false), delegate.instruction.accounts.map { it.isWritable })
@@ -58,7 +59,7 @@ class OwnerOnboardingTest {
         val readonly = keys.takeLast(message[2].toInt())
         assertEquals(owner, keys.first())
         assertEquals("create_associated_token+claim+delegate_pet", unsigned.action)
-        assertEquals(setOf(config, pet, paid, buffer, record, metadata, hbrnAccount, ledger), keys.drop(1).dropLast(readonly.size).toSet())
+        assertEquals(setOf(config, pet, paid, buffer, record, metadata, hbrnAccount, ledger, fund), keys.drop(1).dropLast(readonly.size).toSet())
         assertEquals(setOf(ticket, held, system, program, delegation, OwnerTransaction.COMPUTE_BUDGET_PROGRAM, hbrnMint,
             tokenProgram, OwnerTransaction.ASSOCIATED_TOKEN_PROGRAM), readonly.toSet())
         assertEquals(5, message[4 + 32 * count + 32].toInt())

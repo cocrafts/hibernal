@@ -7,7 +7,7 @@ import java.math.BigInteger
 // Buy pays SKR on L1 and counts the purchase in the Pet's Ledger; Load on the ER moves it into
 // owner slots 5 and 6 (program/shop.ms), so a purchase is in transit while bought exceeds loaded.
 object OwnerShop {
-    const val LEDGER_BYTES = 72
+    const val LEDGER_BYTES = 76
     const val OWNER_ITEM_KINDS = 7
     private const val SHOP_ITEMS = 4
     const val CART_GOODS = 3
