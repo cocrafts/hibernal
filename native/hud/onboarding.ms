@@ -26,12 +26,13 @@ import {
 	unavailablePetStatus,
 	petReadStatus,
 	rebirthStatus,
+	solText,
 	summonAllowed,
 	summonInFlight,
 	summonStatus,
 	summonWaiting,
 } from "./gameAvailability";
-import { Mourning, mournedLine, mournedName, mournedPet } from "./mourning";
+import { Mourning, MournedPet, mournedLine, mournedName, mournedPet } from "./mourning";
 import { spinner } from "./buttons";
 
 const LEFT: float32 = 28.0;
@@ -102,10 +103,11 @@ function namedPet(): Result<GamePet, NotLive> {
 // The owner action revision of the last hatch fee tap; the paid fee shows until the heir hatches.
 let rebirthAskedAt: int32 = -1;
 
-function heirStatus(mourning: Mourning): string {
-	return match (mourning) {
+function heirStatus(mourned: MournedPet): string {
+	return match (mourned.mourning) {
 		Mourning.Dying => "DUSK RECORDS ITS DEATH. THEN YOU CAN HATCH ITS HEIR.",
-		Mourning.RebirthUnpaid => "ITS HEIR HATCHES FOR A SMALL SOL FEE.",
+		Mourning.RebirthUnpaid => "ITS HEIR HATCHES FOR " + solText(mourned.pet.hatchFeeLamports) + ".",
+		Mourning.RebirthPaid => "PAID. THE HEIR IS HATCHING.",
 		Mourning.HeirWaiting => "THE HEIR IS FINDING A HOME.",
 		Mourning.HeirArrived => "THE HEIR HAS HATCHED.",
 	};
@@ -159,6 +161,7 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	const heirName: string = petDisplayName(nameId, heirGeneration as uint16);
 	const summoned: string = !dead.ok ? "SUMMON " + name
 		: dead.value.mourning == Mourning.Dying ? "HATCH AFTER DUSK"
+		: dead.value.mourning == Mourning.RebirthPaid ? "HATCHING..."
 		: unpaid ? (paying ? "HATCHING..." : "HATCH " + heirName)
 		: "CONTINUE WITH " + heirName;
 	let availability: string = unavailablePetStatus(gameOwnerState());
@@ -196,7 +199,7 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	// One line under the button: what the last wallet request did, else why Summon waits.
 	const wallet: string = walletStatus();
 	const asked: string = unpaid && rebirthAskedAt == ownerActionRevision() ? rebirthStatus(outcome) : "";
-	const action: string = asked != "" ? asked : dead.ok ? heirStatus(dead.value.mourning) : wallet != "" ? wallet
+	const action: string = asked != "" ? asked : dead.ok ? heirStatus(dead.value) : wallet != "" ? wallet
 		: waiting && placing(read) ? PLACING : summonStatus(outcome);
 	const status: string = action != "" ? action : summon ? SUMMON_COST : !known ? "" : availability;
 	walletLine(ui, kit, id + 10, DESIGN_W * 0.5, 715.0);

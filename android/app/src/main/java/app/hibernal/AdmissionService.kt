@@ -24,7 +24,7 @@ object AdmissionService {
     sealed interface CommitAnswer {
         data object Committed : CommitAnswer
         data class TooSoon(val retryAfterSeconds: Long) : CommitAnswer
-        data object NothingToClaim : CommitAnswer
+        data object NothingToCommit : CommitAnswer
     }
 
     suspend fun admit(owner: String, base: String = BASE): Answer {
@@ -96,7 +96,7 @@ object AdmissionService {
             status == 200 && json.optString("status") == "committed" -> CommitAnswer.Committed
             status == 429 && json.optString("error") == "TooSoon" ->
                 CommitAnswer.TooSoon(json.optLong("retryAfterSeconds", -1).also { check(it >= 0, "TooSoon without retryAfterSeconds") })
-            status == 409 && json.optString("error") == "NothingToClaim" -> CommitAnswer.NothingToClaim
+            status == 409 && json.optString("error") == "NothingToCommit" -> CommitAnswer.NothingToCommit
             else -> throw Failure("commit HTTP $status: ${json.optString("error")} ${json.optString("status")}".trim())
         }
     }

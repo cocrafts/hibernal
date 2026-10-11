@@ -217,7 +217,7 @@ class WalletBridge(private val activity: MainActivity) {
             OwnerReward.Step.CLAIM -> {}
             // The game commits and pays for it, so the wallet signs on L1 only: it refuses an ER transaction.
             OwnerReward.Step.COMMIT -> when (val answer = AdmissionService.commit(pet.mint)) {
-                AdmissionService.CommitAnswer.Committed -> if (!committedOnL1(base, pet.address, delegation, program, ownerKey, paidTotal)) {
+                AdmissionService.CommitAnswer.Committed -> if (!committedOnL1(base, pet.address, delegation, program, ownerKey) { it.pet.giftOwed > paidTotal }) {
                     publishOwnerAction(OwnerSigning.Outcome.CONFIRMED_AWAITING_READ)
                     GameSync.select(ownerKey)
                     return
@@ -227,7 +227,7 @@ class WalletBridge(private val activity: MainActivity) {
                     publishOwnerAction(OwnerSigning.Outcome.GIFT_TOO_SOON)
                     return
                 }
-                AdmissionService.CommitAnswer.NothingToClaim -> {
+                AdmissionService.CommitAnswer.NothingToCommit -> {
                     publishOwnerAction(OwnerSigning.Outcome.IDLE)
                     GameSync.select(ownerKey)
                     return
@@ -253,13 +253,13 @@ class WalletBridge(private val activity: MainActivity) {
 
     // The commit lands on L1 about a second after the ER; a few spaced reads, then the next poll takes over.
     private suspend fun committedOnL1(base: SolanaRpc, pet: String, delegation: SolanaPublicKey, program: SolanaPublicKey,
-        ownerKey: ByteArray, paidTotal: java.math.BigInteger): Boolean {
+        ownerKey: ByteArray, shows: (SourcePetRead.SourceOnlyDecodedPet) -> Boolean): Boolean {
         repeat(COMMIT_READS) {
             delay(COMMIT_READ_GAP_MS)
             val account = base.getAccountInfo(pet).value ?: return@repeat
             val record = SourcePetRead.decodeSourceOnly(account, if (account.owner == delegation.address) delegation else program,
                 LivePetRead.PROFILE, SolanaPublicKey(ownerKey))
-            if (record.pet.giftOwed > paidTotal) return true
+            if (shows(record)) return true
         }
         return false
     }
@@ -296,6 +296,33 @@ class WalletBridge(private val activity: MainActivity) {
         }
         val owner = SolanaPublicKey(ownerKey).address
         val base = SolanaRpc(SolanaRpc.DEVNET)
+        val program = SolanaPublicKey.from(GameSync.PROGRAM)
+        val mint = SolanaPublicKey.from(pet.mint)
+        val live = SolanaRpc(SolanaRpc.DEVNET_ER).getAccountInfo(pet.address).value
+            ?: throw SolanaRpc.Failure("Pet missing on the ER")
+        val record = SourcePetRead.decodeSourceOnly(live, program, LivePetRead.PROFILE, SolanaPublicKey(ownerKey))
+        val rebirths = OwnerShop.rebirths(base.getAccountInfo(OwnerShop.ledgerAddress(program, mint)).value, mint, program)
+        if (!OwnerOnboarding.rebirthPayable(record.pet.alive, record.diedEpoch, rebirths, record.pet.lineageGeneration)) {
+            Log.i(TAG, "Rebirth not payable: alive=${record.pet.alive} died=${record.diedEpoch} paid=$rebirths " +
+                "generation=${record.pet.lineageGeneration}")
+            publishOwnerAction(OwnerSigning.Outcome.IDLE)
+            return
+        }
+        // PayRebirth refuses (6050) until the L1 copy shows the death; the game's /commit service carries it there at once.
+        val delegation = SolanaPublicKey.from(OwnerTransaction.DELEGATION_PROGRAM)
+        val deathOnL1: (SourcePetRead.SourceOnlyDecodedPet) -> Boolean = { !it.pet.alive && it.diedEpoch.signum() != 0 }
+        val committed = base.getAccountInfo(pet.address).value ?: throw SolanaRpc.Failure("Pet missing on L1")
+        if (!deathOnL1(SourcePetRead.decodeSourceOnly(committed, if (committed.owner == delegation.address) delegation else program,
+                LivePetRead.PROFILE, SolanaPublicKey(ownerKey)))) {
+            when (val answer = AdmissionService.commit(pet.mint)) {
+                // Nothing is paid yet, so a slow L1 copy must not read as CONFIRMED ("PAID") on the R.I.P screen.
+                AdmissionService.CommitAnswer.Committed -> if (!committedOnL1(base, pet.address, delegation, program, ownerKey, deathOnL1)) {
+                    throw SolanaRpc.Failure("Death committed but not yet on L1")
+                }
+                is AdmissionService.CommitAnswer.TooSoon -> throw SolanaRpc.Failure("Death commit refused as too soon (${answer.retryAfterSeconds} s)")
+                AdmissionService.CommitAnswer.NothingToCommit -> throw SolanaRpc.Failure("Commit service sees no death to carry to L1")
+            }
+        }
         val preview = OwnerPreflight.inspectSourceOnly(base,
             OwnerOnboarding.payRebirth(owner, pet.mint, GameSync.PROGRAM, GameSync.CONFIG), owner, GameSync.PROGRAM)
         preview.simulation.value.error?.let { error ->

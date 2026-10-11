@@ -1,5 +1,6 @@
 package app.hibernal
 
+import java.math.BigInteger
 import com.solana.publickey.ProgramDerivedAddress
 import com.solana.publickey.SolanaPublicKey
 
@@ -39,6 +40,10 @@ object OwnerOnboarding {
     // The hatch fee's destination (program Claim and PayRebirth `fund`).
     suspend fun revenue(program: String): String =
         ProgramDerivedAddress.find(listOf("revenue".toByteArray()), SolanaPublicKey.from(program)).getOrThrow().address
+
+    // PayRebirth charges whatever the Pet's state, so the app offers it only for a recorded death not yet paid for.
+    fun rebirthPayable(alive: Boolean, diedEpoch: BigInteger, rebirths: Long, lineageGeneration: Int) =
+        !alive && diedEpoch.signum() != 0 && rebirths <= lineageGeneration
 
     suspend fun payRebirth(owner: String, ticket: String, program: String, config: String) =
         OwnerTransaction.canonicalPayRebirth(program, owner, config, petAddress(ticket, program),

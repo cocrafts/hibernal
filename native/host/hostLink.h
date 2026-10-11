@@ -63,7 +63,7 @@ int hostGameOwnerRevision(void);
 int hostGameOwnerKeyByte(int index);
 
 // LivePetRead.Field in the Kotlin shell and GamePetField in host.ms, in that order.
-#define HOST_GAME_PET_FIELDS 68
+#define HOST_GAME_PET_FIELDS 70
 // LivePetRead.SeatField in the Kotlin shell and GameSeatField in host.ms, in that order.
 #define HOST_GAME_SEAT_FIELDS 52
 #define HOST_GAME_SEATS 10

@@ -13,24 +13,36 @@ object OwnerShop {
     const val CART_GOODS = 3
     private val LEDGER_TAG = byteArrayOf(0x2b, 0x29, 0x15, 0xd5.toByte(), 0xb4.toByte(), 0xb0.toByte(), 0x5f, 0x20)
 
-    data class Holdings(val skrBalance: BigInteger, val inTransit: Long)
+    data class Holdings(val skrBalance: BigInteger, val inTransit: Long, val rebirths: Long, val hatchFeeLamports: Long)
     data class Good(val item: Int, val tier: Int)
 
     // Config after its 8-byte tag: skrMint at 176, treasury at 208 (program/layout.ms Config).
     fun skrMint(config: SolanaRpc.Account) = SolanaPublicKey(config.data.copyOfRange(176, 208)).address
     fun treasury(config: SolanaRpc.Account) = SolanaPublicKey(config.data.copyOfRange(208, 240)).address
+    fun hatchFeeLamports(config: SolanaRpc.Account): Long =
+        (0 until 8).fold(0L) { value, index -> value or ((config.data[304 + index].toLong() and 0xff) shl (8 * index)) }
+            .also { if (it < 0) throw LivePetRead.UnsupportedLayout("HATCH FEE PAST INT64") }
 
     suspend fun ledgerAddress(program: SolanaPublicKey, mint: SolanaPublicKey): String =
         ProgramDerivedAddress.find(listOf("ledger".toByteArray(), mint.bytes), program).getOrThrow().address
 
     // Ledger.bought per owner item kind; absent before the first Buy.
     fun bought(account: SolanaRpc.Account?, mint: SolanaPublicKey, program: SolanaPublicKey): List<Long> {
-        if (account == null) return List(OWNER_ITEM_KINDS) { 0L }
+        val data = ledger(account, mint, program) ?: return List(OWNER_ITEM_KINDS) { 0L }
+        return List(OWNER_ITEM_KINDS) { unsigned32(data, 40 + it * 4) }
+    }
+
+    // Ledger.rebirths: hatch fees paid for this mint's heirs; absent before the first payment.
+    fun rebirths(account: SolanaRpc.Account?, mint: SolanaPublicKey, program: SolanaPublicKey): Long =
+        ledger(account, mint, program)?.let { unsigned32(it, 72) } ?: 0L
+
+    private fun ledger(account: SolanaRpc.Account?, mint: SolanaPublicKey, program: SolanaPublicKey): ByteArray? {
+        if (account == null) return null
         if (account.owner != program.address || account.executable || account.data.size != LEDGER_BYTES ||
             !account.data.copyOfRange(0, 8).contentEquals(LEDGER_TAG) || !account.data.copyOfRange(8, 40).contentEquals(mint.bytes)) {
             throw LivePetRead.UnsupportedLayout("LEDGER ACCOUNT NOT ACCEPTED")
         }
-        return List(OWNER_ITEM_KINDS) { unsigned32(account.data, 40 + it * 4) }
+        return account.data
     }
 
     fun inTransit(bought: List<Long>, loaded: List<Long>): Long {

@@ -332,6 +332,23 @@ export function rebirthStatus(outcome: OwnerActionOutcome): string {
 	};
 }
 
+const LAMPORTS_PER_SOL: uint64 = 1000000000;
+
+// Lamports as SOL with no trailing zeros: 20000000 is "0.02 SOL".
+export function solText(lamports: uint64): string {
+	let fraction: string = (lamports % LAMPORTS_PER_SOL + LAMPORTS_PER_SOL).toString().substring(1);
+	while (fraction.length > 0 && fraction.endsWith("0")) { fraction = fraction.substring(0, fraction.length - 1); }
+	return (lamports / LAMPORTS_PER_SOL).toString() + (fraction.length > 0 ? "." + fraction : "") + " SOL";
+}
+
+test "a hatch fee reads in SOL" {
+	assert solText(20000000) == "0.02 SOL";
+	assert solText(2000000) == "0.002 SOL";
+	assert solText(1500000000) == "1.5 SOL";
+	assert solText(1000000000) == "1 SOL";
+	assert solText(1) == "0.000000001 SOL";
+}
+
 const MINUTE: uint64 = 60;
 const HOUR: uint64 = 3600;
 const DAY: uint64 = 86400;

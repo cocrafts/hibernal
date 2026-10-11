@@ -79,7 +79,7 @@ class LivePetReadTest {
     private fun placedSource(bytes: ByteArray = pet()) =
         LivePetRead.source(emptyList(), listOf(keyed(bytes, delegation)), listOf(keyed(bytes)), program, delegation, owner)
     private fun now(day: Long) = genesis + day * secondsPerDay + 5
-    private val noShop = OwnerShop.Holdings(BigInteger.ZERO, 0)
+    private val noShop = OwnerShop.Holdings(BigInteger.ZERO, 0, 0, 0)
     private fun LongArray.at(field: LivePetRead.Field) = this[field.ordinal]
     private fun unsupported(message: String, block: () -> Unit) {
         val error = assertThrows(LivePetRead.UnsupportedLayout::class.java) { block() }
@@ -89,7 +89,7 @@ class LivePetReadTest {
     @Test fun placedMemberPetPublishesExactIntegers() {
         val source = placedSource()
         val placement = LivePetRead.placement(source, account(world()), account(block()), program, now(41))
-        val fields = LivePetRead.fields(source, placement, BigInteger.valueOf(40), OwnerShop.Holdings(BigInteger.valueOf(200_000_000), 2))
+        val fields = LivePetRead.fields(source, placement, BigInteger.valueOf(40), OwnerShop.Holdings(BigInteger.valueOf(200_000_000), 2, 3, 20_000_000))
         assertEquals(LivePetRead.Field.entries.size, fields.size)
         assertEquals(SourcePetLifecycle.Fact.FIRST_LIFE_ACTIVE.ordinal.toLong(), fields.at(LivePetRead.Field.LIFE))
         assertEquals(1L, fields.at(LivePetRead.Field.DELEGATED))
@@ -106,6 +106,8 @@ class LivePetReadTest {
         assertEquals(-40L, fields.at(LivePetRead.Field.BONDING))
         assertEquals(200_000_000L, fields.at(LivePetRead.Field.SKR_BALANCE))
         assertEquals(2L, fields.at(LivePetRead.Field.ITEMS_IN_TRANSIT))
+        assertEquals(3L, fields.at(LivePetRead.Field.LEDGER_REBIRTHS))
+        assertEquals(20_000_000L, fields.at(LivePetRead.Field.CONFIG_HATCH_FEE_LAMPORTS))
         assertEquals(0L, fields.at(LivePetRead.Field.OWNER_FIRST))
         assertEquals(11500L, fields.at(LivePetRead.Field.GROWTH_MULTIPLIER_BPS))
         assertEquals(10L, fields.at(LivePetRead.Field.GROWTH_MULTIPLIER_EXPIRY))

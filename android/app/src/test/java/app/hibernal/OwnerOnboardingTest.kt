@@ -77,5 +77,14 @@ class OwnerOnboardingTest {
         }
     }
 
+    @Test fun hatchFeeIsOfferedOnlyForARecordedDeathNotYetPaidFor() {
+        val died = BigInteger.valueOf(12)
+        assertTrue(OwnerOnboarding.rebirthPayable(false, died, 0, 0))
+        assertFalse(OwnerOnboarding.rebirthPayable(true, died, 0, 0))
+        assertFalse(OwnerOnboarding.rebirthPayable(false, BigInteger.ZERO, 0, 0))
+        assertFalse(OwnerOnboarding.rebirthPayable(false, died, 1, 0))
+        assertTrue(OwnerOnboarding.rebirthPayable(false, died, 1, 1))
+    }
+
     private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
 }

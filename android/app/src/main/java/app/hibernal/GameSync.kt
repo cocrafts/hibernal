@@ -251,7 +251,9 @@ object GameSync {
                 val loaded = source.record.canonicalAccountFields?.loaded
                     ?: throw LivePetRead.UnsupportedLayout("PET LOADED COUNTS MISSING")
                 val holdings = OwnerShop.Holdings(OwnerShop.balance(baseAccounts[skrAccount], address, skrMint, skrTokenProgram),
-                    OwnerShop.inTransit(OwnerShop.bought(baseAccounts[ledgerAt], source.record.mint, program), loaded))
+                    OwnerShop.inTransit(OwnerShop.bought(baseAccounts[ledgerAt], source.record.mint, program), loaded),
+                    OwnerShop.rebirths(baseAccounts[ledgerAt], source.record.mint, program),
+                    OwnerShop.hatchFeeLamports(baseAccounts[CONFIG]!!))
                 livePet = LivePet(SolanaPublicKey(selected).address, source.address, source.record.mint.address)
                 publication.copy(state = 3, ephemeralSlot = ephemeralSlot, detail = "VALIDATED ${LivePetRead.PET_BYTES}-BYTE PET",
                     pet = LivePetRead.fields(source, placement, paidTotal, holdings).toList(),

@@ -20,6 +20,8 @@ export enum Mourning {
 	Dying,
 	// Recorded: the owner may pay for the heir.
 	RebirthUnpaid,
+	// Paid on L1 (Ledger.rebirths past the dead Pet's generation); the game hatches the heir.
+	RebirthPaid,
 	// Hatched and waiting for a Block.
 	HeirWaiting,
 	HeirArrived,
@@ -93,7 +95,8 @@ function dying(snapshot: GameRead, seen: int32): Result<MournedPet, NotMourning>
 	const pet: GamePet = snapshot.pet;
 	const heir: GamePet = { ...pet, lineageGeneration: pet.lineageGeneration + 1 };
 	if (heir.lineageGeneration <= seen) { return Result.err(NotMourning.NoticeSeen); }
-	const stage: Mourning = pet.life == PetLife.DeathRecorded ? Mourning.RebirthUnpaid : Mourning.Dying;
+	const stage: Mourning = pet.life != PetLife.DeathRecorded ? Mourning.Dying
+		: pet.rebirths > pet.lineageGeneration ? Mourning.RebirthPaid : Mourning.RebirthUnpaid;
 	if (pet.hearts > 0) {
 		return Result.ok({ pet: heir, mourning: stage, cause: DeathCause.OldAge, slayerSlot: 0 });
 	}
@@ -183,5 +186,8 @@ test "a Pet that died today says how, before dusk hatches its heir" {
 	assert mournedLine(beaten.value) == "FELL TO SLOT 10 / THE HEIR STARTS WITH NOTHING";
 	const recorded = mourning(readOf(PetLife.DeathRecorded, 0), -1);
 	assert recorded.ok && recorded.value.mourning == Mourning.RebirthUnpaid;
+	const paidRead = readOf(PetLife.DeathRecorded, 0);
+	const paid = mourning({ ...paidRead, pet: { ...paidRead.pet, rebirths: 1 } }, -1);
+	assert paid.ok && paid.value.mourning == Mourning.RebirthPaid;
 	assert old.value.mourning == Mourning.Dying;
 }
