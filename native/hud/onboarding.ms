@@ -17,7 +17,6 @@ import {
 	OwnerActionOutcome,
 	markDeathNoticeSeen,
 	ownerActionOutcome,
-	ownerActionRevision,
 	requestOwnerAction,
 } from "../host/host";
 import {
@@ -101,8 +100,8 @@ function namedPet(): Result<GamePet, NotLive> {
 	return Result.ok(read.value.pet);
 }
 
-// The owner action revision of the last hatch fee tap; the paid fee shows until the heir hatches.
-let rebirthAskedAt: int32 = -1;
+// Set by the hatch fee tap: PayRebirth is the only owner action on this screen, so every later outcome is its own.
+let rebirthAsked: boolean = false;
 
 function heirStatus(mourned: MournedPet): string {
 	return match (mourned.mourning) {
@@ -147,7 +146,8 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	const nameId: uint8 = dead.ok ? dead.value.pet.nameId : (named.ok ? named.value.nameId : selected);
 	const heirArrived: boolean = dead.ok && dead.value.mourning == Mourning.HeirArrived;
 	const unpaid: boolean = dead.ok && dead.value.mourning == Mourning.RebirthUnpaid;
-	const paying: boolean = unpaid && rebirthAskedAt == ownerActionRevision()
+	if (!unpaid) { rebirthAsked = false; }
+	const paying: boolean = rebirthAsked
 		&& (summonInFlight(outcome) || outcome == OwnerActionOutcome.ConfirmedAwaitingRead);
 	const heirGeneration: int32 = dead.ok ? dead.value.pet.lineageGeneration : 0;
 	const name: string = dead.ok ? mournedName(dead.value)
@@ -193,7 +193,7 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 		74.0, summoned.toUpperCase(), dead.ok ? heirArrived || unpaid : summon, paying)) {
 		if (unpaid) {
 			requestOwnerAction(OwnerAction.PayRebirth, 0);
-			rebirthAskedAt = ownerActionRevision();
+			rebirthAsked = true;
 		} else if (dead.ok) {
 			markDeathNoticeSeen(heirGeneration);
 		} else {
@@ -202,7 +202,7 @@ export function onboarding(ui: Ui, kit: Kit, id: int32, nameId: uint8): uint8 {
 	}
 	// One line under the button: what the last wallet request did, else why Summon waits.
 	const wallet: string = walletStatus();
-	const asked: string = unpaid && rebirthAskedAt == ownerActionRevision() ? rebirthStatus(outcome) : "";
+	const asked: string = rebirthAsked ? rebirthStatus(outcome) : "";
 	const action: string = asked != "" ? asked : dead.ok ? heirStatus(dead.value) : wallet != "" ? wallet
 		: waiting && placing(read) ? PLACING : summonStatus(outcome);
 	const status: string = action != "" ? action : summon ? SUMMON_COST : !known ? "" : availability;
