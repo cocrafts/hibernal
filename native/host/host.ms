@@ -431,6 +431,7 @@ enum GamePetField {
 	WorldSecondsPerDay,
 	LedgerRebirths,
 	ConfigHatchFeeLamports,
+	EngagedToday,
 }
 
 // A validated canonical Pet as the shell read it; delegation, membership and the World day
@@ -481,6 +482,8 @@ export struct GamePet {
 	rebirths: int32;
 	// Config.hatch_fee_lamports: what PayRebirth charges for an heir.
 	hatchFeeLamports: uint64;
+	// Owner visits (Engage) this game day; dusk resets it (rules/life.ms).
+	engagedToday: int32;
 	gear: Gear;
 }
 
@@ -550,7 +553,7 @@ enum GameFightField {
 }
 
 const ITEM_FIELDS: int32 = 5;
-const GAME_PET_FIELDS: int32 = (GamePetField.ConfigHatchFeeLamports as int32) + 1;
+const GAME_PET_FIELDS: int32 = (GamePetField.EngagedToday as int32) + 1;
 const INT32_LOW: int64 = -2147483648;
 const INT32_HIGH: int64 = 2147483647;
 const COMBATANT_FIELDS: int32 = 9;
@@ -676,6 +679,7 @@ export function noGamePet(): GamePet {
 		secondsPerDay: 0,
 		rebirths: 0,
 		hatchFeeLamports: 0,
+		engagedToday: 0,
 		gear: Gear.bare(),
 	};
 }
@@ -777,6 +781,7 @@ function publishedPet(): Result<GamePet, GameReadError> {
 		secondsPerDay: petUnsigned(GamePetField.WorldSecondsPerDay),
 		rebirths: try petBounded(GamePetField.LedgerRebirths, 0, 2147483647),
 		hatchFeeLamports: petUnsigned(GamePetField.ConfigHatchFeeLamports),
+		engagedToday: try petBounded(GamePetField.EngagedToday, 0, 255),
 		gear: { head: try petItem(0), body: try petItem(1), hands: try petItem(2), feet: try petItem(3) },
 	});
 }

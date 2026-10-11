@@ -16,7 +16,7 @@ import { ItemCard, itemPeek, gearCard, gearSummary, slotName } from "./itemCard"
 import { NoticeKind, ShopNotice, ShopTap, ShopTapKind, goodCard, goodIcon, shopPanel } from "./shopStrip";
 import { CartGood, ShopGood, ShopLock, SKR_UNIT, ownedGood, packedCart, shopLock, sulking } from "./ownerGoods";
 import { Gear, Item, GearSlot, ItemSkill, at, isEmpty } from "../../rules/items";
-import { OwnerItem, GIFT_BONDING } from "../../rules/owner";
+import { OwnerItem, ENGAGES_PER_DAY, GIFT_BONDING } from "../../rules/owner";
 import { Banner, BannerArt, BannerWord, BANNER_STEP, banner, banners, bannersHeight } from "./banners";
 import { gearIcon } from "./gearIcons";
 import { NO_PET_NAME, petDisplayName, randomPetName } from "./petNames";
@@ -44,7 +44,7 @@ import {
 } from "./neighbourVisit";
 import { ACTS_PER_EPOCH, BPS, EPOCH_SECONDS } from "../../rules/units";
 import { Region } from "../../rules/stats";
-import { GameNeighbour, GamePet, PetLife, noGamePet, OwnerAction, OwnerActionOutcome, ownerActionOutcome, requestOwnerAction } from "../host/host";
+import { GameNeighbour, GamePet, PetLife, gameRead, noGamePet, OwnerAction, OwnerActionOutcome, ownerActionOutcome, requestOwnerAction } from "../host/host";
 
 interface Home {
 	ui: Ui;
@@ -85,8 +85,11 @@ interface Home {
 }
 
 interface SeenPet {
+	ownerRevision: int32;
 	generation: int32;
+	bornEpoch: uint64;
 	level: int32;
+	engagedToday: int32;
 	// In GEAR_SLOTS order.
 	gear: Item[];
 }
@@ -617,10 +620,11 @@ function bondingHearts(home: Home, centreX: float32, barTop: float32, bonding: i
 	}
 }
 
-function seenOf(pet: GamePet): SeenPet {
+function seenOf(ownerRevision: int32, pet: GamePet): SeenPet {
 	const gear: Item[] = [];
 	for (const slot of GEAR_SLOTS) { gear.push(pet.gear.at(slot)); }
-	return { generation: pet.lineageGeneration, level: pet.level, gear: gear };
+	return { ownerRevision: ownerRevision, generation: pet.lineageGeneration, bornEpoch: pet.bornEpoch, level: pet.level,
+		engagedToday: pet.engagedToday, gear: gear };
 }
 
 // Wear moves with every fight, so it is not a change worth a row.
@@ -628,30 +632,37 @@ function sameItem(left: Item, right: Item): boolean {
 	return left.rarity == right.rarity && left.stat == right.stat && left.skill == right.skill && left.level == right.level;
 }
 
-function logPetChange(home: Home, line: string): void {
-	const rows: PetActivity[] = [{ day: 0, glyph: "lock", line: line, amount: 0, slot: NO_NEIGHBOUR }];
+function logPetChange(home: Home, glyph: string, line: string): void {
+	const rows: PetActivity[] = [{ day: 0, glyph: glyph, line: line, amount: 0, slot: NO_NEIGHBOUR }];
 	for (const row of home.petChanges) {
 		if ((rows.length as int32) < PET_CHANGES_KEPT) { rows.push(row); }
 	}
 	home.petChanges = rows;
 }
 
-// The first read of a Pet, or of its heir, is the baseline and logs nothing.
+// The first read of a Pet, its heir or another owner's Pet is the baseline and logs nothing.
 function notePetChanges(home: Home, pet: GamePet): void {
-	const now: SeenPet = seenOf(pet);
-	if ((home.seen.length as int32) == 0 || home.seen[0].generation != now.generation) {
+	const read = gameRead();
+	const now: SeenPet = seenOf(read.ok ? read.value.ownerRevision : -1, pet);
+	const seen: SeenPet[] = home.seen;
+	if ((seen.length as int32) == 0 || seen[0].ownerRevision != now.ownerRevision
+		|| seen[0].generation != now.generation || seen[0].bornEpoch != now.bornEpoch) {
 		home.seen = [now];
 		home.petChanges = [];
 		return;
 	}
-	const before: SeenPet = home.seen[0];
+	const before: SeenPet = seen[0];
 	for (let slot: int32 = 0; slot < PET_SLOTS; slot += 1) {
 		const item: Item = now.gear[slot];
 		if (sameItem(item, before.gear[slot])) { continue; }
 		const part: string = slotName(GEAR_SLOTS[slot]);
-		logPetChange(home, item.isEmpty() ? part + " GEAR GONE" : "NEW " + part + " GEAR, " + gearSummary(item));
+		logPetChange(home, "lock", item.isEmpty() ? part + " GEAR GONE" : "NEW " + part + " GEAR, " + gearSummary(item));
 	}
-	if (now.level > before.level) { logPetChange(home, "REACHED LEVEL " + now.level.toString()); }
+	if (now.level > before.level) { logPetChange(home, "lock", "REACHED LEVEL " + now.level.toString()); }
+	if (now.engagedToday > before.engagedToday) {
+		logPetChange(home, "heart", "YOU VISITED. IT LIKES YOU MORE. " + now.engagedToday.toString() + " OF "
+			+ ENGAGES_PER_DAY.toString() + " VISITS TODAY.");
+	}
 	home.seen = [now];
 }
 

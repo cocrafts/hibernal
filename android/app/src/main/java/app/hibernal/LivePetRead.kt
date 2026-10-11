@@ -29,6 +29,7 @@ object LivePetRead {
         BODY_RARITY, BODY_STAT, BODY_WEAR, BODY_SKILL, BODY_LEVEL,
         HANDS_RARITY, HANDS_STAT, HANDS_WEAR, HANDS_SKILL, HANDS_LEVEL,
         FEET_RARITY, FEET_STAT, FEET_WEAR, FEET_SKILL, FEET_LEVEL, WORLD_SECONDS_PER_DAY, LEDGER_REBIRTHS, CONFIG_HATCH_FEE_LAMPORTS,
+        ENGAGED_TODAY,
     }
 
     const val BLOCK_SEATS = 10
@@ -336,6 +337,7 @@ object LivePetRead {
             Field.WORLD_SECONDS_PER_DAY to worldValue(world?.secondsPerDay),
             Field.LEDGER_REBIRTHS to shop.rebirths,
             Field.CONFIG_HATCH_FEE_LAMPORTS to shop.hatchFeeLamports,
+            Field.ENGAGED_TODAY to tail.engagedToday.toLong(),
         ) + Field.entries.dropWhile { it != Field.HEAD_RARITY }.zip(gearValues(pet.gear))
         check(values.size == Field.entries.size) { "Live Pet fields incomplete" }
         return LongArray(Field.entries.size) { values.getValue(Field.entries[it]) }
