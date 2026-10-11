@@ -79,6 +79,7 @@ From `SOLANA.md` §7 items 20–21:
 | Bootstrap accounts: Config 304 B, Policy 4,792 B, World + records, HBRN mint, vrf-payer + records | the game, once | 0.0022 + 0.0250 + 0.0034 + 0.0011 + 0.0029 SOL; the Resort account (~10 KB) is about 0.05 SOL by size, not measured |
 | A crank in flight (RoundStart 13 accounts / Turn 24 accounts) | the vrf-payer, returned by `Sweep` | ~20.5k / ~32.1k lamports |
 | A commit of a pet (CommitPet, paid by the vrf-payer with the validator's fee vault) | the game | free for the first 25 commits a delegation, then 100,000 lamports |
+| The hatch fee of a claim and of each rebirth (D43) | the player, into the SOL fund at the `revenue` PDA, withdrawn by the authority (`withdraw_fund`) | `Config.hatch_fee_lamports`, 20,000,000 lamports by default (`HATCH_FEE_LAMPORTS` at bootstrap) |
 | ER transactions, VRF on the ephemeral queue | — | 0 (MagicBlock's pricing page; the devnet cranker's 0.01 SOL did not move over thousands of triggers) |
 
 Rent is the same on mainnet and devnet (`solana rent` on both, 2026-10-03): about 5,080 lamports per byte.
