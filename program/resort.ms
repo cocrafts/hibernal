@@ -14,6 +14,7 @@ import {
 	createPda,
 	findProgramAddress,
 	mutable,
+	owned,
 	programId,
 } from "std/solana";
 import { accounts, args } from "std/solana";
@@ -36,6 +37,7 @@ import {
 } from "./layout";
 
 const CLEARED_MEMBERS_FROM: int32 = 5;
+const PREVIOUS_BLOCK_AT: int32 = 4;
 const ASSIGNED_PETS_FROM: int32 = 5;
 const NO_STRENGTH: uint64 = 0xffffffffffffffff;
 
@@ -59,7 +61,7 @@ export struct ResortAssignAccounts {
 	config: Owned<Config>;
 	resort: Mutable<Resort>;
 	block: Mutable<Block>;
-	previous: Owned<Block>;
+	previous: Account;
 }
 
 export struct ResortFinishAccounts {
@@ -178,7 +180,8 @@ export function resortAssign(): Result<uint64, ProgramError> {
 	const config = x.config.data();
 	const resort = x.resort.data();
 	const block = x.block.data();
-	const previous = x.previous.data();
+	let previous: Readonly<Ptr<Block>> = block;
+	if (block.id > 0) { previous = (try owned<Block>(PREVIOUS_BLOCK_AT)).data(); }
 	if (resort.cleared != config.blocks) { return failed(HibernalError.Unfinished); }
 	if (block.rotation != resort.rotation || given.offset != (block.filled as uint64)) {
 		return failed(HibernalError.OutOfOrder);

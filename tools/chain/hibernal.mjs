@@ -541,13 +541,13 @@ export function hibernal(programAddress, authority) {
 				...members.map((member) => writable(member)),
 			]);
 		},
-		async resortAssign(id, previousId, offset, pets) {
+		async resortAssign(id, offset, pets) {
 			return call("ResortAssign", [
 				signer(authority),
 				readonly(await address(seeds.config())),
 				writable(await address(seeds.resort())),
 				writable(await address(seeds.block(id))),
-				readonly(await address(seeds.block(previousId))),
+				readonly(id === 0 ? programAddress : await address(seeds.block(id - 1))),
 				...pets.map((pet) => writable(pet)),
 			], u64(offset));
 		},

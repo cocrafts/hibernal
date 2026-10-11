@@ -570,7 +570,7 @@ test "processUndelegation answers the delegation program's fixed discriminator" 
 	const discriminator = instructionDiscriminator("ProcessUndelegation");
 	const expected: uint8[] = [196, 28, 41, 206, 48, 37, 51, 167];
 	for (let i = 0; i < 8; i++) { assert discriminator.bytes[i] == expected[i]; }
-	const forged = [blank(keyOf(70, 1)), wallet(stranger), wallet(stranger), executable(SYSTEM_PROGRAM_ID)];
+	const forged = [blank(keyOf(70, 1)), wallet(stranger), wallet(keyOf(71, 1)), executable(SYSTEM_PROGRAM_ID)];
 	const data = instructionBytes("ProcessUndelegation");
 	pushU32(data, 1);
 	pushU32(data, 5);

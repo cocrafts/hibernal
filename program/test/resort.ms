@@ -321,6 +321,10 @@ function clearedWithout(block: int32, freed: int32): uint64 {
 	return outcome.result;
 }
 
+function noPreviousBlock(): HostAccount {
+	return { ...authority(), key: programKey(), signer: false };
+}
+
 function assigned(block: int32, previous: int32, offset: uint64, pets: int32[]): uint64 {
 	const data = headed("ResortAssign");
 	pushU64(data, offset);
@@ -329,7 +333,7 @@ function assigned(block: int32, previous: int32, offset: uint64, pets: int32[]):
 		state[CONFIG],
 		state[RESORT],
 		state[BLOCKS + block],
-		readOnly(state[BLOCKS + previous]),
+		block == 0 ? noPreviousBlock() : readOnly(state[BLOCKS + previous]),
 	];
 	for (const pet of pets) { accounts.push(state[PETS + pet]); }
 	const outcome = run(programKey(), accounts, data, assignEntry);

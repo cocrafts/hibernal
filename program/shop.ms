@@ -12,12 +12,14 @@ import {
 	System,
 	Writable,
 	WritableSigner,
+	bump,
 	createPda,
 	expectAddress,
 	expectHasOne,
 	mutable,
 	pdaWithBump,
 	programAddress,
+	seeds,
 } from "std/solana";
 import { accounts, args } from "std/solana";
 import { Mint, TokenAccount, transferTokens } from "std/solana/token";
@@ -45,7 +47,7 @@ const INSURANCE_KIND: int32 = 6;
 export struct BuyAccounts {
 	owner: WritableSigner;
 	config: Owned<Config>;
-	pet: Delegated<PetAccount>;
+	@seeds("pet", pet.mint) @bump(pet.bump) pet: Delegated<PetAccount>;
 	ledger: Writable;
 	skrMint: External<Mint>;
 	source: ExternalMutable<TokenAccount>;

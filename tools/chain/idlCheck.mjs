@@ -32,7 +32,7 @@ const built = [
 	await program.load(mint),
 	await program.resortBegin(0, 1n),
 	await program.resortClear(0, [await someKey()]),
-	await program.resortAssign(1, 0, 0n, [await someKey()]),
+	await program.resortAssign(1, 0n, [await someKey()]),
 	await program.resortFinish(),
 	await program.startBlock(0, 0n),
 	await program.sweep([await someKey()]),

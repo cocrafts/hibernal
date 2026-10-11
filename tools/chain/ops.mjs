@@ -653,7 +653,7 @@ async function resort() {
 	});
 	for (let id = 0; id * SEATS < pets.length; id++) {
 		const chosen = pets.slice(id * SEATS, id * SEATS + SEATS).map((pet) => address(pet.key));
-		await onEr(`resort assign ${id}`, [await program.resortAssign(id, Math.max(id - 1, 0), 0n, chosen)]);
+		await onEr(`resort assign ${id}`, [await program.resortAssign(id, 0n, chosen)]);
 	}
 	await onEr("resort finish", [await program.resortFinish()]);
 	note("resort", `re-sorted ${pets.length} pets into ${Math.ceil(pets.length / SEATS)} blocks by ${["level", "power", "combat"][MEASURE]}`);
