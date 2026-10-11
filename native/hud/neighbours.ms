@@ -137,7 +137,7 @@ export function rulesPet(this seat: GameNeighbour): Pet {
 		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
-		ownerBankedAt: 0,
+		ownerBankReadyAt: 0,
 		gear: seat.gear,
 		grudgeSlot: seat.grudgeSlot as uint8,
 		rage: seat.rage as uint8,

@@ -456,7 +456,7 @@ export struct FightOpening {
 	record: FightRecord;
 }
 
-export function openingAgainst(this attacker: Pet, defender: Pet, stake: uint64, epoch: uint64, seed: uint64): FightOpening {
+function openingAgainst(this attacker: Pet, defender: Pet, stake: uint64, epoch: uint64, seed: uint64): FightOpening {
 	const attackerToday = attacker.onFightDay(epoch);
 	const defenderToday = defender.onFightDay(epoch);
 	const attackerCombatant = attackerToday.combatantFacing(defenderToday);
@@ -484,13 +484,13 @@ export function openingAgainst(this attacker: Pet, defender: Pet, stake: uint64,
 			defender: defenderCombatant,
 			stake: stake,
 			loot: 0,
-			outcome: result.outcome as uint8,
+			outcome: result.outcome,
 			rounds: result.rounds,
 		},
 	};
 }
 
-export function attackerWon(this opening: FightOpening, global: GlobalConfig, epoch: uint64): FightSettlement {
+function attackerWon(this opening: FightOpening, global: GlobalConfig, epoch: uint64): FightSettlement {
 	const attackerToday = opening.attackerToday;
 	const defenderToday = opening.defenderToday;
 	const stake = opening.record.stake;
@@ -531,7 +531,7 @@ export function attackerWon(this opening: FightOpening, global: GlobalConfig, ep
 	};
 }
 
-export function bittenBy(this struck: Pet, attackerToday: Pet, loot: uint64, bites: int32, epoch: uint64, global: GlobalConfig): PetAndGlobal {
+function bittenBy(this struck: Pet, attackerToday: Pet, loot: uint64, bites: int32, epoch: uint64, global: GlobalConfig): PetAndGlobal {
 	const hearts = Math.max((struck.hearts as int32) - bites, 0);
 	const struckDown: Pet = {
 		...struck,
@@ -546,7 +546,7 @@ export function bittenBy(this struck: Pet, attackerToday: Pet, loot: uint64, bit
 	return { pet: survivor, global: insuredGlobal };
 }
 
-export function defenderHeld(this opening: FightOpening, global: GlobalConfig): FightSettlement {
+function defenderHeld(this opening: FightOpening, global: GlobalConfig): FightSettlement {
 	const committed = opening.committed;
 	const [keptStake, fee] = stakeSplit(opening.record.stake);
 	const defeat = defeatHearts(committed.maxHearts as int32);
@@ -575,7 +575,7 @@ export function settleAttack(
 ): Result<FightSettlement, AttackError> {
 	const stake = try attacker.stakeFor(defender, level, epoch);
 	const opening = attacker.openingAgainst(defender, stake, epoch, seed);
-	const settled = opening.record.fightOutcome() == Outcome.AttackerWins
+	const settled = opening.record.outcome == Outcome.AttackerWins
 		? opening.attackerWon(global, epoch)
 		: opening.defenderHeld(global);
 	return Result.ok(settled);
@@ -877,7 +877,7 @@ test "attack settlement conserves money and counts the fight" {
 		assert after.attacker.fightsOutToday == 1;
 		assert after.defender.fightsInToday == 1;
 		assert after.attacker.attackedOn(BlockSlot.Second, DUEL_EPOCH);
-		if (after.record.fightOutcome() == Outcome.AttackerWins) {
+		if (after.record.outcome == Outcome.AttackerWins) {
 			wins += 1;
 			assert after.record.loot == duel.defender.harvest - after.defender.harvest;
 			assert after.attacker.hearts == 5;
@@ -895,7 +895,7 @@ test "a winning attacker that takes back its stake leaves the hearts alone" {
 	let won = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
-		if (after.record.fightOutcome() == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
+		if (after.record.outcome == Outcome.AttackerWins && after.record.loot >= after.record.stake) {
 			assert after.defender.hearts == 5;
 			assert after.defender.bitesInToday == 0;
 			won += 1;
@@ -909,7 +909,7 @@ test "a winning attacker bites an empty harvest" {
 	let bitten = 0;
 	for (let seed: uint64 = 0; seed < 60; seed++) {
 		const after = duel.settledOn(StakeLevel.Quarter, seed);
-		if (after.record.fightOutcome() == Outcome.AttackerWins) {
+		if (after.record.outcome == Outcome.AttackerWins) {
 			const bite = biteHearts(
 				after.record.stake,
 				after.record.loot,
@@ -943,7 +943,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (after.record.outcome != Outcome.AttackerWins) { continue; }
 		assert !after.defender.alive;
 		assert after.defender.burrow == frail.burrow / 2;
 		assert after.attacker.burrow == cannibal.burrow + frail.burrow / 2;
@@ -959,7 +959,7 @@ test "a cannibal whose bite kills takes half of what the victim left" {
 			seed,
 		);
 		if (!plain.ok) { unreachable; }
-		if (plain.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
 		assert plain.value.defender.burrow == frail.burrow;
 	}
 }
@@ -980,7 +980,7 @@ test "an insured pet bitten to death comes back once, and no cannibal eats it" {
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (after.record.outcome != Outcome.AttackerWins) { continue; }
 		assert after.defender.alive;
 		assert after.defender.insurance == (Insurance.Used as uint8);
 		assert after.defender.scars == 1;
@@ -1011,7 +1011,7 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 		);
 		if (!result.ok) { unreachable; }
 		const after = result.value;
-		if (after.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (after.record.outcome != Outcome.AttackerWins) { continue; }
 		assert after.defender.alive;
 		assert after.defender.burrow == charmed.burrow;
 		assert !after.defender.gear.hasSkill(ItemSkill.Revive);
@@ -1041,8 +1041,8 @@ test "a revive charm spares a bitten pet without a burn, and a ward cuts the loo
 			seed,
 		);
 		if (!plain.ok || !guarded.ok) { unreachable; }
-		if (plain.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
-		if (guarded.value.record.fightOutcome() != Outcome.AttackerWins) { continue; }
+		if (plain.value.record.outcome != Outcome.AttackerWins) { continue; }
+		if (guarded.value.record.outcome != Outcome.AttackerWins) { continue; }
 		assert guarded.value.record.loot < plain.value.record.loot;
 		compared += 1;
 	}

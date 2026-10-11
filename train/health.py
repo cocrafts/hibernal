@@ -70,10 +70,10 @@ def ownerRows(counters, owners):
         rows += [
             (f"{name} owners: share of pets, %", 100 * ratio(len(mine), len(counters)), None, None, "SIM B"),
             (f"{name} owners: mean bonding", ratio(field(mine, "bondingSum").sum(), days), None, None, "SIM B2"),
-            (f"{name} owners: gift HBRN per pet-day", ratio(field(mine, "gifted").sum(), days), None, None, "SIM B2"),
+            (f"{name} owners: gift brain units per pet-day", ratio(field(mine, "gifted").sum(), days), None, None, "SIM B2"),
             (f"{name} owners: gifts, % of the pet's income", 100 * ratio(field(mine, "gifted").sum(), field(mine, "earned").sum()), None, None, "SIM B2"),
             (f"{name} owners: SKR per pet-day", ratio(field(mine, "skr").sum(), days), None, None, "SIM B3"),
-            (f"{name} owners: gift HBRN per SKR", ratio(field(mine, "gifted").sum(), field(mine, "skr").sum()), None, None, "SIM B3"),
+            (f"{name} owners: gift brain units per SKR", ratio(field(mine, "gifted").sum(), field(mine, "skr").sum()), None, None, "SIM B3"),
             (f"{name} owners: early deaths per 100 lives", 100 * ratio(early, lives), None, None, "SIM B"),
             (f"{name} owners: insurance revivals per 100 lives", 100 * ratio(field(mine, "revived").sum(), lives), None, None, "BRIEF 3.5"),
             (f"{name} owners: refused meals", field(mine, "ownerRefusals").sum(), None, None, "SIM B1"),

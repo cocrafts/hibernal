@@ -6,7 +6,7 @@ export const LEVEL_CAP: int32 = 20;
 export const LEVEL_XP_PER_STEP: uint32 = 190;
 export const NEWBORN_XP: uint32 = 190;
 export const WORK_XP_PER_WORK_POWER: uint32 = 7;
-export const RAID_XP_PER_HBRN: uint64 = 3;
+export const RAID_XP_PER_HBRN: uint64 = 1200;
 export const RAID_XP_CAP: uint32 = 500;
 export const DEFENSE_WIN_XP: uint32 = 60;
 export const DEFENSE_LOSS_XP: uint32 = 20;
@@ -69,6 +69,6 @@ test "work xp follows work power, raid xp follows loot and caps" {
 	assert workXp(25, 1) == 175;
 	assert workXp(34, 3) == 714;
 	assert raidXp(0) == 0;
-	assert raidXp(10 * HBRN_UNIT) == 30;
+	assert raidXp(HBRN_UNIT / 40) == 30;
 	assert raidXp(100000 * HBRN_UNIT) == RAID_XP_CAP;
 }

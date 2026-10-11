@@ -1,9 +1,9 @@
 import * as arithmetic from "std/solana/arithmetic";
-import { BPS, HBRN_UNIT } from "./units";
+import { BPS, MILLI_HBRN } from "./units";
 import { splitmix } from "./rng";
 import { TalentGrade, TalentKind } from "./talent";
 
-export const MINT_BASE_PRICE: uint64 = 300;
+export const MINT_BASE_PRICE: uint64 = 750 * MILLI_HBRN;
 export const SELL_BACK_PERCENT: uint64 = 50;
 export const ITEM_WEAR_PER_DAY: int32 = 1;
 export const ITEM_WEAR_MAX: int32 = 200;
@@ -135,7 +135,7 @@ export function wornBy(this item: Item, days: int32): Item {
 }
 
 export function mintPrice(level: int32): uint64 {
-	return MINT_BASE_PRICE * HBRN_UNIT * ((20 + level) as uint64) / 20;
+	return MINT_BASE_PRICE * ((20 + level) as uint64) / 20;
 }
 
 export function sellPrice(this item: Item): uint64 {

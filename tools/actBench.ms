@@ -425,7 +425,7 @@ function absorbPet(this digest: Digest, pet: Pet): Digest {
 			((pet.ownerFedToday as uint64) << 48),
 		)
 		.absorb(pet.giftOwed)
-		.absorb(pet.ownerBankedAt)
+		.absorb(pet.ownerBankReadyAt)
 		.absorbItem(pet.gear.head)
 		.absorbItem(pet.gear.body)
 		.absorbItem(pet.gear.hands)

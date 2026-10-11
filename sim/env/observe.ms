@@ -1,5 +1,6 @@
 import {
 	BLOCK_SLOTS,
+	BRAIN_MONEY_UNIT,
 	TREE_NODES,
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
@@ -142,12 +143,12 @@ function total(values: int32[], offset: int32, count: int32): int32 {
 	return sum;
 }
 
-test "money features are quarter octaves of a thousandth of a token" {
+test "money features are quarter octaves of a thousandth of the brain's money unit" {
 	assert moneyFeature(0) == 0;
-	assert moneyFeature(1000000) == 39;
-	assert moneyFeature(2000000) == 43;
+	assert moneyFeature(BRAIN_MONEY_UNIT) == 39;
+	assert moneyFeature(2 * BRAIN_MONEY_UNIT) == 43;
 	assert moneyFeature(0xffffffffffffffff) == FEATURE_ONE;
-	assert signedMoneyFeature(-1000000) == -39;
+	assert signedMoneyFeature(-(BRAIN_MONEY_UNIT as int64)) == -39;
 }
 
 test "sizes follow the three heads" {

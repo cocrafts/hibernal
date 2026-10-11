@@ -1,6 +1,6 @@
 import * as arithmetic from "std/solana/arithmetic";
 import { mixSeeds } from "./rng";
-import { BPS } from "./units";
+import { BPS, HBRN_UNIT } from "./units";
 import {
 	BASE_STAT,
 	LEVEL_STAT_GROWTH,
@@ -13,6 +13,7 @@ import {
 import { Tree } from "./tree";
 import { BlockSlot, Pet, GlobalConfig, Insurance } from "./layout";
 import {
+	EMISSION_CAP,
 	EMISSION_START,
 	Split,
 	settleGlobal,
@@ -66,7 +67,9 @@ export const INHERITANCE_TAX_PERCENT: uint64 = 30;
 export const HEIR_POINTS_CAP: int32 = 5;
 export const HEIRLOOM_SLOTS: int32 = 2;
 export const HUNGER_BPS: int32 = 1000;
-export const REWARD_FLOOR_SLOTS: uint32 = 500;
+export const REWARD_FLOOR_SLOTS: uint32 = 80000;
+export const STARTER_HARVEST: uint64 = 4 * HBRN_UNIT;
+export const STARTER_GIFT: uint64 = 1 * HBRN_UNIT;
 export const BOT_WORK_POWER: uint64 = 53;
 export const BOT_WEIGHT: uint64 = (BOT_WORK_POWER + REWARD_WEIGHT_OFFSET) * (BOT_WORK_POWER + REWARD_WEIGHT_OFFSET);
 export const MIGHT_APPETITE_BPS: int32 = 50;
@@ -143,6 +146,7 @@ export function settle(this global: GlobalConfig, epoch: uint64): GlobalConfig {
 		epoch,
 		global.totalWorkPower,
 		global.rewardDenominator(),
+		(global.floorSlots as uint64) * BOT_WEIGHT,
 		global.recycledPending,
 		global.emitted,
 		global.treasury,
@@ -236,13 +240,23 @@ export function born(
 		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
-		ownerBankedAt: 0,
+		ownerBankReadyAt: 0,
 		gear: Gear.bare(),
 		grudgeSlot: 0,
 		rage: 0,
 		rageEpoch: 0,
 	};
 	return { pet: pet, global: settled.withBirth(stats.rewardWeight()) };
+}
+
+export function withStarterKit(this hatched: PetAndGlobal): PetAndGlobal {
+	const room = EMISSION_CAP - Math.min(hatched.global.emitted, EMISSION_CAP);
+	const harvest = Math.min(STARTER_HARVEST, room);
+	const gift = Math.min(STARTER_GIFT, room - harvest);
+	return {
+		pet: { ...hatched.pet, harvest: hatched.pet.harvest + harvest, giftOwed: hatched.pet.giftOwed + gift },
+		global: { ...hatched.global, emitted: hatched.global.emitted + harvest + gift },
+	};
 }
 
 export function wildOf(
@@ -570,15 +584,16 @@ test "a newborn starts at its region with one point and joins the work power" {
 	assert worker.pet.rewardSnapshot == worker.global.rewardPerWorkPower;
 }
 
-test "the first tick pays the emission share and levels on work xp" {
+test "the first tick pays the floor rate and levels on work xp" {
 	const small: GlobalConfig = { ...GlobalConfig.genesis(0), floorSlots: 2 };
 	const first = hatch(Region.Worker, 0, small);
 	const second = Pet.born(0, BlockSlot.Second, Region.Fighter, 0, first.global);
 	const firstTicked = first.pet.tickedTo(second.global, 1);
 	const secondTicked = second.pet.tickedTo(firstTicked.global, 1);
-	const paid = firstTicked.pet.harvest + secondTicked.pet.harvest;
-	assert paid <= EMISSION_START;
-	assert EMISSION_START - paid < 100;
+	const paid = (firstTicked.pet.harvest + secondTicked.pet.harvest) as uint64;
+	const floorWeight = 2 * BOT_WEIGHT;
+	assert paid <= EMISSION_START * second.global.totalWorkPower / floorWeight;
+	assert EMISSION_START * second.global.totalWorkPower / floorWeight - paid < 100;
 	assert firstTicked.pet.harvest > secondTicked.pet.harvest;
 	assert firstTicked.pet.xp == NEWBORN_XP + workXp(34, 1);
 	assert firstTicked.pet.level == 3;
@@ -860,13 +875,22 @@ test "an insured pet that starves comes back once from its tick" {
 	assert next.global.treasury >= newborn.global.treasury + 200;
 }
 
-test "below the floor, empty slots count as bots and their share is not paid" {
+test "a first life starts with the kit, counted as emission and never past the cap" {
+	const opened = Pet.born(0, BlockSlot.First, Region.Worker, 0, GlobalConfig.genesis(0)).withStarterKit();
+	assert opened.pet.harvest == STARTER_HARVEST && opened.pet.giftOwed == STARTER_GIFT;
+	assert opened.global.emitted == STARTER_HARVEST + STARTER_GIFT;
+	const nearlySpent: GlobalConfig = { ...GlobalConfig.genesis(0), emitted: EMISSION_CAP - HBRN_UNIT };
+	const late = Pet.born(0, BlockSlot.First, Region.Worker, 0, nearlySpent).withStarterKit();
+	assert late.pet.harvest == HBRN_UNIT && late.pet.giftOwed == 0 && late.global.emitted == EMISSION_CAP;
+}
+
+test "below the floor, a pet earns its weight at the floor rate and the rest stays unpaid" {
 	const floored: GlobalConfig = { ...GlobalConfig.genesis(0), floorSlots: 10 };
 	const lone = hatch(Region.Worker, 0, floored);
 	assert lone.global.livingPets == 1;
 	assert lone.global.rewardDenominator() == lone.global.totalWorkPower + BOT_WEIGHT * 9;
 	const ticked = lone.pet.tickedTo(lone.global, 1);
-	const share = EMISSION_START * lone.global.totalWorkPower / lone.global.rewardDenominator();
+	const share = EMISSION_START * lone.global.totalWorkPower / (BOT_WEIGHT * 10);
 	assert ticked.pet.harvest <= share + 1 && ticked.pet.harvest + 100 >= share;
 	const dead: Pet = { ...ticked.pet, hearts: 1, minHearts: 0, pantry: Pantry.unstocked() };
 	const gone = dead.tickedTo(ticked.global, 2);

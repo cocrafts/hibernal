@@ -1,10 +1,9 @@
 import * as arithmetic from "std/solana/arithmetic";
-import { BPS, ACTS_PER_EPOCH } from "./units";
+import { BPS, ACTS_PER_EPOCH, HBRN_UNIT } from "./units";
 import { Combatant, Mod, Stats, asCombatant } from "./stats";
 import {
 	TREE_NODES,
 	NodeKind,
-	Tree,
 	TreeSums,
 	finished,
 	plusNode,
@@ -15,7 +14,7 @@ import {
 	regionOf,
 	withNode,
 } from "./tree";
-import { Food, foodCost } from "./emission";
+import { EMISSION_CAP, Food, foodCost } from "./emission";
 import { FOOD_BUYS_PER_DAY, storedHearts } from "./pantry";
 import { attacksLeft } from "./fight";
 import { log2Times32 } from "./logarithm";
@@ -59,6 +58,7 @@ import { GIFT_RESERVE_DAYS, foodReserve } from "./owner";
 import { NODE_INPUTS, ATTACK_INPUTS } from "./policy";
 
 export const FEATURE_ONE: int32 = 127;
+export const BRAIN_MONEY_UNIT: uint64 = HBRN_UNIT / 400;
 
 export enum SelfFeature {
 	Hearts,
@@ -178,7 +178,7 @@ export struct MarketView {
 }
 
 export function moneyFeature(amount: uint64): int32 {
-	return Math.min(log2Times32(amount / 1000 + 1) / 8, FEATURE_ONE);
+	return Math.min(log2Times32(Math.min(amount, EMISSION_CAP) * 1000 / BRAIN_MONEY_UNIT + 1) / 8, FEATURE_ONE);
 }
 
 export function signedMoneyFeature(amount: int64): int32 {

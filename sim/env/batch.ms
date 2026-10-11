@@ -3,6 +3,7 @@ import {
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
 	BPS,
+	BRAIN_MONEY_UNIT,
 	Pet,
 	PersonaKind,
 	EconomyAction,
@@ -38,7 +39,6 @@ import {
 	forgetGrudges,
 } from "./feel";
 
-export const MILLI_PER_UNIT: uint64 = 1000;
 export const CONTROL_LEARNER: int32 = -2;
 export const CONTROL_TEACHER: int32 = -1;
 export const POLICY_SLOTS: int32 = 8;
@@ -139,13 +139,16 @@ export function shaping(this weights: RewardWeights, moment: Moment, world: Worl
 	const fought = world.stats.fights > moment.stats.fights;
 	const lost = fought && world.stats.wins == moment.stats.wins;
 	if (moment.head != Head.Attack || !lost) { return 0; }
-	const stake = ((actor.burrow - world.pets[moment.index].burrow) / MILLI_PER_UNIT) as int64;
+	const stake = brainMilli(actor.burrow - world.pets[moment.index].burrow);
 	return -stake * weights.lossAversionBps / (BPS as int64);
 }
 
+export function brainMilli(amount: uint64): int64 {
+	return (amount * 1000 / BRAIN_MONEY_UNIT) as int64;
+}
+
 export function score(this pet: Pet, weights: RewardWeights): int64 {
-	const assets = pet.harvest + pet.burrow + pet.gear.resaleValue();
-	const wealth = (assets / MILLI_PER_UNIT) as int64;
+	const wealth = brainMilli(pet.harvest + pet.burrow + pet.gear.resaleValue());
 	if (pet.agedOut()) { return wealth; }
 	if (!pet.alive) { return -weights.deathMilli; }
 	return wealth + weights.heartMilli * (pet.hearts as int64);
@@ -664,7 +667,7 @@ test "feel counters agree with the world's own fight counts and survive the reop
 test "comfort pays spare hearts once a day and loss aversion charges a lost stake again" {
 	const world = World.create(1, 4).beginEpoch(1);
 	const pets = world.pets;
-	pets[0] = { ...pets[0], hearts: 5, burrow: 900 * MILLI_PER_UNIT * 1000 };
+	pets[0] = { ...pets[0], hearts: 5, burrow: 900 * BRAIN_MONEY_UNIT };
 	const cautious = RewardWeights.flat()
 		.withTerm(RewardTerm.Comfort, 5000)
 		.withTerm(RewardTerm.LossAversion, 10000);
@@ -676,7 +679,7 @@ test "comfort pays spare hearts once a day and loss aversion charges a lost stak
 	const raid = world.momentOf(0, 0, Head.Attack, 4);
 	const stats: WorldStats = { ...world.stats, fights: world.stats.fights + 1 };
 	const lost: World = { ...world, stats: stats };
-	pets[0] = { ...pets[0], burrow: 600 * MILLI_PER_UNIT * 1000 };
+	pets[0] = { ...pets[0], burrow: 600 * BRAIN_MONEY_UNIT };
 	assert cautious.shaping(raid, lost) == -300000;
 	const won: World = { ...lost, stats: { ...stats, wins: stats.wins + 1 } };
 	assert cautious.shaping(raid, won) == 0;
@@ -714,7 +717,7 @@ test "a dead pet scores the death weight once" {
 	const world = World.create(1, 4).beginEpoch(1);
 	const alive = world.pets[2];
 	const dead: Pet = { ...alive, alive: false, hearts: 0 };
-	const wealth = (alive.harvest / MILLI_PER_UNIT) as int64;
+	const wealth = brainMilli(alive.harvest);
 	assert alive.score(weights) == (alive.hearts as int64) * weights.heartMilli + wealth;
 	assert dead.score(weights) == -weights.deathMilli;
 	const buried: Pet = { ...dead, harvest: 0, burrow: 0 };
@@ -725,7 +728,7 @@ test "a pet that dies of age keeps its wealth as score and pays no death weight"
 	const weights = RewardWeights.of(PersonaKind.Cautious);
 	const world = World.create(1, 4).beginEpoch(1);
 	const old: Pet = { ...world.pets[2], alive: false, hearts: 3 };
-	assert old.score(weights) == ((old.harvest + old.burrow) / MILLI_PER_UNIT) as int64;
+	assert old.score(weights) == brainMilli(old.harvest + old.burrow);
 }
 
 function blankPolicy(): uint8[] {

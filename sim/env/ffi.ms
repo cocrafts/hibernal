@@ -1,6 +1,6 @@
 import { WORLD_BLOCKS, EPISODE_EPOCHS, Resort } from "../world";
 import { engineVersion } from "../digests";
-import { BLOCK_SLOTS, PersonaKind, StrengthMeasure, checkPolicy } from "../../rules/index";
+import { BLOCK_SLOTS, BRAIN_MONEY_UNIT, PersonaKind, StrengthMeasure, checkPolicy } from "../../rules/index";
 import { Head, observationSize, actionCount, largestActionCount, zeros } from "./observe";
 import { selfInputs, selfInput } from "./actor";
 import { POLICY_SLOTS, Batch, RewardTerm, withTerm, withResort } from "./batch";
@@ -168,7 +168,7 @@ function ffiStats(env: int32, statBuffer: Ptr<void>): int32 {
 			if (!pet.alive) { continue; }
 			living += 1;
 			levels += pet.level as int32;
-			wealth += (pet.harvest + pet.burrow) / 1000000;
+			wealth += (pet.harvest + pet.burrow) / BRAIN_MONEY_UNIT;
 		}
 	}
 	stats[0] = fights;

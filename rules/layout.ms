@@ -40,7 +40,7 @@ export struct Pet {
 	fightDay: uint64;
 	growthMultiplierExpiry: uint64;
 	giftOwed: uint64;
-	ownerBankedAt: uint64;
+	ownerBankReadyAt: uint64;
 	rageEpoch: uint64;
 	blockId: uint32;
 	xp: uint32;
@@ -108,7 +108,7 @@ export struct FightRecord {
 	rounds: int32;
 	attacker: Combatant;
 	defender: Combatant;
-	outcome: uint8;
+	outcome: Outcome;
 	pad: uint8;
 	pad2: uint16;
 }
@@ -211,10 +211,6 @@ export function wallet(this pet: Pet): uint64 {
 export function charged(this pet: Pet, amount: uint64): Pet {
 	const fromHarvest = Math.min(pet.harvest, amount);
 	return { ...pet, harvest: pet.harvest - fromHarvest, burrow: pet.burrow - (amount - fromHarvest) };
-}
-
-export function fightOutcome(this record: FightRecord): Outcome {
-	return (record.outcome as int32) as Outcome;
 }
 
 export function startRegion(this pet: Pet): Region {

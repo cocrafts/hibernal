@@ -1,4 +1,5 @@
 import {
+	OWNER_BANK_COOLDOWN_SECONDS,
 	BLOCK_SLOTS,
 	ALLOCATE_HOLD,
 	ATTACK_HOLD,
@@ -198,7 +199,7 @@ export function create(this typeof World, blocks: int32, seed: uint64): World {
 		origins: origins,
 		movedEpoch: 0,
 		resort: Resort.fixed(),
-		global: { ...global, floorSlots: (blocks * BLOCK_SLOTS) as uint32 },
+		global: global,
 		epoch: 0,
 		round: 0,
 		turns: turns,
@@ -237,7 +238,7 @@ export function staggered(this typeof World, blocks: int32, seed: uint64): World
 		};
 		claimEpochs[index] = claimEpoch;
 	}
-	return { ...world, global: { ...GlobalConfig.genesis(0), floorSlots: total as uint32 } };
+	return { ...world, global: GlobalConfig.genesis(0) };
 }
 
 export function blockStart(index: int32): int32 {
@@ -285,7 +286,7 @@ export function beginEpoch(this world: World, epoch: uint64): World {
 		if (claimEpoch != 0 && epoch >= claimEpoch) {
 			global = vacated(pets, absent, index, global);
 			const seat = pets[index];
-			const claimed = Pet.born(seat.blockId, seat.blockSlot(), seat.startRegion(), claimEpoch, global);
+			const claimed = Pet.born(seat.blockId, seat.blockSlot(), seat.startRegion(), claimEpoch, global).withStarterKit();
 			pets[index] = claimed.pet;
 			claimEpochs[index] = 0;
 			global = claimed.global;
@@ -397,8 +398,15 @@ export function permuted(this world: World, origins: int32[]): World {
 		ownerLedgers.push(world.ownerLedgers[origin]);
 		personas.push(world.personas[origin]);
 	}
+	const market: Listing[] = [];
+	for (const listing of world.market) {
+		let seat = 0;
+		while (origins[seat] != (listing.seller as int32)) { seat += 1; }
+		market.push({ ...listing, seller: seat as uint32 });
+	}
 	return {
 		...world,
+		market: market,
 		pets: pets,
 		absent: absent,
 		claimEpochs: claimEpochs,
@@ -983,13 +991,13 @@ test "an owner who opens the app again waits out the 8-hour cooldown" {
 	let opened = 0;
 	for (let index = 0; index < later.pets.length; index++) {
 		const moved = later.ownerLedgers[index].banked - before[index];
-		if (later.pets[index].ownerBankedAt == dawn) { assert moved == 0; }
+		if (later.pets[index].ownerBankReadyAt == dawn + OWNER_BANK_COOLDOWN_SECONDS) { assert moved == 0; }
 		if (moved > 0) { opened += 1; }
 	}
 	const noon = later.inRound(2);
 	let banked = 0;
 	for (let index = 0; index < noon.pets.length; index++) {
-		if (noon.pets[index].ownerBankedAt > dawn) { banked += 1; }
+		if (noon.pets[index].ownerBankReadyAt > dawn + OWNER_BANK_COOLDOWN_SECONDS) { banked += 1; }
 	}
 	assert banked > opened;
 }

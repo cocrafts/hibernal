@@ -192,6 +192,10 @@ function sameRivals(before: Combatant[], after: Combatant[], index: int32): bool
 	return true;
 }
 
+function trialOf(world: World): World {
+	return { ...world, pets: world.pets.slice(0), market: world.market.slice(0) };
+}
+
 test "an actor's economy and node leave the rivals it observed at dawn unchanged" {
 	let world = World.staggered(1, 11);
 	for (let day = 1; day <= 20; day++) {
@@ -204,12 +208,12 @@ test "an actor's economy and node leave the rivals it observed at dawn unchanged
 				const economy = world.economyMaskFor(index);
 				for (let ordinal = 0; ordinal <= (EconomyAction.BuyItem as int32); ordinal++) {
 					if (!economy.has(ordinal as EconomyAction)) { continue; }
-					const spent = world.applyEconomy(index, ordinal as EconomyAction);
+					const spent = trialOf(world).applyEconomy(index, ordinal as EconomyAction);
 					assert sameRivals(rivals, rivalsAround(spent.surroundingsOf(index)), index);
 					const nodes = spent.pets[index].legalNodes(spent.global);
 					for (let node = 0; node < TREE_NODES; node++) {
 						if (!nodes.allowsNode(node)) { continue; }
-						const grown = spent.applyNode(index, node);
+						const grown = trialOf(spent).applyNode(index, node);
 						assert sameRivals(rivals, rivalsAround(grown.surroundingsOf(index)), index);
 					}
 				}

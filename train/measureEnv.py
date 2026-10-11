@@ -40,5 +40,5 @@ elapsed = time.perf_counter() - started
 print(f"steps {steps} of {env.stepsPerEpisode} · {elapsed:.1f}s · {steps * env.rows / elapsed:,.0f} row-steps/s")
 for phase, byHead in spent.items():
     print(phase, " ".join(f"{HEADS[head]} {seconds / (steps / 3) * 1e6:.0f}us" for head, seconds in enumerate(byHead)))
-print(f"teacher actions outside the mask {legalBroken} · truncated rows {truncated} · reward/pet {rewardTotal / (env.rows * 10) / 1000:.0f} HBRN")
+print(f"teacher actions outside the mask {legalBroken} · truncated rows {truncated} · reward/pet {rewardTotal / (env.rows * 10) / 1000:.0f} brain units")
 print("stats near the end", lastStats)

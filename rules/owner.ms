@@ -176,7 +176,7 @@ export function growthBpsFor(steps: int32): int32 {
 export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError> {
 	if (!pet.alive) { return Result.err(OwnerError.Dead); }
 	if (pet.harvest == 0) { return Result.err(OwnerError.EmptyHarvest); }
-	if (now < pet.ownerBankedAt + OWNER_BANK_COOLDOWN_SECONDS) {
+	if (now < pet.ownerBankReadyAt) {
 		return Result.err(OwnerError.CoolingDown);
 	}
 	const moved = pet.harvest * OWNER_BANK_PERCENT / 100;
@@ -184,7 +184,7 @@ export function ownerBanked(this pet: Pet, now: uint64): Result<Pet, OwnerError>
 		...pet,
 		harvest: pet.harvest - moved,
 		burrow: pet.burrow + moved,
-		ownerBankedAt: now,
+		ownerBankReadyAt: now + OWNER_BANK_COOLDOWN_SECONDS,
 	});
 }
 
@@ -381,6 +381,19 @@ test "the owner banks half the harvest once per cooldown" {
 	if (!empty.ok) { assert empty.error == OwnerError.EmptyHarvest; }
 }
 
+test "a pet that never banked banks at once, even in the world's first hours" {
+	const newborn: Pet = { ...testPet(), harvest: 900 };
+	assert newborn.ownerBankReadyAt == 0;
+	const first = newborn.ownerBanked(0);
+	assert first.ok;
+	if (!first.ok) { return; }
+	assert first.value.ownerBankReadyAt == OWNER_BANK_COOLDOWN_SECONDS;
+	const refilled: Pet = { ...first.value, harvest: 900 };
+	const again = refilled.ownerBanked(OWNER_BANK_COOLDOWN_SECONDS - 1);
+	assert !again.ok;
+	if (!again.ok) { assert again.error == OwnerError.CoolingDown; }
+}
+
 function testPet(): Pet {
 	return {
 		blockId: 0,
@@ -425,7 +438,7 @@ function testPet(): Pet {
 		engagedToday: 0,
 		ownerFedToday: 0,
 		giftOwed: 0,
-		ownerBankedAt: 0,
+		ownerBankReadyAt: 0,
 		gear: Gear.bare(),
 		grudgeSlot: 0,
 		rage: 0,

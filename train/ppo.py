@@ -193,7 +193,7 @@ def main():
         mine, others = learnerWealth(wealth, controllers, pool)
         died = int((rollout.perPet(rollout.dones) == DONE_DIED).any(axis=0).sum())
         print(
-            f"iteration {iteration:3d} mixed worlds: learner {mine:8.0f} others {others:8.0f} HBRN/pet · died {died} · "
+            f"iteration {iteration:3d} mixed worlds: learner {mine:8.0f} others {others:8.0f} brain units/pet · died {died} · "
             f"critic {criticLoss:.3f} ev {explained:.2f} · {' · '.join(notes)} · pool {pool.describe()} · "
             f"collect {collected:.0f}s total {time.perf_counter() - clock:.0f}s",
             flush=True,

@@ -3,7 +3,7 @@ import {
 	STAKE_LEVELS,
 	ATTACK_HOLD,
 	ALLOCATE_HOLD,
-	HBRN_UNIT,
+	MILLI_HBRN,
 	Pet,
 	StakeLevel,
 	EconomyAction,
@@ -27,12 +27,13 @@ export struct Diary {
 }
 
 function money(amount: uint64): string {
-	return `${amount / HBRN_UNIT}`;
+	const milli = amount / MILLI_HBRN;
+	const fraction = `${1000 + milli % 1000}`.substring(1);
+	return `${milli / 1000}.${fraction}`;
 }
 
 function change(before: uint64, after: uint64): string {
-	const delta = ((after as int64) - (before as int64)) / (HBRN_UNIT as int64);
-	return delta >= 0 ? `+${delta}` : `${delta}`;
+	return after >= before ? `+${money(after - before)}` : `-${money(before - after)}`;
 }
 
 function nameOf(this world: World, index: int32): string {
@@ -92,7 +93,7 @@ function ownerNotes(
 	if (ownerBanked > 0) { notes = notes + ` | owner banked ${money(ownerBanked)}`; }
 	if (pet.giftOwed > yesterday.giftOwed) {
 		const gift = pet.giftOwed - yesterday.giftOwed;
-		notes = notes + ` | gifted ${gift < HBRN_UNIT ? "less than 1" : money(gift)} to its owner`;
+		notes = notes + ` | gifted ${money(gift)} to its owner`;
 	}
 	if (pet.bornEpoch == yesterday.bornEpoch && pet.scars > yesterday.scars) {
 		notes = notes + " | insurance brought it back";

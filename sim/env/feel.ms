@@ -2,6 +2,7 @@ import {
 	BLOCK_SLOTS,
 	STAKE_LEVELS,
 	BPS,
+	BRAIN_MONEY_UNIT,
 	HBRN_UNIT,
 	INCOMING_CAP,
 	LEVEL_CAP,
@@ -250,12 +251,12 @@ function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, aft
 	}
 	if (action == (EconomyAction.Mint as int32) && after.wallet() < actor.wallet()) {
 		feel.tally(key, FeelCounter.Mints, 1);
-		const spent = ((actor.wallet() - after.wallet()) / HBRN_UNIT) as int32;
+		const spent = ((actor.wallet() - after.wallet()) / BRAIN_MONEY_UNIT) as int32;
 		feel.tally(key, FeelCounter.MintSpent, spent);
 	}
 	if (after.pantry.stored() > actor.pantry.stored()) {
 		const before = actor.wallet() + actor.gear.resaleValue();
-		const spent = ((before - after.wallet() - after.gear.resaleValue()) / HBRN_UNIT) as int32;
+		const spent = ((before - after.wallet() - after.gear.resaleValue()) / BRAIN_MONEY_UNIT) as int32;
 		if (after.gear.resaleValue() < actor.gear.resaleValue()) { feel.tally(key, FeelCounter.Sells, 1); }
 		feel.tally(key, FeelCounter.FoodSpent, spent);
 		if ((actor.level as int32) >= LEVEL_CAP) {
@@ -277,10 +278,10 @@ function noteEconomy(this feel: Feel, key: int32, action: int32, actor: Pet, aft
 function noteSale(this feel: Feel, key: int32, moment: Moment, world: World): void {
 	if (world.stats.sales == moment.stats.sales) { return; }
 	feel.tally(key, FeelCounter.MarketBuys, 1);
-	feel.tally(key, FeelCounter.MarketSpent, (world.stats.lastPrice / HBRN_UNIT) as int32);
+	feel.tally(key, FeelCounter.MarketSpent, (world.stats.lastPrice / BRAIN_MONEY_UNIT) as int32);
 	const seller = moment.env * feel.pets + world.stats.lastSeller;
 	feel.tally(seller, FeelCounter.MarketSales, 1);
-	feel.tally(seller, FeelCounter.MarketEarned, (world.stats.lastProceeds / HBRN_UNIT) as int32);
+	feel.tally(seller, FeelCounter.MarketEarned, (world.stats.lastProceeds / BRAIN_MONEY_UNIT) as int32);
 }
 
 function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): void {
@@ -323,7 +324,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	if (world.isWild(target)) {
 		const taken = defender.harvest - world.pets[target].harvest;
 		feel.tally(key, FeelCounter.WildRaids, 1);
-		feel.tally(key, FeelCounter.WildLoot, (taken / HBRN_UNIT) as int32);
+		feel.tally(key, FeelCounter.WildLoot, (taken / BRAIN_MONEY_UNIT) as int32);
 		return;
 	}
 	feel.tally(victim, FeelCounter.Robbed, 1);
@@ -336,7 +337,7 @@ function noteAttack(this feel: Feel, key: int32, moment: Moment, world: World): 
 	grudges[victim] = { robber: attacker.blockSlot(), epoch: world.epoch };
 	const struck = world.pets[blockStart(moment.index) + (defender.slot as int32)];
 	const bitten = (defender.hearts as int32) - (struck.hearts as int32);
-	const lost = ((defender.harvest - struck.harvest) / HBRN_UNIT) as int32;
+	const lost = ((defender.harvest - struck.harvest) / BRAIN_MONEY_UNIT) as int32;
 	feel.tally(victim, FeelCounter.LootLost, lost);
 	feel.tally(victim, FeelCounter.HeartsBitten, bitten);
 	if (lopsided) {
@@ -420,7 +421,7 @@ export function openEpoch(this feel: Feel, env: int32, world: World): void {
 		const sameLife = feel.lifeBorns[key] == pet.bornEpoch + 1;
 		const reached = pet.harvest + world.ownerLedgers[index].banked;
 		if (pet.alive && sameLife && reached >= feel.harvests[key]) {
-			const earned = ((reached - feel.harvests[key]) / HBRN_UNIT) as int32;
+			const earned = ((reached - feel.harvests[key]) / BRAIN_MONEY_UNIT) as int32;
 			feel.tally(key, FeelCounter.Earned, earned);
 			if ((pet.level as int32) >= LEVEL_CAP) {
 				feel.tally(key, FeelCounter.EarnedAtCap, earned);
@@ -448,13 +449,13 @@ export function closeEpisode(this feel: Feel, env: int32, world: World): void {
 		grudges[key] = { robber: BlockSlot.First, epoch: 0 };
 		lifeBorns[key] = 0;
 		const ledger = world.ownerLedgers[index];
-		feel.tally(key, FeelCounter.Gifted, (pet.giftOwed / HBRN_UNIT) as int32);
+		feel.tally(key, FeelCounter.Gifted, (pet.giftOwed / BRAIN_MONEY_UNIT) as int32);
 		feel.tally(key, FeelCounter.Skr, ledger.skr);
 		feel.tally(key, FeelCounter.OwnerVisits, ledger.visits);
 		feel.tally(key, FeelCounter.OwnerRefusals, ledger.refusals);
 		if (!pet.alive || pet.wild) { continue; }
 		feel.tally(key, FeelCounter.Living, 1);
-		feel.tally(key, FeelCounter.Wealth, ((pet.harvest + pet.burrow) / HBRN_UNIT) as int32);
+		feel.tally(key, FeelCounter.Wealth, ((pet.harvest + pet.burrow) / BRAIN_MONEY_UNIT) as int32);
 		feel.tally(key, FeelCounter.BornAtEnd, pet.bornEpoch as int32);
 	}
 }
@@ -598,10 +599,10 @@ test "a life counts once, with the age at which it first reached level ten" {
 test "income is what reaches the harvest between one close and the next open" {
 	const world = World.create(1, 3).beginEpoch(1);
 	const pets = world.pets;
-	pets[1] = { ...pets[1], harvest: 10 * HBRN_UNIT };
+	pets[1] = { ...pets[1], harvest: 10 * BRAIN_MONEY_UNIT };
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.closeEpoch(0, world);
-	pets[1] = { ...pets[1], harvest: 25 * HBRN_UNIT };
+	pets[1] = { ...pets[1], harvest: 25 * BRAIN_MONEY_UNIT };
 	feel.openEpoch(0, world);
 	assert feel.tallied(1, FeelCounter.Earned) == 15;
 	assert feel.tallied(1, FeelCounter.EarnedAtCap) == 0;
@@ -614,7 +615,7 @@ test "a portion bought counts its price as food spent" {
 	const moment = world.momentOf(0, 2, Head.Economy, EconomyAction.BuyLarge as int32);
 	const feel = Feel.create(1, BLOCK_SLOTS);
 	feel.note(moment, world.applyEconomy(2, EconomyAction.BuyLarge));
-	const price = (foodCost(Food.Large, pets[2].level as int32) / HBRN_UNIT) as int32;
+	const price = (foodCost(Food.Large, pets[2].level as int32) / BRAIN_MONEY_UNIT) as int32;
 	assert feel.tallied(2, FeelCounter.FoodSpent) == price;
 }
 

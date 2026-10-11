@@ -1,5 +1,5 @@
 import * as arithmetic from "std/solana/arithmetic";
-import { EPOCH_SECONDS, HBRN_UNIT, BPS } from "./units";
+import { EPOCH_SECONDS, HBRN_UNIT, MILLI_HBRN } from "./units";
 
 export const NEWBORN_EPOCHS: uint64 = 3;
 export const GROWTH_CAP_BPS: int32 = 12000;
@@ -7,13 +7,12 @@ export const REWARD_SCALE: uint64 = 100000;
 export const EMISSION_CAP: uint64 = 21000000 * HBRN_UNIT;
 export const EMISSION_START: uint64 = 11666667 * HBRN_UNIT / 100;
 export const EMISSION_HALVING_EPOCHS: uint64 = 90;
-export const TREASURY_RELEASE_BPS: uint64 = 100;
 
 export const SPEND_TREASURY_PERCENT: uint64 = 40;
 export const STAKE_TREASURY_PERCENT: uint64 = 5;
-export const SMALL_FOOD_PRICE: uint64 = 168;
-export const MEDIUM_FOOD_PRICE: uint64 = 315;
-export const LARGE_FOOD_PRICE: uint64 = 490;
+export const SMALL_FOOD_PRICE: uint64 = 420 * MILLI_HBRN;
+export const MEDIUM_FOOD_PRICE: uint64 = 788 * MILLI_HBRN;
+export const LARGE_FOOD_PRICE: uint64 = 1225 * MILLI_HBRN;
 export const FOOD_PRICE_PERCENT: uint64 = 100;
 
 export enum Food {
@@ -56,12 +55,17 @@ export function accrueReward(
 	return rewardPerWorkPower + amount * REWARD_SCALE / totalWorkPower;
 }
 
+export function floorRate(epoch: uint64, floorWeight: uint64): uint64 {
+	return emissionFor(epoch) * REWARD_SCALE / Math.max(floorWeight, 1 as uint64);
+}
+
 export function settleGlobal(
 	rewardPerWorkPower: uint64,
 	rewardEpoch: uint64,
 	currentEpoch: uint64,
 	paidWorkPower: uint64,
 	rewardDenominator: uint64,
+	floorWeight: uint64,
 	recycled: uint64,
 	emitted: uint64,
 	treasury: uint64,
@@ -72,11 +76,10 @@ export function settleGlobal(
 	let extra = recycled;
 	for (let epoch = rewardEpoch + 1; epoch <= currentEpoch; epoch++) {
 		const fresh = allocatedFor(epoch - 1, allocated);
-		const released = held * TREASURY_RELEASE_BPS / (BPS as uint64);
-		const amount = fresh + extra + released;
-		const raised = accrueReward(accrued, rewardDenominator, amount);
+		const pool = held + fresh + extra;
+		const raised = Math.min(accrueReward(accrued, rewardDenominator, pool), accrued + floorRate(epoch - 1, floorWeight));
 		const paid = (raised - accrued) * paidWorkPower / REWARD_SCALE;
-		held = held - released + amount - paid;
+		held = pool - paid;
 		accrued = raised;
 		allocated = allocated + fresh;
 		extra = 0;
@@ -99,7 +102,7 @@ export function foodCost(food: Food, level: int32): uint64 {
 		Food.Medium => MEDIUM_FOOD_PRICE,
 		Food.Large => LARGE_FOOD_PRICE,
 	};
-	const scaled = base * HBRN_UNIT * FOOD_PRICE_PERCENT / 100;
+	const scaled = base * FOOD_PRICE_PERCENT / 100;
 	return scaled * ((20 + level) as uint64) / 20;
 }
 
@@ -139,9 +142,9 @@ test "emission halves every 90 epochs and stops at the cap" {
 	assert emissionFor(100000) == 0;
 	assert allocatedFor(0, EMISSION_CAP - 5) == 5;
 	assert allocatedFor(0, EMISSION_CAP) == 0;
-	const lifetime = settleGlobal(0, 0, EMISSION_HALVING_EPOCHS * 64, 100, 100, 0, 0, 0);
+	const lifetime = settleGlobal(0, 0, EMISSION_HALVING_EPOCHS * 64, 100, 100, 100, 0, 0, 0);
 	assert lifetime.emitted == EMISSION_CAP;
-	const firstWinter = settleGlobal(0, 0, EMISSION_HALVING_EPOCHS + 1, 100, 100, 0, 0, 0);
+	const firstWinter = settleGlobal(0, 0, EMISSION_HALVING_EPOCHS + 1, 100, 100, 100, 0, 0, 0);
 	assert firstWinter.emitted == EMISSION_START * EMISSION_HALVING_EPOCHS + EMISSION_START / 2;
 }
 
@@ -149,7 +152,7 @@ test "reward accumulator pays each pet its share exactly once" {
 	const smallWorkPower: uint64 = 25;
 	const largeWorkPower: uint64 = 75;
 	const paidWorkPower = smallWorkPower + largeWorkPower;
-	const afterOneEpoch = settleGlobal(0, 0, 1, paidWorkPower, paidWorkPower, 0, 0, 0);
+	const afterOneEpoch = settleGlobal(0, 0, 1, paidWorkPower, paidWorkPower, paidWorkPower, 0, 0, 0);
 	const smallPay = pendingReward(smallWorkPower, afterOneEpoch.rewardPerWorkPower, 0);
 	const largePay = pendingReward(largeWorkPower, afterOneEpoch.rewardPerWorkPower, 0);
 	assert afterOneEpoch.emitted == EMISSION_START;
@@ -161,36 +164,39 @@ test "reward accumulator pays each pet its share exactly once" {
 
 test "the share of empty floor slots is left unpaid for the treasury" {
 	const paidWorkPower: uint64 = 100;
-	const settled = settleGlobal(0, 0, 1, paidWorkPower, paidWorkPower * 4, 0, 0, 0);
+	const settled = settleGlobal(0, 0, 1, paidWorkPower, paidWorkPower * 4, paidWorkPower * 4, 0, 0, 0);
 	const paid = pendingReward(paidWorkPower, settled.rewardPerWorkPower, 0);
 	assert paid + settled.treasury == EMISSION_START;
 	assert settled.treasury >= EMISSION_START / 4 * 3;
 }
 
-test "the treasury releases a hundredth of its balance into each settled day" {
+test "no pet earns above the floor rate: a full treasury and recycled spend stay held" {
 	const balance: uint64 = 1000000 * HBRN_UNIT;
-	const settled = settleGlobal(0, 0, 1, 100, 100, 0, EMISSION_CAP, balance);
-	const released = balance * TREASURY_RELEASE_BPS / 10000;
-	assert released == 10000 * HBRN_UNIT;
-	const paid = pendingReward(100, settled.rewardPerWorkPower, 0);
-	assert settled.emitted == EMISSION_CAP;
-	assert paid + settled.treasury == balance;
-	assert paid + 100 >= released;
-	const kept = settleGlobal(0, 0, 1, 100, 400, 0, EMISSION_CAP, balance);
-	assert kept.treasury > settled.treasury;
+	const lean = settleGlobal(0, 0, 1, 100, 400, 400, 0, 0, 0);
+	const flush = settleGlobal(0, 0, 1, 100, 400, 400, 1000 * HBRN_UNIT, 0, balance);
+	assert flush.rewardPerWorkPower == lean.rewardPerWorkPower;
+	assert lean.rewardPerWorkPower == floorRate(0, 400);
+	const paid = pendingReward(100, flush.rewardPerWorkPower, 0);
+	assert paid + flush.treasury == balance + EMISSION_START + 1000 * HBRN_UNIT;
 }
 
-test "recycled pot lands in the next settled epoch only" {
-	const withoutRecycled = settleGlobal(0, 0, 3, 100, 100, 0, 0, 0);
-	const withRecycled = settleGlobal(0, 0, 3, 100, 100, 1000 * HBRN_UNIT, 0, 0);
-	const raised = withRecycled.rewardPerWorkPower - withoutRecycled.rewardPerWorkPower;
-	assert raised == 1000 * HBRN_UNIT * REWARD_SCALE / 100;
-	assert withRecycled.emitted == withoutRecycled.emitted;
+test "past the floor the treasury tops pets up to the floor rate until it runs dry" {
+	const crowded = settleGlobal(0, 0, 1, 800, 800, 400, 0, 0, 1000000 * HBRN_UNIT);
+	assert crowded.rewardPerWorkPower == floorRate(0, 400);
+	const dry = settleGlobal(0, 0, 1, 800, 800, 400, 0, 0, 0);
+	assert dry.rewardPerWorkPower == EMISSION_START * REWARD_SCALE / 800;
+	assert dry.rewardPerWorkPower < crowded.rewardPerWorkPower;
+}
+
+test "Winter halves the floor rate, and it keeps paying from the treasury once emission is spent" {
+	assert floorRate(EMISSION_HALVING_EPOCHS, 400) == floorRate(0, 400) / 2;
+	const spent = settleGlobal(0, 0, 1, 400, 400, 400, 0, EMISSION_CAP, 1000000 * HBRN_UNIT);
+	assert spent.emitted == EMISSION_CAP && spent.rewardPerWorkPower == floorRate(0, 400);
 }
 
 test "food cost curve" {
-	assert foodCost(Food.Small, 0) == 168 * HBRN_UNIT;
-	assert foodCost(Food.Large, 20) == 980 * HBRN_UNIT;
+	assert foodCost(Food.Small, 0) == 420 * MILLI_HBRN;
+	assert foodCost(Food.Large, 20) == 2450 * MILLI_HBRN;
 	assert foodHearts(Food.Small) == 3;
 	assert foodHearts(Food.Medium) == 6;
 	assert foodHearts(Food.Large) == 10;

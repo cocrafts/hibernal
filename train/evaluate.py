@@ -63,17 +63,17 @@ def main():
             f"illegal {total['illegal']} level {total['levels'] / max(total['living'], 1):.1f}"
         )
         if group < 2:
-            print(f"{line} · wealth {wealthPerPet(counters[mine]):8.0f} HBRN/pet · deaths {counters[mine][..., DEATHS].sum()}")
+            print(f"{line} · wealth {wealthPerPet(counters[mine]):8.0f} brain units/pet · deaths {counters[mine][..., DEATHS].sum()}")
             continue
         policySlots = np.arange(SLOTS) % 2 == group % 2
         policyWealth.append(wealthPerPet(counters[mine][:, :, policySlots]))
         teacherWealth.append(wealthPerPet(counters[mine][:, :, ~policySlots]))
         print(
-            f"{line} · policy {policyWealth[-1]:8.0f} vs teacher {teacherWealth[-1]:8.0f} HBRN/pet · "
+            f"{line} · policy {policyWealth[-1]:8.0f} vs teacher {teacherWealth[-1]:8.0f} brain units/pet · "
             f"deaths {counters[mine][:, :, policySlots][..., DEATHS].sum()} vs {counters[mine][:, :, ~policySlots][..., DEATHS].sum()}"
         )
     policyMean, teacherMean = np.mean(policyWealth), np.mean(teacherWealth)
-    print(f"mixed, both sides of the block: policy {policyMean:8.0f} vs teacher {teacherMean:8.0f} HBRN/pet ({(policyMean / teacherMean - 1) * 100:+.1f}%)")
+    print(f"mixed, both sides of the block: policy {policyMean:8.0f} vs teacher {teacherMean:8.0f} brain units/pet ({(policyMean / teacherMean - 1) * 100:+.1f}%)")
 
     def labelOf(world, slot):
         group = world % len(GROUPS)

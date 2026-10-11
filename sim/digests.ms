@@ -93,7 +93,7 @@ export function digestTree(): uint64 {
 export function digestEconomy(): uint64 {
 	let digest: Digest = { value: 2 };
 	for (let epoch: uint64 = 0; epoch < 400; epoch++) {
-		const settled = settleGlobal(0, 0, epoch, 1000, 1234, epoch * 7, 0, epoch * 11);
+		const settled = settleGlobal(0, 0, epoch, 1000, 1234, 1234, epoch * 7, 0, epoch * 11);
 		const rewardPerWorkPower = settled.rewardPerWorkPower;
 		digest = digest.absorb(rewardPerWorkPower ^
 			settled.emitted ^
