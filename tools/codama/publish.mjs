@@ -8,6 +8,7 @@ import { createFromRoot } from "codama";
 const STAGE = process.env.STAGE ?? "convert";
 const ANCHOR_IDL = process.env.ANCHOR_IDL ?? "out/idl/hibernal.json";
 const CODAMA_IDL = process.env.CODAMA_IDL ?? "out/idl/hibernal.codama.json";
+const PUBLISHED_IDL = process.env.PUBLISHED_IDL ?? "out/idl/hibernal.published.json";
 const programAddress = process.argv[2];
 if (!programAddress || !["convert", "publish", "fetch"].includes(STAGE)) {
 	console.log("usage: STAGE=convert|publish|fetch node tools/codama/publish.mjs <program id>  (BASE_RPC from env; KEYPAIR = the program's upgrade authority, default ~/.config/solana/id.json)");
@@ -33,5 +34,6 @@ const { program } = root;
 writeFileSync(CODAMA_IDL, createFromRoot(root).getJson());
 console.log(`${CODAMA_IDL}: program ${program.publicKey}, ${program.instructions.length} instructions, ${program.accounts.length} accounts, ${program.definedTypes.length} types, ${program.errors?.length ?? 0} errors, ${program.pdas?.length ?? 0} PDAs`);
 if (STAGE === "publish") {
-	run(["--keypair", keypair, "write", "idl", programAddress, CODAMA_IDL]);
+	writeFileSync(PUBLISHED_IDL, JSON.stringify(anchorIdl));
+	run(["--keypair", keypair, "write", "idl", programAddress, PUBLISHED_IDL]);
 }
