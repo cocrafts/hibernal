@@ -328,7 +328,7 @@ class WalletBridge(private val activity: MainActivity) {
             publishOwnerAction(OwnerSigning.Outcome.IDLE)
             return
         }
-        if (OwnerSession.bankCoolingDown(record.ownerBankedAt, gameNow)) {
+        if (OwnerSession.bankCoolingDown(record.ownerBankReadyAt, gameNow)) {
             publishOwnerAction(OwnerSigning.Outcome.BANK_COOLING_DOWN)
             return
         }
@@ -406,19 +406,33 @@ class WalletBridge(private val activity: MainActivity) {
 
     // On every return to the app, with a kept key: the program takes at most one a round and three a day,
     // and refuses the rest, which costs nothing on the ER.
+    // Reads the Pet and World once, sends only when the program would take it, and looks again when the next round
+    // begins; a failed look retries after ENGAGE_RETRY_MS.
     fun engage() {
         val now = System.currentTimeMillis()
-        if (now - lastEngageMillis < ENGAGE_GAP_MS) return
-        lastEngageMillis = now
+        if (now < nextEngageLookMillis) return
+        nextEngageLookMillis = now + ENGAGE_RETRY_MS
         observerScope.launch {
             try {
                 val ownerKey = GameOwnerStore.owner(activity) ?: return@launch
                 val pet = GameSync.livePet ?: return@launch
                 val owner = SolanaPublicKey(ownerKey).address
                 val session = OwnerSession.load(sessionFile)?.takeIf { it.usable(owner, GameSync.PROGRAM, now / 1000) } ?: return@launch
+                val program = SolanaPublicKey.from(GameSync.PROGRAM)
                 val ephemeral = SolanaRpc(SolanaRpc.DEVNET_ER)
+                val world = LivePetRead.worldAddress(program)
+                val (live, worldAccount) = ephemeral.getMultipleAccounts(listOf(pet.address, world)).value
+                if (live == null || worldAccount == null) throw SolanaRpc.Failure("Pet or World missing on the ER")
+                val record = SourcePetRead.decodeSourceOnly(live, program, LivePetRead.PROFILE, SolanaPublicKey(ownerKey)).pet
+                val clock = SourceWorldRead.decodeSourceOnlyWorld(worldAccount, program, LivePetRead.PROFILE)
+                val gameNow = OwnerSession.gameSeconds(clock.genesisTimestamp, clock.secondsPerDay, now / 1000)
+                nextEngageLookMillis = OwnerSession.nextRoundUnix(clock.genesisTimestamp, clock.secondsPerDay, gameNow) * 1000
+                val tail = record.sourceTail as SourcePetRead.SourceTail.Canonical
+                if (OwnerSession.engageTaken(tail.engagedToday, tail.engagedRound, gameNow)) {
+                    Log.i(TAG, "Engage already taken this round")
+                    return@launch
+                }
                 val token = OwnerSession.token(GameSync.PROGRAM, session.signer.address, owner)
-                val world = LivePetRead.worldAddress(SolanaPublicKey.from(GameSync.PROGRAM))
                 val transaction = OwnerSession.engage(session.signer, GameSync.PROGRAM, pet.address, world, token,
                     ephemeral.getLatestBlockhash().value.blockhash)
                 ephemeral.sendTransaction(transaction, OwnerSession.signature(transaction))
@@ -589,8 +603,8 @@ class WalletBridge(private val activity: MainActivity) {
         private const val TAG = "HibernalWallet"
         private const val COMMIT_READS = 6
         private const val COMMIT_READ_GAP_MS = 2_000L
-        private const val ENGAGE_GAP_MS = 30 * 60_000L
-        private var lastEngageMillis = 0L
+        private const val ENGAGE_RETRY_MS = 5 * 60_000L
+        @Volatile private var nextEngageLookMillis = 0L
         private const val CONNECT = 1
         private const val DISCONNECT = 2
         private const val DISCONNECTED = 0

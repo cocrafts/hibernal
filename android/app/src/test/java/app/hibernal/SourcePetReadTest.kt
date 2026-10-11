@@ -213,7 +213,7 @@ class SourcePetReadTest {
                 val pet = decoded.pet
                 assertEquals(List(13) { value }, listOf(decoded.claimedEpoch, decoded.diedEpoch, pet.tree, pet.harvest,
                     pet.burrow, pet.rewardSnapshot, pet.bornEpoch, pet.lastTickEpoch, pet.fightDay,
-                    pet.growthMultiplierExpiry, pet.giftOwed, pet.ownerBankedAt, pet.rageEpoch))
+                    pet.growthMultiplierExpiry, pet.giftOwed, pet.ownerBankReadyAt, pet.rageEpoch))
             }
         }
     }

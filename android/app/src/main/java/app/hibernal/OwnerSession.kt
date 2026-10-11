@@ -29,8 +29,6 @@ object OwnerSession {
     // The session-keys program refuses validUntil past its own clock + 7 days; the margin covers the phone's clock.
     const val VALID_SECONDS = 7L * 24 * 3600 - 600
     private const val CREATE_COMPUTE_UNITS = 20_000
-    // rules/owner.ms ownerBanked: half the harvest, once per OWNER_BANK_COOLDOWN_SECONDS of game time.
-    const val OWNER_BANK_COOLDOWN_SECONDS = 8L * 3600
     private const val EPOCH_SECONDS = 86_400L
 
     class Signer(private val seed: ByteArray) {
@@ -175,6 +173,23 @@ object OwnerSession {
         return (unix - genesis) * BigInteger.valueOf(EPOCH_SECONDS) / secondsPerDay
     }
 
-    fun bankCoolingDown(ownerBankedAt: BigInteger, gameNow: BigInteger) =
-        gameNow < ownerBankedAt + BigInteger.valueOf(OWNER_BANK_COOLDOWN_SECONDS)
+    // rules/owner.ms ownerBanked: Pet.ownerBankReadyAt is the game second banking opens again, 0 before the first Bank.
+    fun bankCoolingDown(ownerBankReadyAt: BigInteger, gameNow: BigInteger) = gameNow < ownerBankReadyAt
+
+    // rules/owner.ms engagedAt: ENGAGES_PER_DAY a game day, one a round; roundOfDay splits the day in ACTS_PER_EPOCH.
+    const val ENGAGES_PER_DAY = 3
+    private const val ROUND_SECONDS = EPOCH_SECONDS / 4
+
+    fun engageTaken(engagedToday: Int, engagedRound: Int, gameNow: BigInteger): Boolean {
+        val round = gameNow.mod(BigInteger.valueOf(EPOCH_SECONDS)).divide(BigInteger.valueOf(ROUND_SECONDS)).toInt()
+        return engagedToday >= ENGAGES_PER_DAY || engagedToday > 0 && round <= engagedRound
+    }
+
+    // The first unix second of the round after gameNow's.
+    fun nextRoundUnix(genesis: BigInteger, secondsPerDay: BigInteger, gameNow: BigInteger): Long {
+        val round = BigInteger.valueOf(ROUND_SECONDS)
+        val next = (gameNow / round + BigInteger.ONE) * round
+        val epoch = BigInteger.valueOf(EPOCH_SECONDS)
+        return (genesis + (next * secondsPerDay + epoch - BigInteger.ONE) / epoch).longValueExact()
+    }
 }

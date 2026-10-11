@@ -72,13 +72,30 @@ class OwnerSessionTest {
         assertThrows(IllegalArgumentException::class.java) { OwnerSession.walletSigned(sent, stripped) }
     }
 
-    @Test fun bankWaitsEightGameHours() {
+    @Test fun bankWaitsUntilItsReadyTime() {
         val day = BigInteger.valueOf(86_400)
         val genesis = BigInteger.valueOf(1_791_710_912)
         val now = OwnerSession.gameSeconds(genesis, day, 1_791_710_912 + 10_000)
         assertEquals(BigInteger.valueOf(10_000), now)
-        assertTrue(OwnerSession.bankCoolingDown(BigInteger.valueOf(10_000 - 8 * 3600 + 1), now))
-        assertFalse(OwnerSession.bankCoolingDown(BigInteger.valueOf(10_000 - 8 * 3600), now))
+        assertFalse(OwnerSession.bankCoolingDown(BigInteger.ZERO, now))
+        assertTrue(OwnerSession.bankCoolingDown(BigInteger.valueOf(10_001), now))
+        assertFalse(OwnerSession.bankCoolingDown(BigInteger.valueOf(10_000), now))
         assertEquals(BigInteger.ZERO, OwnerSession.gameSeconds(genesis, day, 1_791_710_000))
+    }
+
+    // Mirrors rules/owner.ms "engage" test: rounds are quarters of the game day, three engages a day.
+    @Test fun engageWaitsForTheNextRoundAndStopsAtThreeADay() {
+        val round = 21_600L
+        fun at(seconds: Long) = BigInteger.valueOf(seconds)
+        assertFalse(OwnerSession.engageTaken(0, 0, at(10)))
+        assertTrue(OwnerSession.engageTaken(1, 0, at(round - 1)))
+        assertFalse(OwnerSession.engageTaken(1, 0, at(round)))
+        assertTrue(OwnerSession.engageTaken(2, 2, at(round)))
+        assertTrue(OwnerSession.engageTaken(3, 1, at(3 * round)))
+        val genesis = BigInteger.valueOf(1_000_000)
+        // A 7200-second day: a round is 1800 real seconds.
+        assertEquals(1_001_800L, OwnerSession.nextRoundUnix(genesis, BigInteger.valueOf(7200), at(10)))
+        assertEquals(1_003_600L, OwnerSession.nextRoundUnix(genesis, BigInteger.valueOf(7200), at(round)))
+        assertEquals(1_021_600L, OwnerSession.nextRoundUnix(genesis, BigInteger.valueOf(86_400), at(0)))
     }
 }

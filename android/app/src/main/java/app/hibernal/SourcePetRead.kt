@@ -48,7 +48,7 @@ object SourcePetRead {
         val fightDay: BigInteger,
         val growthMultiplierExpiry: BigInteger,
         val giftOwed: BigInteger,
-        val ownerBankedAt: BigInteger,
+        val ownerBankReadyAt: BigInteger,
         val rageEpoch: BigInteger,
         val blockId: Long,
         val xp: Long,
@@ -167,7 +167,7 @@ object SourcePetRead {
         val fightDay = unsigned64()
         val growthMultiplierExpiry = unsigned64()
         val giftOwed = unsigned64()
-        val ownerBankedAt = unsigned64()
+        val ownerBankReadyAt = unsigned64()
         val rageEpoch = unsigned64()
         val blockId = unsigned32()
         val xp = unsigned32()
@@ -217,7 +217,7 @@ object SourcePetRead {
         checkSource(!bytes.hasRemaining(), "Pet decoder left trailing bytes")
         return SourceOnlyDecodedPet(sourceProfile, owner, mint, ordinal, persona, bump, nameId, claimedEpoch, diedEpoch,
             canonicalFields, SourceOnlyRulesPet(tree, harvest, burrow, rewardSnapshot, bornEpoch, lastTickEpoch,
-                fightDay, growthMultiplierExpiry, giftOwed, ownerBankedAt, rageEpoch, blockId, xp,
+                fightDay, growthMultiplierExpiry, giftOwed, ownerBankReadyAt, rageEpoch, blockId, xp,
                 foodBps, experienceBps, lootBps, biteGuardBps, forage, might, grit, level, attacked,
                 growthMultiplierBps, talentBps, lineageGeneration, slot, alive, region, hearts, maxHearts,
                 pointsUnspent, mods, fightsOutToday, fightsInToday, bitesInToday, minHearts, pantry,
