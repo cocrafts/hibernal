@@ -12,7 +12,7 @@ const mint = await someKey();
 const skrMint = await someKey();
 
 const built = [
-	await program.initialize({ admissionGroup: await someKey(), engine: 0n, genesisTimestamp: 0n, claimCapPerDay: 0n, resortEvery: 0n, skrMint, treasury: await someKey(), validator: await someKey(), vrfQueue: await someKey() }),
+	await program.initialize({ admissionGroup: await someKey(), engine: 0n, genesisTimestamp: 0n, claimCapPerDay: 0n, resortEvery: 0n, skrMint, treasury: await someKey(), validator: await someKey(), vrfQueue: await someKey(), hatchFeeLamports: 0n }),
 	await program.writePolicy(0, new Uint8Array(4), false),
 	await program.createBlock(0),
 	await program.claim(owner, mint, await someKey(), 0),
@@ -30,6 +30,9 @@ const built = [
 	await program.createHbrnMetadata({ name: "Hibernal", symbol: "HBRN", uri: "https://example.com/hbrn.json" }),
 	await program.buy(owner, mint, { item: 0, tier: 0, skrMint, source: await someKey(), treasury: await someKey() }),
 	await program.load(mint),
+	await program.payRebirth(owner, mint),
+	await program.rebirth(mint),
+	await program.withdrawFund(1n, await someKey()),
 	await program.resortBegin(0, 1n),
 	await program.resortClear(0, [await someKey()]),
 	await program.resortAssign(1, 0n, [await someKey()]),

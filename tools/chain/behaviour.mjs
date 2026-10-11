@@ -31,9 +31,11 @@ import {
 	json,
 	keypairAt,
 	read,
+	readU32,
 	readU64,
 	readonly,
 	sleep,
+	u32,
 	u64,
 	writable,
 	writableSigner,
@@ -78,6 +80,8 @@ const petFields = fieldsOf(idl, "Pet");
 const petTypes = Object.fromEntries(idl.types.find((entry) => entry.name === "Pet").type.fields.map((field) => [field.name, field.type]));
 const blockAt = accountOffsets(idl, "Block");
 const configAt = accountOffsets(idl, "Config");
+const ledgerAt = accountOffsets(idl, "Ledger");
+const REBIRTH_HEADROOM_LAMPORTS = 1_000_000n;
 const errorNames = Object.fromEntries(idl.errors.map((entry) => [entry.code, entry.name]));
 
 function splitmix(state) {
@@ -242,6 +246,7 @@ async function readConfig() {
 		skrMint: keyAt(configAt.skr_mint),
 		treasury: keyAt(configAt.treasury),
 		hbrnMint: keyAt(configAt.hbrn_mint),
+		hatchFeeLamports: view(configAt.hatch_fee_lamports),
 	};
 }
 
@@ -295,6 +300,7 @@ async function petState(entry) {
 		bonding: Number(field("bonding")),
 		burrow: field("burrow"),
 		lineage: field("lineage_generation"),
+		diedEpoch: readU64(holder.data, petAt.died_epoch),
 		slotsFree: (field("owner_first") === 0n ? 1 : 0) + (field("owner_second") === 0n ? 1 : 0),
 		blockId: Number(field("block_id")),
 	};
@@ -337,11 +343,25 @@ async function claimed(entry, config, epoch) {
 	}
 }
 
+async function reborn(entry, config, epoch, pet) {
+	const ledger = await read(baseRead, await program.address(program.seeds.ledger(entry.mint)));
+	if (ledger && BigInt(readU32(ledger.data, ledgerAt.rebirths)) > pet.lineage) return;
+	const balance = (await baseRead.getBalance(entry.owner.address).send()).value;
+	const needed = config.hatchFeeLamports + REBIRTH_HEADROOM_LAMPORTS;
+	if (balance < needed) {
+		const topUp = { programAddress: SYSTEM_PROGRAM, accounts: [writableSigner(wallet), writable(entry.owner.address)], data: joined(u32(2), u64(needed - balance)) };
+		const funded = recorded(epoch, "rebirth:topUp", await submit(base, [topUp], wallet));
+		if (!funded.ok) return;
+	}
+	recorded(epoch, "rebirth", await submit(base, [await program.payRebirth(entry.owner, entry.mint)], entry.owner));
+}
+
 async function visit(entry, config, epoch) {
 	const habit = HABITS[entry.kind];
 	const draw = visitDraw(SEED, entry.index, epoch);
 	if (!rolled(draw, 0n, habit.visitPercent)) return;
 	const pet = await petState(entry);
+	if (pet && !pet.alive && pet.diedEpoch > 0n) return await reborn(entry, config, epoch, pet);
 	if (!pet || !pet.alive) return;
 	dayOf(epoch).visits += 1;
 	recorded(epoch, "bank", await submit(ephemeral, [await program.bank(entry.owner, entry.mint)], entry.owner));

@@ -74,6 +74,7 @@ async function setup() {
 			validator,
 			skrMint: skrMint.address,
 			treasury,
+			hatchFeeLamports: BigInt(process.env.HATCH_FEE_LAMPORTS ?? 20_000_000),
 		})]));
 		state.genesisTimestamp = genesisTimestamp;
 		save();

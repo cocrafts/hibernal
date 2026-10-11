@@ -332,6 +332,7 @@ export function hibernal(programAddress, authority) {
 			staggerSeconds = 600n,
 			slotMillis = 10n,
 			turnGapSlots = 100n,
+			hatchFeeLamports,
 		}) {
 			return call("Initialize", [
 				writableSigner(authority),
@@ -355,6 +356,7 @@ export function hibernal(programAddress, authority) {
 				u64(staggerSeconds),
 				u64(slotMillis),
 				u64(turnGapSlots),
+				u64(hatchFeeLamports),
 			);
 		},
 		async writePolicy(offset, bytes, seal) {
@@ -382,6 +384,7 @@ export function hibernal(programAddress, authority) {
 				writable(await address(seeds.paid(mint))),
 				readonly(SYSTEM_PROGRAM),
 				writable(await address(seeds.ledger(mint))),
+				writable(await address(seeds.revenue())),
 			], u8(nameId));
 		},
 		async delegatePet(payer, mint) {
@@ -527,6 +530,32 @@ export function hibernal(programAddress, authority) {
 				writable(await address(seeds.pet(mint))),
 				readonly(await address(seeds.ledger(mint))),
 			]);
+		},
+		async payRebirth(owner, mint) {
+			return call("PayRebirth", [
+				writableSigner(owner),
+				readonly(await address(seeds.config())),
+				readonly(await address(seeds.pet(mint))),
+				writable(await address(seeds.ledger(mint))),
+				writable(await address(seeds.revenue())),
+				readonly(SYSTEM_PROGRAM),
+			]);
+		},
+		async rebirth(mint) {
+			return call("Rebirth", [
+				writable(await address(seeds.pet(mint))),
+				readonly(await address(seeds.ledger(mint))),
+				writable(await address(seeds.world())),
+			]);
+		},
+		async withdrawFund(amount, destination) {
+			return call("WithdrawFund", [
+				signer(authority),
+				writable(await address(seeds.config())),
+				writable(await address(seeds.revenue())),
+				writable(destination),
+				readonly(SYSTEM_PROGRAM),
+			], u64(amount));
 		},
 		async resortBegin(measure, count) {
 			return call("ResortBegin", [signer(authority), readonly(await address(seeds.config())), writable(await address(seeds.world())), writable(await address(seeds.resort()))], u8(measure), u64(count));

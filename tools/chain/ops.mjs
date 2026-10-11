@@ -293,6 +293,7 @@ async function bootstrap() {
 			staggerSeconds: BigInt(process.env.STAGGER_SECONDS ?? process.env.ROUND_STAGGER_SECONDS ?? 600),
 			turnGapSlots: BigInt(process.env.TURN_GAP_SLOTS ?? 100),
 			slotMillis: BigInt(process.env.SLOT_MILLIS ?? 10),
+			hatchFeeLamports: BigInt(process.env.HATCH_FEE_LAMPORTS ?? 20_000_000),
 		})]);
 		note("bootstrap", `initialized, genesis ${genesisTimestamp}`);
 	}
@@ -718,6 +719,14 @@ function loadable(ledger, record) {
 	return false;
 }
 
+function rebirthDue(ledger, record) {
+	if (!ledger || !record) return false;
+	const at = (field) => petAccountAt.pet + petAt[field];
+	if (record.data[at("alive")] !== 0 || readU64(record.data, petAccountAt.died_epoch) === 0n) return false;
+	const generation = new DataView(record.data.buffer, record.data.byteOffset).getUint16(at("lineage_generation"), true);
+	return readU32(ledger.data, ledgerAt.rebirths) > generation;
+}
+
 async function loads() {
 	const mints = Object.values(state.pets).map((entry) => address(entry.mint));
 	const ledgers = await readMany(baseRead, await Promise.all(mints.map((mint) => addressOf(program.seeds.ledger(mint)))));
@@ -733,6 +742,15 @@ async function loads() {
 		}
 	});
 	if (due.length > 0) note("load", `loaded ${due.length} pets`);
+	const reborn = bought.filter((_, index) => rebirthDue(buyers[index], records[index]));
+	await inParallel(reborn, async (mint) => {
+		try {
+			await onEr("rebirth", [await program.rebirth(mint)], 100_000);
+		} catch (error) {
+			note("rebirth", `${mint} failed: ${error.message}`);
+		}
+	});
+	if (reborn.length > 0) note("rebirth", `reborn ${reborn.length} pets`);
 }
 
 async function run() {
