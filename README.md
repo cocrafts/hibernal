@@ -99,10 +99,10 @@ The ER may drop old transactions. A block's recent ones are listed by `getSignat
 
 - **50,000 owners on a localnet that mirrors devnet.** MagicBlock's ER built from source, plus their VRF oracle and Hydra. 50,000 owner-signed claims in 378 s with 0 failures; the first round of all 5,000 blocks in 110 s (32,780 triggers, 5,000 VRF answers). The world was carried to game day 8 with 43,788 pets alive (`docs/OPERATIONS.md`, 2026-10-03 to 10-06, earlier builds of the program).
 - **A world that heals itself.** `tools/chain/ops.mjs` places pets, sweeps spent cranks, resumes stalled blocks and loads purchases. A watchdog checks the services and posts outages to Discord. Measured recoveries: the cranker down for 6 minutes caught up in 6 s; the VRF payer run dry recovered in about 25 s.
-- **Upstream bugs traced to their cause.** For example, the ER's RPC slot freezing ([magicblock-validator#1783](https://github.com/magicblock-labs/magicblock-validator/issues/1783)), reproduced in isolation and worked around in our cranker. `ER-BUGS.md` lists the rest. `SOLANA-BUGS.md`, `VOID-BUGS.md` and `AI-BUGS.md` log the MetaScript toolchain bugs we hit, each with its smallest repro, and `WORKAROUND.md` lists where the code goes around one.
+- **Upstream bugs traced to their cause.** For example, the ER's RPC slot freezing ([magicblock-validator#1783](https://github.com/magicblock-labs/magicblock-validator/issues/1783)), reproduced in isolation and worked around in our cranker. `ER-BUGS.md` lists the rest. MetaScript toolchain bugs we hit went upstream to the compiler, each with its smallest repro, and `WORKAROUND.md` lists where the code goes around one.
 - **Tests at every layer:**
   - `rules/` and `sim/` suites;
-  - 49 program tests on the host with VRF and Hydra stubs;
+  - 55 program tests on the host with VRF and Hydra stubs;
   - LiteSVM harnesses for the SBF binary;
   - `idlCheck.mjs`, which checks every client instruction's account flags against the IDL;
   - JVM tests for the phone's chain client.

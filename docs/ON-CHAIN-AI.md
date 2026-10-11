@@ -148,7 +148,7 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 - XP `[strawman]`: newborn 190, work 7 × `workPower` per epoch, raid 3 per `$HBRN` looted capped at 500, defense 60 won and 20 lost; curve `190 × (L − 1) + (L − 1)³`, cap 20.
 - Checks: `msc test rules/index.ms` 341/341; `sim/determinism.ms` native equals JS, `fights`, `tree` and `odds` unchanged, `economy` moved because `levelCost` left the digest. A 10-pet, 30-epoch loop with a naive policy (64 fights, 36 raids) prints the same digest on native and JS; its pets reach levels 16–20 by epoch 30.
 - Not in package 2 (ROADMAP P0b): the 64-node tree, the D26 loot formula, talent, decline and natural death, items, bonding, social.
-- Compiler bug found on the way, JS backend: `pet.tickTo(global, epoch)` with a `uint64` `for` counter throws `Cannot mix BigInt`. Traced to two defects, `AI-BUGS.md` #3 and #4.
+- Compiler bug found on the way, JS backend: `pet.tickTo(global, epoch)` with a `uint64` `for` counter throws `Cannot mix BigInt`. Traced to two compiler defects, reported upstream to MetaScript.
 
 ### Package 3: the world and the teacher — Measured
 
@@ -224,7 +224,7 @@ Defaults `[strawman]`: 4 `act` rounds per epoch, 120-epoch episodes, reward from
 - The stronger policy fights 40% less and wins less often per fight. Whether that reads as a persona or as a flat "attack only when it pays" pet is a feel question, not a strength one: it is the first thing the §5 metrics have to answer in package 5.
 - Not tuned: 30 rollouts, one seed, equal reward weights for the three personas.
 
-Compiler findings on msc 0.2.54, worked around in place; the first two are written up with bounded triggers in `AI-BUGS.md`:
+Compiler findings on msc 0.2.54, worked around in place; the first two are reported upstream to MetaScript with bounded triggers:
 
 - `value < 0 || value > (high)` parses as a generic call `value<…>(high)`: a C compile error, and on JS a build that throws at run time while `msc check` passes; written as `>= && <=`.
 - An extension named like a prelude method (`has`, `isEmpty`, `size`) is lost behind a barrel unless its module is the first `export *` (`Property 'has' does not exist on type 'Tree'`; `touches` and `withNode` next to it resolve); `sim/env/observe.ms` imports `{ has, touches }` from `rules/tree` directly.

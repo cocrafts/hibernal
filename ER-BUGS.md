@@ -1,6 +1,6 @@
 # MagicBlock ER bugs that block running the game
 
-Found running the 50,000-pet localnet (`docs/OPERATIONS.md` §9). The ER is `magicblock-validator` built from `/Users/le/projects/magicblock-validator` at `e66d9147` (v0.16.0), config written by `tools/chain/localnet.sh`. Devnet and mainnet run on MagicBlock's own ER, whose config we do not see.
+Found running the 50,000-pet localnet (`docs/OPERATIONS.md` §9). The ER is `magicblock-validator` built from source at `e66d9147` (v0.16.0), config written by `tools/chain/localnet.sh`. Devnet and mainnet run on MagicBlock's own ER, whose config we do not see.
 
 | # | Bug | Status |
 |---|---|---|
