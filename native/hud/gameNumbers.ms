@@ -28,22 +28,27 @@ export function groupedAmount(amount: uint64): string {
 	return words;
 }
 
-// Base units as HBRN, cut (not rounded) to cents so a shown amount is never more than held.
+// Base units as HBRN, cut (not rounded) to thousandths so a shown amount is never more than held: most
+// prices and daily incomes are under one HBRN.
 export function hbrnAmount(baseUnits: uint64): string {
 	const whole: uint64 = baseUnits / HBRN_UNIT;
-	const cents: uint64 = (baseUnits % HBRN_UNIT) / (HBRN_UNIT / 100);
-	if (whole == 0 && cents == 0 && baseUnits > 0) { return "<0.01"; }
-	if (cents == 0) { return groupedAmount(whole); }
-	return groupedAmount(whole) + (cents < 10 ? ".0" : ".") + cents.toString();
+	const thousandths: uint64 = (baseUnits % HBRN_UNIT) / (HBRN_UNIT / 1000);
+	if (whole == 0 && thousandths == 0 && baseUnits > 0) { return "<0.001"; }
+	if (thousandths == 0) { return groupedAmount(whole); }
+	const padded: string = thousandths < 10 ? "00" : thousandths < 100 ? "0" : "";
+	return groupedAmount(whole) + "." + padded + thousandths.toString();
 }
 
 test "HBRN amounts read base units at six decimals" {
 	assert hbrnAmount(0 as uint64) == "0";
-	assert hbrnAmount(692110195 as uint64) == "692.11";
+	assert hbrnAmount(692110195 as uint64) == "692.110";
 	assert hbrnAmount(1240000000 as uint64) == "1,240";
-	assert hbrnAmount(1050000 as uint64) == "1.05";
-	assert hbrnAmount(9999 as uint64) == "<0.01";
-	assert hbrnAmount(2179950569 as uint64) == "2,179.95";
+	assert hbrnAmount(1050000 as uint64) == "1.050";
+	assert hbrnAmount(420000 as uint64) == "0.420";
+	assert hbrnAmount(12500 as uint64) == "0.012";
+	assert hbrnAmount(5000 as uint64) == "0.005";
+	assert hbrnAmount(999 as uint64) == "<0.001";
+	assert hbrnAmount(2179950569 as uint64) == "2,179.950";
 }
 
 test "grouped amounts preserve preview and billion-unit balances" {
