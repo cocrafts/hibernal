@@ -155,6 +155,8 @@ export enum OwnerAction {
 	Load,
 	CommitPet,
 	ClaimReward,
+	// Pays the hatch fee for a dead Pet's heir; the operator hatches it on the ER.
+	PayRebirth,
 }
 
 export enum OwnerActionOutcome {
@@ -173,6 +175,8 @@ export enum OwnerActionOutcome {
 	AdmissionFailed,
 	// The game already committed this Pet today; the next gift reaches L1 tomorrow.
 	GiftTooSoon,
+	// The Pet banked within the last 8 game hours (rules/owner.ms ownerBanked); nothing was sent.
+	BankCoolingDown,
 }
 
 // Only Buy reads item and tier; other actions pass 0.
@@ -204,6 +208,7 @@ export function ownerActionOutcome(): OwnerActionOutcome {
 		11 => { return OwnerActionOutcome.NoSeekerGenesisToken; },
 		12 => { return OwnerActionOutcome.AdmissionFailed; },
 		13 => { return OwnerActionOutcome.GiftTooSoon; },
+		14 => { return OwnerActionOutcome.BankCoolingDown; },
 		_ => {},
 	};
 	console.log("host: unknown owner action outcome " + state.toString());
@@ -228,8 +233,10 @@ test "one owner action is in flight until the shell publishes its outcome" {
 	hostSetOwnerAction(OwnerActionOutcome.ConfirmedAwaitingRead as int32);
 	requestOwnerAction(OwnerAction.ClaimReward, 0);
 	assert hostTakeOwnerActionRequest() == 8;
-	hostSetOwnerAction(14);
+	hostSetOwnerAction(15);
 	assert ownerActionOutcome() == OwnerActionOutcome.Unknown;
+	hostSetOwnerAction(OwnerActionOutcome.BankCoolingDown as int32);
+	assert ownerActionOutcome() == OwnerActionOutcome.BankCoolingDown;
 	hostSetOwnerAction(OwnerActionOutcome.AdmissionFailed as int32);
 	assert ownerActionOutcome() == OwnerActionOutcome.AdmissionFailed;
 	hostSetOwnerAction(OwnerActionOutcome.GiftTooSoon as int32);
@@ -371,6 +378,7 @@ enum GamePetField {
 	FeetWear,
 	FeetSkill,
 	FeetLevel,
+	WorldSecondsPerDay,
 }
 
 // A validated canonical Pet as the shell read it; delegation, membership and the World day
@@ -415,6 +423,8 @@ export struct GamePet {
 	itemsInTransit: int32;
 	// The ER World as of this read; all zero when the Pet is not placed on the ER.
 	world: GlobalConfig;
+	// World.seconds_per_day: real seconds in a game day, 0 until the Pet is placed.
+	secondsPerDay: uint64;
 	gear: Gear;
 }
 
@@ -484,7 +494,7 @@ enum GameFightField {
 }
 
 const ITEM_FIELDS: int32 = 5;
-const GAME_PET_FIELDS: int32 = (GamePetField.FeetLevel as int32) + 1;
+const GAME_PET_FIELDS: int32 = (GamePetField.WorldSecondsPerDay as int32) + 1;
 const INT32_LOW: int64 = -2147483648;
 const INT32_HIGH: int64 = 2147483647;
 const COMBATANT_FIELDS: int32 = 9;
@@ -607,6 +617,7 @@ export function noGamePet(): GamePet {
 			livingPets: 0,
 			floorSlots: 0,
 		},
+		secondsPerDay: 0,
 		gear: Gear.bare(),
 	};
 }
@@ -705,6 +716,7 @@ function publishedPet(): Result<GamePet, GameReadError> {
 			livingPets: (try petBounded(GamePetField.WorldLivingPets, 0, 2147483647)) as uint32,
 			floorSlots: (try petBounded(GamePetField.WorldFloorSlots, 0, 2147483647)) as uint32,
 		},
+		secondsPerDay: petUnsigned(GamePetField.WorldSecondsPerDay),
 		gear: { head: try petItem(0), body: try petItem(1), hands: try petItem(2), feet: try petItem(3) },
 	});
 }

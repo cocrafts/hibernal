@@ -14,7 +14,7 @@ import java.math.BigInteger
 
 object OwnerSigning {
     // Ordinals are the host ABI: native/host/host.ms OwnerAction and OwnerActionOutcome.
-    enum class OwnerAction { CLAIM, DELEGATE_PET, ENGAGE, BANK, BUY, LOAD, COMMIT_PET, CLAIM_REWARD }
+    enum class OwnerAction { CLAIM, DELEGATE_PET, ENGAGE, BANK, BUY, LOAD, COMMIT_PET, CLAIM_REWARD, PAY_REBIRTH }
 
     enum class Outcome {
         IDLE,
@@ -31,6 +31,7 @@ object OwnerSigning {
         NO_SEEKER_GENESIS_TOKEN,
         ADMISSION_FAILED,
         GIFT_TOO_SOON,
+        BANK_COOLING_DOWN,
     }
 
     data class Request(val action: OwnerAction, val item: Int)
@@ -155,12 +156,21 @@ object OwnerSigning {
         chain: Chain,
         onRpcFailure: (IOException) -> Unit,
         pause: suspend () -> Unit = pollPause,
+    ): Outcome = confirm(signed.signatureBase58, lastValidBlockHeight, chain, onRpcFailure, pause) { chain.send(signed) }
+
+    suspend fun confirm(
+        signature: String,
+        lastValidBlockHeight: BigInteger,
+        chain: Chain,
+        onRpcFailure: (IOException) -> Unit,
+        pause: suspend () -> Unit = pollPause,
+        send: suspend () -> Unit,
     ): Outcome {
-        try { chain.send(signed) } catch (error: IOException) { onRpcFailure(error) }
+        try { send() } catch (error: IOException) { onRpcFailure(error) }
         repeat(MAX_POLLS) {
             try {
                 val height = chain.blockHeight()
-                val status = chain.status(signed.signatureBase58)
+                val status = chain.status(signature)
                 val observation = OwnerPreflight.observeSignature(status, lastValidBlockHeight, height)
                 when (observation.signature) {
                     OwnerPreflight.SignatureFact.CONFIRMED_AWAITING_TYPED_DELTA,

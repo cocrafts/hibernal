@@ -40,6 +40,7 @@ android {
 dependencies {
     implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.2.0")
     implementation("io.github.funkatronics:multimult:0.2.6")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.79")
     implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

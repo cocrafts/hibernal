@@ -201,16 +201,17 @@ class OwnerSigningTest {
     @Test fun hostAbiOrdinalsMatchHostMs() {
         assertEquals(listOf("IDLE", "REQUESTED", "CANCELLED", "NO_WALLET", "WALLET_FAILED", "SENT_PENDING",
             "CONFIRMED_AWAITING_READ", "FAILED_ON_CHAIN", "EXPIRED", "UNKNOWN", "UNAVAILABLE",
-            "NO_SEEKER_GENESIS_TOKEN", "ADMISSION_FAILED", "GIFT_TOO_SOON"),
+            "NO_SEEKER_GENESIS_TOKEN", "ADMISSION_FAILED", "GIFT_TOO_SOON", "BANK_COOLING_DOWN"),
             OwnerSigning.Outcome.entries.map { it.name })
-        assertEquals(listOf("CLAIM", "DELEGATE_PET", "ENGAGE", "BANK", "BUY", "LOAD", "COMMIT_PET", "CLAIM_REWARD"),
+        assertEquals(listOf("CLAIM", "DELEGATE_PET", "ENGAGE", "BANK", "BUY", "LOAD", "COMMIT_PET", "CLAIM_REWARD", "PAY_REBIRTH"),
             OwnerSigning.OwnerAction.entries.map { it.name })
     }
 
     @Test fun packedRequestDecodesActionAndSixteenBitItem() {
         assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.BUY, 0x713), OwnerSigning.request(5 or (0x713 shl 8)))
         assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.CLAIM, 0), OwnerSigning.request(1))
-        for (bad in listOf(0, 9, 1 or (1 shl 24), -1)) {
+        assertEquals(OwnerSigning.Request(OwnerSigning.OwnerAction.PAY_REBIRTH, 0), OwnerSigning.request(9))
+        for (bad in listOf(0, 10, 1 or (1 shl 24), -1)) {
             assertThrows(IllegalArgumentException::class.java) { OwnerSigning.request(bad) }
         }
     }

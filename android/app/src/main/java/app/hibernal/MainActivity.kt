@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         super.onResume()
         reportWallpaperPlaces()
         reportPetNews()
+        walletBridge.engage()
     }
 
     fun handleWalletRequest(request: Int) {

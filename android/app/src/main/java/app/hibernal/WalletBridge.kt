@@ -44,6 +44,7 @@ class WalletBridge(private val activity: MainActivity) {
     ).apply { blockchain = Solana.Devnet }
 
     private val authFile = AtomicFile(File(activity.noBackupFilesDir, "walletAuthToken"))
+    private val sessionFile = AtomicFile(File(activity.noBackupFilesDir, "ownerSession"))
 
     private val ownerWallet = OwnerSigning.ConnectedWallet(
         object : OwnerSigning.Session {
@@ -108,6 +109,8 @@ class WalletBridge(private val activity: MainActivity) {
             OwnerSigning.OwnerAction.CLAIM -> ownerInteraction { summon(decoded.item) }
             OwnerSigning.OwnerAction.CLAIM_REWARD -> ownerInteraction { reward() }
             OwnerSigning.OwnerAction.BUY -> ownerInteraction { buy(decoded.item) }
+            OwnerSigning.OwnerAction.BANK -> ownerInteraction { bank() }
+            OwnerSigning.OwnerAction.PAY_REBIRTH -> ownerInteraction { payRebirth() }
             else -> {
                 Log.i(TAG, "${decoded.action} unavailable: no validated deployment profile prepares its transaction")
                 publishOwnerAction(OwnerSigning.Outcome.UNAVAILABLE)
@@ -280,6 +283,151 @@ class WalletBridge(private val activity: MainActivity) {
         signAndConfirm(preview, ownerKey)
     }
 
+    // The heir hatches once the operator sees the paid Ledger (ops Rebirth on the ER, then Place).
+    private suspend fun payRebirth() {
+        val ownerKey = withContext(Dispatchers.IO) { GameOwnerStore.owner(activity) }
+        val pet = GameSync.livePet
+        if (ownerKey == null || pet == null) {
+            publishOwnerAction(OwnerSigning.Outcome.NO_WALLET)
+            return
+        }
+        val owner = SolanaPublicKey(ownerKey).address
+        val base = SolanaRpc(SolanaRpc.DEVNET)
+        val preview = OwnerPreflight.inspectSourceOnly(base,
+            OwnerOnboarding.payRebirth(owner, pet.mint, GameSync.PROGRAM, GameSync.CONFIG), owner, GameSync.PROGRAM)
+        preview.simulation.value.error?.let { error ->
+            Log.e(TAG, "Rebirth simulation failed: $error ${preview.simulation.value.logs?.takeLast(6)}")
+            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            return
+        }
+        signAndConfirm(preview, ownerKey)
+    }
+
+    // Half the harvest into the burrow, signed by the session key on the ER. The first time, and after the key
+    // expires, the wallet approves a new key on L1 first.
+    private suspend fun bank() {
+        val ownerKey = withContext(Dispatchers.IO) { GameOwnerStore.owner(activity) }
+        val pet = GameSync.livePet
+        if (ownerKey == null || pet == null) {
+            publishOwnerAction(OwnerSigning.Outcome.NO_WALLET)
+            return
+        }
+        val owner = SolanaPublicKey(ownerKey).address
+        val program = SolanaPublicKey.from(GameSync.PROGRAM)
+        val ephemeral = SolanaRpc(SolanaRpc.DEVNET_ER)
+        val world = LivePetRead.worldAddress(program)
+        val (live, worldAccount) = ephemeral.getMultipleAccounts(listOf(pet.address, world)).value
+        if (live == null || worldAccount == null) throw SolanaRpc.Failure("Pet or World missing on the ER")
+        val record = SourcePetRead.decodeSourceOnly(live, program, LivePetRead.PROFILE, SolanaPublicKey(ownerKey)).pet
+        val clock = SourceWorldRead.decodeSourceOnlyWorld(worldAccount, program, LivePetRead.PROFILE)
+        val gameNow = OwnerSession.gameSeconds(clock.genesisTimestamp, clock.secondsPerDay, System.currentTimeMillis() / 1000)
+        if (record.harvest.signum() == 0) {
+            publishOwnerAction(OwnerSigning.Outcome.IDLE)
+            return
+        }
+        if (OwnerSession.bankCoolingDown(record.ownerBankedAt, gameNow)) {
+            publishOwnerAction(OwnerSigning.Outcome.BANK_COOLING_DOWN)
+            return
+        }
+        val session = approvedSession(owner) ?: return
+        val token = OwnerSession.token(GameSync.PROGRAM, session.signer.address, owner)
+        val blockhash = ephemeral.getLatestBlockhash().value
+        val transaction = OwnerSession.bank(session.signer, GameSync.PROGRAM, pet.address, world, token, blockhash.blockhash)
+        val signature = OwnerSession.signature(transaction)
+        try {
+            ephemeral.sendTransaction(transaction, signature)
+        } catch (error: SolanaRpc.RemoteFailure) {
+            Log.e(TAG, "Bank refused: ${error.message}")
+            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            return
+        }
+        publishOwnerAction(OwnerSigning.Outcome.SENT_PENDING)
+        val outcome = OwnerSigning.confirm(signature, blockhash.lastValidBlockHeight, OwnerSigning.chain(ephemeral), { error ->
+            Log.w(TAG, "Bank RPC: ${error.javaClass.name}: ${error.message}")
+        }) {}
+        publishOwnerAction(outcome)
+        if (outcome == OwnerSigning.Outcome.CONFIRMED_AWAITING_READ) GameSync.select(ownerKey)
+    }
+
+    // The kept session key for this owner, or a new one the wallet approves now on L1; null when it did not.
+    private suspend fun approvedSession(owner: String): OwnerSession.Approved? {
+        val kept = withContext(Dispatchers.IO) { OwnerSession.load(sessionFile) }
+        val now = System.currentTimeMillis() / 1000
+        // An hour's margin so a key does not expire between the check and the ER.
+        if (kept != null && kept.usable(owner, GameSync.PROGRAM, now + 3600)) return kept
+        val signer = OwnerSession.newSigner()
+        val validUntil = now + OwnerSession.VALID_SECONDS
+        val base = SolanaRpc(SolanaRpc.DEVNET)
+        val token = OwnerSession.token(GameSync.PROGRAM, signer.address, owner)
+        val blockhash = base.getLatestBlockhash()
+        val unsigned = OwnerSession.createSession(owner, signer, GameSync.PROGRAM, token, validUntil, blockhash.value.blockhash)
+        val simulation = base.simulateTransaction(unsigned, blockhash.slot).value
+        simulation.error?.let { error ->
+            Log.e(TAG, "Session simulation failed: $error ${simulation.logs?.takeLast(6)}")
+            publishOwnerAction(OwnerSigning.Outcome.FAILED_ON_CHAIN)
+            return null
+        }
+        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            publishOwnerAction(OwnerSigning.Outcome.CANCELLED)
+            return null
+        }
+        val ownerBytes = SolanaPublicKey.from(owner).bytes
+        val result = ownerWallet.run { operations, authorization ->
+            if (authorization.accounts.none { it.publicKey.contentEquals(ownerBytes) }) throw OwnerSigning.OwnerNotAuthorized()
+            operations.signTransactions(arrayOf(unsigned)).signedPayloads.single()
+        }
+        val signed = when (result) {
+            is TransactionResult.Success -> OwnerSession.walletSigned(unsigned, result.payload)
+            is TransactionResult.NoWalletFound -> { publishOwnerAction(OwnerSigning.Outcome.NO_WALLET); return null }
+            is TransactionResult.Failure -> {
+                val cancelled = OwnerSigning.remoteCode(result.e) == ProtocolContract.ERROR_NOT_SIGNED
+                logFailure("Session", result.e, cancelled)
+                publishOwnerAction(if (cancelled) OwnerSigning.Outcome.CANCELLED else OwnerSigning.Outcome.WALLET_FAILED)
+                return null
+            }
+        }
+        publishOwnerAction(OwnerSigning.Outcome.SENT_PENDING)
+        val signature = OwnerSession.signature(signed)
+        val outcome = OwnerSigning.confirm(signature, blockhash.value.lastValidBlockHeight, OwnerSigning.chain(base), { error ->
+            Log.w(TAG, "Session RPC: ${error.javaClass.name}: ${error.message}")
+        }) { base.sendTransaction(signed, signature) }
+        if (outcome != OwnerSigning.Outcome.CONFIRMED_AWAITING_READ) {
+            publishOwnerAction(outcome)
+            return null
+        }
+        val approved = OwnerSession.Approved(owner, GameSync.PROGRAM, signer, validUntil)
+        withContext(NonCancellable + Dispatchers.IO) { OwnerSession.save(sessionFile, approved) }
+        Log.i(TAG, "Session key approved until $validUntil")
+        return approved
+    }
+
+    // On every return to the app, with a kept key: the program takes at most one a round and three a day,
+    // and refuses the rest, which costs nothing on the ER.
+    fun engage() {
+        val now = System.currentTimeMillis()
+        if (now - lastEngageMillis < ENGAGE_GAP_MS) return
+        lastEngageMillis = now
+        observerScope.launch {
+            try {
+                val ownerKey = GameOwnerStore.owner(activity) ?: return@launch
+                val pet = GameSync.livePet ?: return@launch
+                val owner = SolanaPublicKey(ownerKey).address
+                val session = OwnerSession.load(sessionFile)?.takeIf { it.usable(owner, GameSync.PROGRAM, now / 1000) } ?: return@launch
+                val ephemeral = SolanaRpc(SolanaRpc.DEVNET_ER)
+                val token = OwnerSession.token(GameSync.PROGRAM, session.signer.address, owner)
+                val world = LivePetRead.worldAddress(SolanaPublicKey.from(GameSync.PROGRAM))
+                val transaction = OwnerSession.engage(session.signer, GameSync.PROGRAM, pet.address, world, token,
+                    ephemeral.getLatestBlockhash().value.blockhash)
+                ephemeral.sendTransaction(transaction, OwnerSession.signature(transaction))
+                Log.i(TAG, "Engaged")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.i(TAG, "Engage not taken: ${error.javaClass.simpleName}: ${error.message}")
+            }
+        }
+    }
+
     // A confirmed transaction for rediscoverOwner restarts its discovery so the new Pet is read.
     private suspend fun signAndConfirm(preview: OwnerPreflight.SourceOnlyPreview, rediscoverOwner: ByteArray?) {
         if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -438,6 +586,8 @@ class WalletBridge(private val activity: MainActivity) {
         private const val TAG = "HibernalWallet"
         private const val COMMIT_READS = 6
         private const val COMMIT_READ_GAP_MS = 2_000L
+        private const val ENGAGE_GAP_MS = 30 * 60_000L
+        private var lastEngageMillis = 0L
         private const val CONNECT = 1
         private const val DISCONNECT = 2
         private const val DISCONNECTED = 0

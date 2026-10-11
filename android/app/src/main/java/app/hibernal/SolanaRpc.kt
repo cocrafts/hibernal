@@ -41,10 +41,13 @@ open class SolanaRpc(val endpoint: String) {
         return post(method, params)
     }
 
-    suspend fun sendTransaction(signed: OwnerTransaction.SourceOnlyWalletReturnShape): String = withContext(Dispatchers.IO) {
+    suspend fun sendTransaction(signed: OwnerTransaction.SourceOnlyWalletReturnShape): String =
+        sendTransaction(signed.transactionBytes, signed.signatureBase58)
+
+    suspend fun sendTransaction(transaction: ByteArray, signature: String): String = withContext(Dispatchers.IO) {
         val options = JSONObject().put("encoding", "base64").put("preflightCommitment", "confirmed")
         sentSignature(post("sendTransaction", JSONArray()
-            .put(Base64.getEncoder().encodeToString(signed.transactionBytes)).put(options)), signed.signatureBase58)
+            .put(Base64.getEncoder().encodeToString(transaction)).put(options)), signature)
     }
 
     private suspend fun post(method: String, params: JSONArray): Any = withContext(Dispatchers.IO) {

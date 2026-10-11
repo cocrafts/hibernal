@@ -122,7 +122,7 @@ int hostWalletAddressByte(int index) {
 void hostRequestOwnerAction(int action, int item) {
 	int state = atomic_load(&s_ownerActionState);
 	if (state == 1 || state == 5) return;
-	if (action < 0 || action > 7 || item < 0 || item > 0xffff) {
+	if (action < 0 || action > 8 || item < 0 || item > 0xffff) {
 		hostSetOwnerAction(9);
 		return;
 	}
@@ -134,7 +134,7 @@ void hostRequestOwnerAction(int action, int item) {
 int hostTakeOwnerActionRequest(void) { return atomic_exchange(&s_ownerActionRequest, 0); }
 
 void hostSetOwnerAction(int state) {
-	atomic_store(&s_ownerActionState, state < 0 || state > 13 ? 9 : state);
+	atomic_store(&s_ownerActionState, state < 0 || state > 14 ? 9 : state);
 	atomic_fetch_add(&s_ownerActionRevision, 1);
 }
 
@@ -196,7 +196,8 @@ int hostSetGameRead(int ownerRevision, int state, uint64_t baseSlot, uint64_t ep
 	atomic_fetch_add(&s_gameReadRevision, 1);
 	if (state < 1 || state > 5 || admissionHoldings < -1 || admissionMembers < -1 ||
 		unclaimedMembers < -1 || admissionMembers > admissionHoldings || unclaimedMembers > admissionMembers ||
-		((state >= 2 && state <= 4) && (!baseSlot || !ephemeralSlot || unclaimedMembers < 0)) ||
+		// 4 may come before any slot was read: a Config the app cannot read.
+		((state == 2 || state == 3) && (!baseSlot || !ephemeralSlot || unclaimedMembers < 0)) ||
 		(state == 3 ? (!pet || petFields != HOST_GAME_PET_FIELDS) : petFields != 0) ||
 		(state == 3 && seatValues != 0 ? (!seats || seatValues != HOST_GAME_SEATS * HOST_GAME_SEAT_FIELDS)
 			: seatValues != 0) ||
