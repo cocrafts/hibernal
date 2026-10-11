@@ -33,6 +33,7 @@ import {
 	CreateHbrnMetadataArgs,
 	DelegateVrfPayerAccounts,
 	InitializeAccounts,
+	WithdrawFundAccounts,
 	WithdrawRevenueAccounts,
 	WritePolicyAccounts,
 	WritePolicyArgs,
@@ -47,7 +48,7 @@ import {
 } from "./admission";
 import { RoundStartAccounts, SeededAccounts, StartBlockAccounts, SweepAccounts, TurnAccounts } from "./day";
 import { SessionAccounts } from "./owner";
-import { BuyAccounts, LoadAccounts } from "./shop";
+import { BuyAccounts, LoadAccounts, PayRebirthAccounts, RebirthAccounts } from "./shop";
 import { ClaimRewardAccounts, CommitPetAccounts } from "./payout";
 import {
 	DelegateResortAccounts,
@@ -89,6 +90,9 @@ export function hibernalIdl(): string {
 		Sweep: [SweepAccounts],
 		WithdrawRevenue: [WithdrawRevenueAccounts, WithdrawRevenueArgs],
 		CreateHbrnMetadata: [CreateHbrnMetadataAccounts, CreateHbrnMetadataArgs],
+		WithdrawFund: [WithdrawFundAccounts, WithdrawRevenueArgs],
+		PayRebirth: [PayRebirthAccounts],
+		Rebirth: [RebirthAccounts],
 		accounts: [Config, Policy, World, Block, PetAccount, Paid, Resort, Ledger, VrfPayer],
 		events: [],
 		errors: HibernalError,

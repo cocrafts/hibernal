@@ -1,11 +1,11 @@
 import { ProgramError, failWith, selectInstruction } from "std/solana";
 import { instruction } from "std/solana";
 import { Op } from "./layout";
-import { createBlock, createHbrnMetadata, delegateVrfPayer, initialize, withdrawRevenue, writePolicy } from "./admin";
+import { createBlock, createHbrnMetadata, delegateVrfPayer, initialize, withdrawFund, withdrawRevenue, writePolicy } from "./admin";
 import { claim, delegateBlock, delegatePet, delegateWorld, place, processUndelegation } from "./admission";
 import { roundStart, seeded, startBlock, sweep, turn } from "./day";
 import { bank, engage } from "./owner";
-import { buy, load } from "./shop";
+import { buy, load, payRebirth, rebirth } from "./shop";
 import { delegateResort, resortAssign, resortBegin, resortClear, resortFinish } from "./resort";
 import { claimReward, commitPet } from "./payout";
 
@@ -39,6 +39,9 @@ export function dispatch(): Result<uint64, ProgramError> {
 		Op.Sweep => sweep(),
 		Op.WithdrawRevenue => withdrawRevenue(),
 		Op.CreateHbrnMetadata => createHbrnMetadata(),
+		Op.WithdrawFund => withdrawFund(),
+		Op.PayRebirth => payRebirth(),
+		Op.Rebirth => rebirth(),
 	};
 }
 

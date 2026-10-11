@@ -38,7 +38,6 @@ import {
 	FightRecord,
 	GlobalConfig,
 	GrudgeError,
-	HeirError,
 	Listing,
 	MarketError,
 	MarketView,
@@ -53,7 +52,6 @@ import {
 	doEconomy,
 	expiredAt,
 	fightSeed,
-	heirOf,
 	legalNodes,
 	listedItem,
 	listingGain,
@@ -79,7 +77,6 @@ import {
 	HibernalError,
 	LISTINGS,
 	NO_BLOCK,
-	NO_SEAT,
 	PetAccount,
 	Phase,
 	Policy,
@@ -462,13 +459,6 @@ export function dawned(
 	return Result.ok(settled);
 }
 
-function heirFailure(error: HeirError): ProgramError {
-	const mapped: HibernalError = match (error) {
-		HeirError.Alive => HibernalError.Illegal,
-		HeirError.TreasuryShort => HibernalError.TreasuryShort,
-	};
-	return hibernalError(mapped);
-}
 
 export function revealed(block: Ptr<Block>, pets: Span<Pet>, records: Span<uint64>, global: GlobalConfig): GlobalConfig {
 	let settled = global;
@@ -500,16 +490,8 @@ function livingMateAt(pets: Span<Pet>, records: Span<uint64>, seat: int32, nth: 
 	return seat;
 }
 
-function unseated(pet: Pet): Pet {
-	return { ...pet, blockId: NO_BLOCK, slot: NO_SEAT };
-}
-
-function leftSeat(world: Ptr<World>, record: Ptr<PetAccount>, dead: Pet, epoch: uint64): Result<Pet, ProgramError> {
-	const heir = dead.heirOf(epoch + 1, world.global);
-	if (!heir.ok) { return Result.err(heirFailure(heir.error)); }
-	world.global = heir.value.global;
-	record.diedEpoch = 0;
-	return Result.ok(unseated(heir.value.pet));
+function departed(dead: Pet): Pet {
+	return { ...dead, blockId: NO_BLOCK };
 }
 
 function vacated(block: Ptr<Block>, seat: int32): void {
@@ -538,7 +520,7 @@ export function dusked(world: Ptr<World>, block: Ptr<Block>, pets: Span<Pet>, re
 				pets[lucky] = { ...pets[lucky], harvest: pets[lucky].harvest + burial.value.toMate };
 			}
 		}
-		record.pet = try leftSeat(world, record, dead, block.epoch);
+		record.pet = departed(dead);
 		vacated(block, seat);
 		world.placed = world.placed - 1;
 		records[seat] = 0;

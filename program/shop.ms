@@ -13,25 +13,32 @@ import {
 	Writable,
 	WritableSigner,
 	bump,
+	clock,
 	createPda,
 	expectAddress,
+	findProgramAddress,
 	expectHasOne,
 	mutable,
 	pdaWithBump,
 	programAddress,
 	seeds,
+	transferLamports,
 } from "std/solana";
 import { accounts, args } from "std/solana";
 import { Mint, TokenAccount, transferTokens } from "std/solana/token";
-import { Food, OwnerItem, Pet, foodItem, growthItem, withOwnerItem, withSkin } from "../rules/index";
+import { Food, HeirError, OwnerItem, Pet, foodItem, growthItem, heirOf, withOwnerItem, withSkin } from "../rules/index";
 import {
 	BuyArgs,
 	Config,
 	HibernalError,
 	Ledger,
+	NO_BLOCK,
+	NO_SEAT,
 	OWNER_ITEM_KINDS,
 	PetAccount,
 	ShopItem,
+	World,
+	dayAt,
 	hibernalError,
 } from "./layout";
 
@@ -59,6 +66,21 @@ export struct BuyAccounts {
 export struct LoadAccounts {
 	pet: Mutable<PetAccount>;
 	ledger: Owned<Ledger>;
+}
+
+export struct PayRebirthAccounts {
+	owner: WritableSigner;
+	config: Owned<Config>;
+	@seeds("pet", pet.mint) @bump(pet.bump) pet: Delegated<PetAccount>;
+	ledger: Mutable<Ledger>;
+	fund: Writable;
+	systemProgram: Program<System>;
+}
+
+export struct RebirthAccounts {
+	pet: Mutable<PetAccount>;
+	ledger: Owned<Ledger>;
+	world: Mutable<World>;
 }
 
 function itemOf(value: uint8): Result<ShopItem, ProgramError> {
@@ -191,4 +213,47 @@ export function load(): Result<uint64, ProgramError> {
 		if (dressed.ok) { record.pet = dressed.value; }
 	}
 	return Result.ok(moved);
+}
+
+export function payRebirth(): Result<uint64, ProgramError> {
+	const x = try accounts<PayRebirthAccounts>();
+	const config = try configIn(x.config);
+	const record = x.pet.data();
+	const _petAddress = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
+	const _owner = try expectHasOne(record.owner, x.owner.key());
+	const ledger = x.ledger.data();
+	const _ledgerAddress = try pdaWithBump(x.ledger, ["ledger", record.mint], ledger.bump);
+	const fund = try findProgramAddress(["revenue"]);
+	if (x.fund.key() != fund.key) { return Result.err(ProgramError.constraintSeeds()); }
+	if (config.hatchFeeLamports > 0) { const _fee = try transferLamports(x.owner, x.fund, config.hatchFeeLamports); }
+	ledger.rebirths = ledger.rebirths + 1;
+	return Result.ok(ledger.rebirths as uint64);
+}
+
+function heirFailure(error: HeirError): ProgramError {
+	const mapped: HibernalError = match (error) {
+		HeirError.Alive => HibernalError.Illegal,
+		HeirError.TreasuryShort => HibernalError.TreasuryShort,
+	};
+	return hibernalError(mapped);
+}
+
+export function rebirth(): Result<uint64, ProgramError> {
+	const x = try accounts<RebirthAccounts>();
+	const record = x.pet.data();
+	const _petAddress = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
+	const ledger = x.ledger.data();
+	const derived = programAddress(["ledger", record.mint, [ledger.bump]]);
+	if (!derived.ok || derived.value != x.ledger.key()) { return Result.err(ProgramError.constraintSeeds()); }
+	const world = x.world.data();
+	const _world = try pdaWithBump(x.world, ["world"], world.bump);
+	if (record.pet.alive || record.diedEpoch == 0) { return Result.err(hibernalError(HibernalError.NotAwaitingRebirth)); }
+	if (ledger.rebirths <= (record.pet.lineageGeneration as uint32)) { return Result.err(hibernalError(HibernalError.RebirthUnpaid)); }
+	const today = dayAt(world.global.genesisTimestamp, world.secondsPerDay, clock().unixTimestamp);
+	const heir = record.pet.heirOf(today > record.diedEpoch ? today : record.diedEpoch + 1, world.global);
+	if (!heir.ok) { return Result.err(heirFailure(heir.error)); }
+	world.global = heir.value.global;
+	record.diedEpoch = 0;
+	record.pet = { ...heir.value.pet, blockId: NO_BLOCK, slot: NO_SEAT };
+	return Result.ok(record.pet.lineageGeneration as uint64);
 }

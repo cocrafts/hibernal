@@ -12,11 +12,13 @@ import {
 	WritableSigner,
 	clock,
 	createPda,
+	findProgramAddress,
 	instructionData,
 	leBytes,
 	pdaWithBump,
 	programAddress,
 	programId,
+	transferLamports,
 	unchecked,
 } from "std/solana";
 import { accounts, args } from "std/solana";
@@ -69,6 +71,7 @@ export struct ClaimAccounts {
 	paid: Writable;
 	systemProgram: Program<System>;
 	ledger: Writable;
+	fund: Writable;
 }
 
 export struct DelegatePetAccounts {
@@ -162,6 +165,9 @@ export function claim(): Result<uint64, ProgramError> {
 	const _heldBy = try expectTokenOwner(held, x.owner.key());
 	if (held.amount != 1) { return Result.err(hibernalError(HibernalError.NotAdmitted)); }
 	if (config.pets >= (MAX_PETS as uint32)) { return Result.err(hibernalError(HibernalError.PetCap)); }
+	const fund = try findProgramAddress(["revenue"]);
+	if (x.fund.key() != fund.key) { return Result.err(ProgramError.constraintSeeds()); }
+	if (config.hatchFeeLamports > 0) { const _fee = try transferLamports(x.owner, x.fund, config.hatchFeeLamports); }
 	const madePet = try createPda<PetAccount>(x.owner, x.pet, ["pet", mintKey]);
 	const madePaid = try createPda<Paid>(x.owner, x.paid, ["paid", mintKey]);
 	const madeLedger = try createPda<Ledger>(x.owner, x.ledger, ["ledger", mintKey]);
@@ -286,6 +292,7 @@ export function place(): Result<uint64, ProgramError> {
 	const record = x.pet.data();
 	const _pet = try pdaWithBump(x.pet, ["pet", record.mint], record.bump);
 	if (record.pet.blockId != NO_BLOCK) { return Result.err(hibernalError(HibernalError.AlreadyPlaced)); }
+	if (!record.pet.alive && record.diedEpoch != 0) { return Result.err(hibernalError(HibernalError.AwaitingRebirth)); }
 	if (world.resorting != 0) { return Result.err(hibernalError(HibernalError.Resorting)); }
 	let seat = -1;
 	for (let index = 0; index < SEATS; index++) {

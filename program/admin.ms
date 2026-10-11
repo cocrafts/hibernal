@@ -21,6 +21,7 @@ import {
 	findProgramAddress,
 	invoke,
 	leBytes,
+	minimumBalance,
 	pdaWithBump,
 	programId,
 	pubkeyOf,
@@ -28,6 +29,7 @@ import {
 	putU16,
 	putU8,
 	signed,
+	transfer,
 } from "std/solana";
 import { accounts, args } from "std/solana";
 import { DelegationAccounts, DelegationConfig, anyValidator, delegate, onValidator } from "std/solana/magicblock";
@@ -69,6 +71,14 @@ export struct WithdrawRevenueAccounts {
 	skrMint: External<Mint>;
 	destination: ExternalMutable<TokenAccount>;
 	tokenProgram: Account;
+}
+
+export struct WithdrawFundAccounts {
+	authority: Signer;
+	config: Mutable<Config>;
+	fund: Writable;
+	destination: Writable;
+	systemProgram: Program<System>;
 }
 
 export struct WritePolicyAccounts {
@@ -124,6 +134,9 @@ export function initialize(): Result<uint64, ProgramError> {
 	if (!(try heldByProgram(a.treasury, a.skrMint))) {
 		return Result.err(hibernalError(HibernalError.WrongTreasury));
 	}
+	if (a.hatchFeeLamports != 0 && a.hatchFeeLamports < minimumBalance(0)) {
+		return Result.err(hibernalError(HibernalError.HatchFeeTooSmall));
+	}
 	const madeConfig = try createPda<Config>(x.authority, x.config, ["config"]);
 	const madePolicy = try createPda<Policy>(x.authority, x.policy, ["policy"]);
 	const madeWorld = try createPda<World>(x.authority, x.world, ["world"]);
@@ -144,6 +157,7 @@ export function initialize(): Result<uint64, ProgramError> {
 	config.staggerSeconds = a.staggerSeconds;
 	config.slotMillis = a.slotMillis;
 	config.turnGapSlots = a.turnGapSlots;
+	config.hatchFeeLamports = a.hatchFeeLamports;
 	config.bump = madeConfig.bump;
 	config.mintBump = mintBump;
 	config.policyBump = madePolicy.bump;
@@ -254,6 +268,15 @@ export function withdrawRevenue(): Result<uint64, ProgramError> {
 		transferTokens(x.treasury, x.destination, x.skrMint, x.revenue, a.amount),
 		["revenue", [revenue.bump]],
 	);
+}
+
+export function withdrawFund(): Result<uint64, ProgramError> {
+	const a = try args<WithdrawRevenueArgs>();
+	const x = try accounts<WithdrawFundAccounts>();
+	const _config = try authorized(x.config, x.authority.key());
+	const fund = try findProgramAddress(["revenue"]);
+	if (x.fund.key() != fund.key) { return Result.err(ProgramError.constraintSeeds()); }
+	return signed(transfer(x.fund.asAccount(), x.destination.asAccount(), a.amount), ["revenue", [fund.bump]]);
 }
 
 const CREATE_METADATA_V3: uint8 = 33;

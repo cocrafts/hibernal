@@ -41,6 +41,9 @@ export enum Op {
 	Sweep,
 	WithdrawRevenue,
 	CreateHbrnMetadata,
+	WithdrawFund,
+	PayRebirth,
+	Rebirth,
 }
 
 export enum Phase {
@@ -71,6 +74,7 @@ export struct Config {
 	staggerSeconds: uint64;
 	slotMillis: uint64;
 	turnGapSlots: uint64;
+	hatchFeeLamports: uint64;
 }
 
 export function discriminator(this typeof Config): Discriminator {
@@ -255,6 +259,10 @@ export enum HibernalError {
 	EngagedThisRound,
 	SessionExpired,
 	BadMetadata,
+	HatchFeeTooSmall,
+	AwaitingRebirth,
+	NotAwaitingRebirth,
+	RebirthUnpaid,
 }
 
 export converter hibernalError(error: HibernalError): ProgramError {
@@ -276,6 +284,7 @@ export struct Ledger {
 	skin: uint8;
 	bump: uint8;
 	pad: uint16;
+	rebirths: uint32;
 }
 
 export function discriminator(this typeof Ledger): Discriminator {
@@ -300,6 +309,7 @@ export struct InitializeArgs {
 	staggerSeconds: uint64;
 	slotMillis: uint64;
 	turnGapSlots: uint64;
+	hatchFeeLamports: uint64;
 }
 
 export struct CreateBlockArgs {
