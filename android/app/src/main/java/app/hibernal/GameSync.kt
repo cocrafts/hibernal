@@ -19,10 +19,10 @@ import kotlin.random.Random
 
 object GameSync {
     private const val TAG = "HibernalSync"
-    internal const val PROGRAM = "Cq4iAp7YLg6U31rk5ZHJUhXzkcK1Qa6YScft7n3DGhsX"
+    internal const val PROGRAM = "ZnP8RE13DEU957hcWcqDzSTcGqsbiGFduJgqpjdjykw"
     private const val DELEGATION = "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
     const val CONFIG_BYTES = 312
-    internal const val CONFIG = "DT6h8v75W2C5AN1Wh1M2khVetk8AELhiNuNNMsAbpQTf"
+    internal const val CONFIG = "GmbtWfP67VbqTsQY8Cgy6H3zX797znAYJn9matuZVS9r"
     private const val DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
     internal const val DISCOVERY_TTL_MS = 600_000L
     internal const val REFRESH_INTERVAL_MS = 30_000L
