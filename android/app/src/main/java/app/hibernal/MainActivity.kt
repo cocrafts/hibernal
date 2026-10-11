@@ -12,6 +12,9 @@ import android.provider.Settings
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 
 class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
@@ -33,7 +36,23 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
             VoidNative.forward(e)
             true
         }
-        setContentView(view)
+        val offline = TextView(this).apply {
+            setTextColor(0xFFFF5040.toInt())
+            setBackgroundColor(0xB0000000.toInt())
+            setPadding(16, 8, 16, 8)
+            visibility = android.view.View.GONE
+        }
+        setContentView(FrameLayout(this).apply {
+            addView(view)
+            addView(offline, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = 96 })
+        })
+        OfflineGame.attach(applicationContext) { scene ->
+            runOnUiThread {
+                offline.text = "OFFLINE · ${scene?.lowercase()}"
+                offline.visibility = if (scene == null) android.view.View.GONE else android.view.View.VISIBLE
+            }
+        }
     }
 
     // Android asks at most twice; after that, and when notifications are off in Settings, only Settings can allow them.
@@ -64,15 +83,15 @@ class MainActivity : ComponentActivity(), SurfaceHolder.Callback {
         super.onResume()
         reportWallpaperPlaces()
         reportPetNews()
-        walletBridge.engage()
+        if (!OfflineGame.active) walletBridge.engage()
     }
 
     fun handleWalletRequest(request: Int) {
-        walletBridge.request(request)
+        if (OfflineGame.active) OfflineGame.walletRequest(request) else walletBridge.request(request)
     }
 
     fun handleOwnerActionRequest(request: Int) {
-        walletBridge.requestOwnerAction(request)
+        if (OfflineGame.active) OfflineGame.ownerAction(request) else walletBridge.requestOwnerAction(request)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}
