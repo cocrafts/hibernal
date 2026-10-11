@@ -6,13 +6,9 @@ Built for CLOCK IN, the Solana Mobile hackathon. The game is one language, [Meta
 
 **[Demo video](https://www.youtube.com/watch?v=mqqPngghPBg) · [APK](TODO-APK-LINK) · [Pitch deck](https://metascript-talk.pages.dev/clockIn) · [Verify it on devnet](#verify-it-in-two-minutes)**
 
-<table><tr>
-<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/lockScreen.webp" width="240" alt="The pet walking on the lock screen"></a><br><sub>Lock screen</sub></td>
-<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/wallpaper.webp" width="240" alt="The pet as the live wallpaper behind the home screen"></a><br><sub>Live wallpaper</sub></td>
-<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/inGame.webp" width="240" alt="The pet in the game with its HUD"></a><br><sub>In the game</sub></td>
-</tr></table>
+[![The pet on the lock screen, as the live wallpaper, and in the game](docs/media/presence.jpg)](https://www.youtube.com/watch?v=mqqPngghPBg)
 
-*Real screen recordings from a Seeker.*
+*Real screen recordings from a Seeker: the lock screen, the live wallpaper, and the game.*
 
 ## Care, not control
 
@@ -27,6 +23,12 @@ The owner's part is care:
 - Mourning. The death screen names the cause: old age, starved, or beaten by a named neighbour (`native/hud/mourning.ms`). The owner hatches the heir when ready; the dead pet's estate waits for it.
 
 ## Part of the phone
+
+<table><tr>
+<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/lockScreen.webp" width="240" alt="The pet walking on the lock screen"></a><br><sub>Lock screen</sub></td>
+<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/wallpaper.webp" width="240" alt="The pet as the live wallpaper behind the home screen"></a><br><sub>Live wallpaper</sub></td>
+<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/inGame.webp" width="240" alt="The pet in the game with its HUD"></a><br><sub>In the game</sub></td>
+</tr></table>
 
 | | What it does | Where |
 |---|---|---|
