@@ -6,9 +6,13 @@ Built for CLOCK IN, the Solana Mobile hackathon. The game is one language, [Meta
 
 **[Demo video](https://www.youtube.com/watch?v=mqqPngghPBg) · [APK](TODO-APK-LINK) · [Pitch deck](https://metascript-talk.pages.dev/clockIn) · [Verify it on devnet](#verify-it-in-two-minutes)**
 
-[![The pet on the lock screen, as the live wallpaper, and in the game](docs/media/presence.jpg)](https://www.youtube.com/watch?v=mqqPngghPBg)
+<table><tr>
+<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/lockScreen.webp" width="240" alt="The pet walking on the lock screen"></a><br><sub>Lock screen</sub></td>
+<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/wallpaper.webp" width="240" alt="The pet as the live wallpaper behind the home screen"></a><br><sub>Live wallpaper</sub></td>
+<td align="center"><a href="https://www.youtube.com/watch?v=mqqPngghPBg"><img src="docs/media/inGame.webp" width="240" alt="The pet in the game with its HUD"></a><br><sub>In the game</sub></td>
+</tr></table>
 
-*Real screen recordings from a Seeker: the lock screen, the live wallpaper, and the game.*
+*Real screen recordings from a Seeker.*
 
 ## Care, not control
 
