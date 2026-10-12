@@ -64,7 +64,7 @@ const ITEM = { Food: 0, Growth: 1, Insurance: 2 };
 const HABITS = {
 	Devoted: { visitPercent: 70n, opensPercent: 30n, feedBelowBps: 7000n, foodTier: 2, growthPercent: 30n, growthSteps: 3, insurePercent: 100n },
 	Casual: { visitPercent: 25n, opensPercent: 5n, feedBelowBps: 5000n, foodTier: 1, growthPercent: 10n, growthSteps: 1, insurePercent: 5n },
-	Absent: { visitPercent: 0n, opensPercent: 0n, feedBelowBps: 0n, foodTier: 0, growthPercent: 0n, growthSteps: 1, insurePercent: 0n },
+	Absent: { visitPercent: 5n, opensPercent: 0n, feedBelowBps: 0n, foodTier: 0, growthPercent: 0n, growthSteps: 1, insurePercent: 0n },
 };
 
 const [programArgument] = process.argv.slice(2);
