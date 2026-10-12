@@ -50,7 +50,7 @@ const COMMIT_WAIT_SECONDS = 30;
 const MINUTES = Number(process.env.MINUTES ?? 22);
 const PARALLEL = Number(process.env.PARALLEL ?? 8);
 const BLOCK_PARALLEL = Number(process.env.BLOCK_PARALLEL ?? 1);
-const ONRAMP_SKR = BigInt(process.env.ONRAMP_SKR ?? 200);
+const ONRAMP_SKR = BigInt(process.env.ONRAMP_SKR ?? 10_000);
 const STATUS_PATH = process.env.STATUS ?? "out/localnet/behaviourStatus.json";
 const MASK = (1n << 64n) - 1n;
 const BPS = 10_000n;
@@ -283,18 +283,20 @@ async function tokenBalance(account) {
 
 async function onramp(owners, config) {
 	const distinct = [...new Map(owners.map((entry) => [entry.owner.address, entry.owner])).values()];
+	const target = ONRAMP_SKR * SKR_DECIMALS;
+	let toppedUp = 0;
 	await inParallel(distinct, async (owner) => {
 		const source = await associated(owner.address, config.skrMint);
 		const balance = await tokenBalance(source);
-		const target = ONRAMP_SKR * SKR_DECIMALS;
-		if (balance >= target) return;
+		if (balance * 2n >= target) return;
 		const instructions = [];
 		if (!(await read(baseRead, source))) instructions.push(createAssociated(wallet, owner.address, config.skrMint, source));
 		instructions.push(mintTo(config.skrMint, source, wallet, target - balance));
 		const sent = await submit(base, instructions, wallet);
 		if (!sent.ok) throw new Error(`onramp ${owner.address}: ${sent.error}; signature ${sent.signature}`);
+		toppedUp += 1;
 	});
-	console.log(`onramp: ${distinct.length} owners hold at least ${ONRAMP_SKR} SKR`);
+	console.log(`onramp: ${toppedUp} of ${distinct.length} owners topped up to ${ONRAMP_SKR} SKR`);
 }
 
 async function petState(entry, rpc = ephemeral) {
@@ -491,8 +493,10 @@ async function run(owners, config) {
 			if (status.handled[id] === key) return;
 			status.handled[id] = key;
 			const started = Date.now();
-			if (block.round === 0) await inParallel(entries, (entry) => visit(entry, config, block.epoch));
-			else await inParallel(entries, (entry) => opened(entry, block.epoch, block.round));
+			if (block.round === 0) {
+				await onramp(entries, config);
+				await inParallel(entries, (entry) => visit(entry, config, block.epoch));
+			} else await inParallel(entries, (entry) => opened(entry, block.epoch, block.round));
 			console.log(`${new Date().toISOString()} block ${id} before epoch ${block.epoch} round ${block.round}: ${block.round === 0 ? "visits" : "opens"} done in ${((Date.now() - started) / 1000).toFixed(1)} s`);
 			save();
 		}, BLOCK_PARALLEL);
