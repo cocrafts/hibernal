@@ -81,6 +81,7 @@ const petAt = accountOffsets(idl, "PetAccount");
 const petFields = fieldsOf(idl, "Pet");
 const petTypes = Object.fromEntries(idl.types.find((entry) => entry.name === "Pet").type.fields.map((field) => [field.name, field.type]));
 const blockAt = accountOffsets(idl, "Block");
+const worldAt = accountOffsets(idl, "World");
 const configAt = accountOffsets(idl, "Config");
 const ledgerAt = accountOffsets(idl, "Ledger");
 const paidAt = accountOffsets(idl, "Paid");
@@ -441,6 +442,11 @@ async function blockState(id) {
 	return { phase: holder.data[blockAt.phase], round: holder.data[blockAt.round], epoch: readU64(holder.data, blockAt.epoch) };
 }
 
+async function settledRotation() {
+	const holder = await read(ephemeral, await program.address(program.seeds.world()));
+	return holder && holder.data[worldAt.resorting] === 0 ? readU64(holder.data, worldAt.rotation) : null;
+}
+
 async function joinedOwners(owners) {
 	const registry = process.env.PETS_FILE;
 	if (!registry || !process.env.PLAYERS || !existsSync(registry)) return [];
@@ -469,6 +475,7 @@ async function run(owners, config) {
 		}, BLOCK_PARALLEL);
 		return unplaced;
 	};
+	let grouped = await settledRotation();
 	let unplaced = await placeInto(owners);
 	console.log(`owners ${owners.length}: ${json(kinds)}; day ${config.secondsPerDay} s; ${unplaced.length} pets not in a block yet`);
 	status.handled ??= {};
@@ -480,6 +487,13 @@ async function run(owners, config) {
 			owners.push(...joined);
 			unplaced.push(...joined);
 			console.log(`${new Date().toISOString()} ${joined.length} owners joined to fill a real player's block, ${owners.length} in all`);
+		}
+		const rotation = await settledRotation();
+		if (rotation !== null && rotation !== grouped) {
+			byBlock.clear();
+			unplaced = await placeInto(owners);
+			grouped = rotation;
+			console.log(`${new Date().toISOString()} re-sort rotation ${rotation}: owners regrouped by their new blocks, ${unplaced.length} pets not in a block`);
 		}
 		if (unplaced.length > 0) {
 			const waiting = unplaced.length;
