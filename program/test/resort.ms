@@ -214,6 +214,15 @@ function clearedWithout(block: int32, freed: int32): uint64 {
 	return outcome.result;
 }
 
+function clearedEmpty(block: int32): uint64 {
+	const accounts: HostAccount[] = [authority(), state[CONFIG], state[WORLD], state[RESORT], state[BLOCKS + block]];
+	const outcome = run(programKey(), accounts, headed("ResortClear"), clearEntry);
+	state[WORLD] = accounts[2];
+	state[RESORT] = accounts[3];
+	state[BLOCKS + block] = accounts[4];
+	return outcome.result;
+}
+
 function noPreviousBlock(): HostAccount {
 	return { ...authority(), key: programKey(), signer: false };
 }
@@ -306,6 +315,28 @@ test "a block may not be stronger than the block before it" {
 	assert assigned(1, 0, 0, range(10, 15)) == codeOf(HibernalError.OutOfOrder);
 }
 
+test "a re-sort stuck on a block it cannot order begins again from a fresh rotation" {
+	fixture();
+	assert begun() == 0;
+	assert cleared(0) == 0 && cleared(1) == 0;
+	assert assigned(0, 0, 0, range(0, 10)) == 0;
+	const settled: HostAccount[] = [];
+	for (const account of state) { settled.push({ ...account, data: account.data.slice(0, account.data.length) }); }
+	assert assigned(1, 0, 0, range(10, 20)) == codeOf(HibernalError.OutOfOrder);
+	state = settled;
+	assert begun() == 0;
+	assert valueOf<Resort>(state[RESORT]).rotation == 2 && valueOf<Resort>(state[RESORT]).assigned == 0;
+	assert cleared(0) == 0;
+	assert clearedEmpty(1) == 0;
+	assert assigned(0, 0, 0, range(10, 20)) == 0;
+	assert assigned(1, 0, 0, range(0, 10)) == 0;
+	assert finished() == 0;
+	const strong = valueOf<Block>(state[BLOCKS]);
+	assert strong.rotation == 2 && strong.members[0].bytes[0] == 10;
+	assert valueOf<PetAccount>(state[PETS + 12]).pet.blockId == 0 && valueOf<PetAccount>(state[PETS + 3]).pet.blockId == 1;
+	assert valueOf<World>(state[WORLD]).resorting == 0;
+}
+
 test "a pet is assigned once a rotation and a block fills in order" {
 	fixture();
 	assert begun() == 0;
@@ -323,7 +354,6 @@ test "finishing early is refused and a listing goes back to its seller" {
 	listFromSeatTwo();
 	const before = valueOf<PetAccount>(state[PETS + 2]).pet.burrow;
 	assert begun() == 0;
-	assert begun() == codeOf(HibernalError.Resorting);
 	assert cleared(0) == 0;
 	assert valueOf<Block>(state[BLOCKS]).listed[0] == 0;
 	const price = Item.minted(TalentGrade.Epic, TalentKind.Might, ItemSkill.None, 1).sellPrice();

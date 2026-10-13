@@ -112,7 +112,6 @@ export function resortBegin(): Result<uint64, ProgramError> {
 	const x = try accounts<ResortBeginAccounts>();
 	const _authorized = try authorized(x.config, x.authority);
 	const world = x.world.data();
-	if (world.resorting != 0) { return failed(HibernalError.Resorting); }
 	const placedPets = world.placed as uint64;
 	if (given.count != placedPets) { return failed(HibernalError.OutOfOrder); }
 	const resort = x.resort.data();
