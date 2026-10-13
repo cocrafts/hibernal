@@ -12,3 +12,4 @@ android/.kotlin/
 vendor/
 native/hud/*.glsl.h
 .pi/
+*-OPERATION.md
