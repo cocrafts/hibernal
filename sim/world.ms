@@ -56,6 +56,7 @@ import {
 	combatant,
 	PersonaKind,
 	StrengthMeasure,
+	shuffleDraw,
 	strengthOf,
 	resortsAt,
 	movedTo,
@@ -353,7 +354,7 @@ export function strengthOrder(this world: World): int32[] {
 	const strengths: uint64[] = [];
 	const order: int32[] = [];
 	for (let index = 0; index < world.pets.length; index++) {
-		strengths.push(world.pets[index].strengthOf(measure));
+		strengths.push(world.pets[index].strengthOf(measure, shuffleDraw(index as uint32, world.epoch)));
 		if (!world.pets[index].alive) { continue; }
 		let position = order.length;
 		order.push(index);
@@ -1169,7 +1170,7 @@ test "a re-sort puts the strongest ten in the first block and forgets every grud
 	const might = pets[17].might;
 	const sorted = world.resorted();
 	for (let index = 1; index < 29; index++) {
-		assert sorted.pets[index - 1].strengthOf(StrengthMeasure.Combat) >= sorted.pets[index].strengthOf(StrengthMeasure.Combat);
+		assert sorted.pets[index - 1].strengthOf(StrengthMeasure.Combat, 0) >= sorted.pets[index].strengthOf(StrengthMeasure.Combat, 0);
 	}
 	assert !sorted.pets[29].alive;
 	for (let index = 0; index < sorted.pets.length; index++) {

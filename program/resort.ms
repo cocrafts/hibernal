@@ -19,7 +19,7 @@ import {
 } from "std/solana";
 import { accounts, args } from "std/solana";
 import { DelegationAccounts, DelegationConfig, delegate } from "std/solana/magicblock";
-import { BlockSlot, Pet, StrengthMeasure, boughtBack, movedTo, strengthOf } from "../rules/index";
+import { BlockSlot, Pet, StrengthMeasure, boughtBack, movedTo, shuffleDraw, strengthOf } from "../rules/index";
 import {
 	Block,
 	Config,
@@ -102,13 +102,13 @@ function placed(pet: Pet, blockId: uint32, seat: int32): Pet {
 	return pet.movedTo(blockId, seat as BlockSlot);
 }
 
-function strengthIn(pet: Pet, measure: StrengthMeasure): uint64 {
-	return pet.alive ? pet.strengthOf(measure) + 1 : 0;
+function strengthIn(pet: Pet, measure: StrengthMeasure, shuffled: uint64): uint64 {
+	return pet.alive ? pet.strengthOf(measure, shuffled) + 1 : 0;
 }
 
 export function resortBegin(): Result<uint64, ProgramError> {
 	const given = try args<ResortBeginArgs>();
-	if (given.measure > (StrengthMeasure.Combat as uint8)) { return Result.err(ProgramError.invalidArgument()); }
+	if (given.measure > (StrengthMeasure.Shuffle as uint8)) { return Result.err(ProgramError.invalidArgument()); }
 	const x = try accounts<ResortBeginAccounts>();
 	const _authorized = try authorized(x.config, x.authority);
 	const world = x.world.data();
@@ -206,7 +206,7 @@ export function resortAssign(): Result<uint64, ProgramError> {
 		const seat = (block.filled as int32) + index;
 		const pet = placed(record.pet, block.id, seat);
 		record.pet = pet;
-		const strength = strengthIn(pet, measure);
+		const strength = strengthIn(pet, measure, shuffleDraw(record.ordinal, resort.rotation));
 		if (strength < block.minStrength) { block.minStrength = strength; }
 		if (strength > block.maxStrength) { block.maxStrength = strength; }
 		block.members[seat] = holder.key();

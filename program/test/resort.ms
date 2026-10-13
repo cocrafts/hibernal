@@ -1,10 +1,11 @@
 import { Pubkey, decode, encode, failWith, instructionDiscriminator, SYSTEM_PROGRAM_ID } from "std/solana";
 import { HostAccount, run } from "std/solana/host";
-import { BlockSlot, GlobalConfig, Item, ItemSkill, Pet, Region, TalentGrade, TalentKind, born, genesis, minted, sellPrice } from "../../rules/index";
+import { BlockSlot, GlobalConfig, Item, ItemSkill, Pet, Region, TalentGrade, TalentKind, born, genesis, minted, sellPrice, shuffleDraw } from "../../rules/index";
 import { Block, Config, HibernalError, MAX_PETS, PetAccount, RESORT_BITMAP_BYTES, Resort, World, hibernalError } from "../layout";
 import { resortAssign, resortBegin, resortClear, resortFinish } from "../resort";
 
 const COMBAT: uint8 = 2;
+const SHUFFLE: uint8 = 3;
 
 function keyOf(seed: uint8): Pubkey {
 	let key = Pubkey.zero();
@@ -183,8 +184,12 @@ function begun(): uint64 {
 }
 
 function begunWith(count: uint64): uint64 {
+	return begunBy(COMBAT, count);
+}
+
+function begunBy(measure: uint8, count: uint64): uint64 {
 	const data = headed("ResortBegin");
-	data.push(COMBAT);
+	data.push(measure);
 	pushU64(data, count);
 	const accounts: HostAccount[] = [authority(), state[CONFIG], state[WORLD], state[RESORT]];
 	const outcome = run(programKey(), accounts, data, beginEntry);
@@ -335,6 +340,49 @@ test "a re-sort stuck on a block it cannot order begins again from a fresh rotat
 	assert strong.rotation == 2 && strong.members[0].bytes[0] == 10;
 	assert valueOf<PetAccount>(state[PETS + 12]).pet.blockId == 0 && valueOf<PetAccount>(state[PETS + 3]).pet.blockId == 1;
 	assert valueOf<World>(state[WORLD]).resorting == 0;
+}
+
+function shuffledOrder(rotation: uint64): int32[] {
+	const order: int32[] = [];
+	for (let pet = 0; pet < 20; pet++) {
+		if (pet == 4) { continue; }
+		let position = order.length;
+		order.push(pet);
+		while (position > 0 && shuffleDraw(order[position - 1] as uint32, rotation) < shuffleDraw(pet as uint32, rotation)) {
+			order[position] = order[position - 1];
+			position -= 1;
+		}
+		order[position] = pet;
+	}
+	order.push(4);
+	return order;
+}
+
+test "a shuffle seats pets by their draw for the rotation, the dead last, and refuses any other order" {
+	fixture();
+	assert begunBy(SHUFFLE + 1, 20) != 0;
+	assert begunBy(SHUFFLE, 20) == 0;
+	assert cleared(0) == 0 && cleared(1) == 0;
+	const order = shuffledOrder(1);
+	assert assigned(0, 0, 0, order.slice(10, 20)) == 0;
+	assert assigned(1, 0, 0, order.slice(0, 10)) == codeOf(HibernalError.OutOfOrder);
+}
+
+test "a shuffle in draw order finishes, and the next rotation draws a different order" {
+	fixture();
+	assert begunBy(SHUFFLE, 20) == 0;
+	assert cleared(0) == 0 && cleared(1) == 0;
+	const order = shuffledOrder(1);
+	assert assigned(0, 0, 0, order.slice(0, 10)) == 0;
+	assert assigned(1, 0, 0, order.slice(10, 20)) == 0;
+	assert finished() == 0;
+	const first = valueOf<Block>(state[BLOCKS]);
+	assert first.minStrength == shuffleDraw(order[9] as uint32, 1) + 1 && first.maxStrength == shuffleDraw(order[0] as uint32, 1) + 1;
+	assert valueOf<Block>(state[BLOCKS + 1]).minStrength == 0;
+	const next = shuffledOrder(2);
+	let moved = 0;
+	for (let index = 0; index < 10; index++) { if (next.slice(0, 10).indexOf(order[index]) < 0) { moved += 1; } }
+	assert moved > 0;
 }
 
 test "a pet is assigned once a rotation and a block fills in order" {
