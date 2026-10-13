@@ -102,7 +102,7 @@ Twenty pets in two blocks, `secondsPerDay` 1,200, program built 2026-10-03 (`ops
 
 ## 7. Re-sort on the relay flow
 
-`FORCE_RESORT=1 STAGE=resort node tools/chain/ops.mjs <program>` begins only when every block is Idle. While `World.resorting` is set, every `RoundStart` re-schedules itself 30 s later. Twenty pets were re-sorted by combat strength in 0.65 s. The next round ran in both blocks with their new members: 12 triggers and no cranker warning.
+`FORCE_RESORT=1 STAGE=resort node tools/chain/ops.mjs <program>` begins only when every block is Idle. A re-sort cut off half-way, by a crash or a refused assign, is run again by the same command: `ResortBegin` opens a fresh rotation, so every block clears and refills from block 0. `MEASURE` picks the order: `level`, `power`, `combat` (the default) or `shuffle`, a draw from each pet's ordinal and the rotation, so every re-sort deals new neighbours. Stop `hibernal-ops` before a forced re-sort: a second `ResortBegin` restarts the first, and on the 2026-10-13 localnet a forced run and the lane's own re-sort interleaved, one finished and the other failed its first assign. While `World.resorting` is set, every `RoundStart` re-schedules itself 30 s later. Twenty pets were re-sorted by combat strength in 0.65 s. The next round ran in both blocks with their new members: 12 triggers and no cranker warning.
 
 ## 8. Open: commits as the ER's backup
 

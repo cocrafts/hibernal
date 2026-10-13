@@ -83,7 +83,7 @@ The world is live on devnet. One game day lasts one real hour, so you can watch 
 
 | | |
 |---|---|
-| Program | [`ZnP8RE13DEU957hcWcqDzSTcGqsbiGFduJgqpjdjykw`](https://explorer.solana.com/address/ZnP8RE13DEU957hcWcqDzSTcGqsbiGFduJgqpjdjykw?cluster=devnet). ELF SHA-256 `49f9370cfbeef443342e23a3502c8c74599548e742e490b295445534117eb6d2` |
+| Program | [`ZnP8RE13DEU957hcWcqDzSTcGqsbiGFduJgqpjdjykw`](https://explorer.solana.com/address/ZnP8RE13DEU957hcWcqDzSTcGqsbiGFduJgqpjdjykw?cluster=devnet). ELF SHA-256 `dc9afcb6e36433f76509cd57f84eeda9e120a9fe806ddfe9e4cd711b7cc4f0cb` |
 | Brain | [`4dG9w9hWwTgQe5cUQGAXBF2GXDcW4BJNZJqbhpbKi8id`](https://explorer.solana.com/address/4dG9w9hWwTgQe5cUQGAXBF2GXDcW4BJNZJqbhpbKi8id?cluster=devnet). Bytes from offset 24 equal `train/checkpoints/p34s8.policy`, SHA-256 `00a433103bbe7cbc362c38ce5e410bb132cbc04036c23fbb31c137d667ed7182` |
 | `$HBRN` | [`7wAXCBFK9SzzwwWLQrdPdtyNBEerpprn6EirYgbxoTn7`](https://explorer.solana.com/address/7wAXCBFK9SzzwwWLQrdPdtyNBEerpprn6EirYgbxoTn7?cluster=devnet) |
 | A block, live in the ER | [`DfMJTPHwc1gQCcV62J8rwgRJvWgyR4i61TZhhCb6kmL8`](https://explorer.solana.com/address/DfMJTPHwc1gQCcV62J8rwgRJvWgyR4i61TZhhCb6kmL8?cluster=custom&customUrl=https%3A%2F%2Fdevnet-as.magicblock.app): its rounds, VRF callbacks and brain turns |
