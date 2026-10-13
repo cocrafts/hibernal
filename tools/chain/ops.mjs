@@ -51,7 +51,9 @@ const PARALLEL = Number(process.env.PARALLEL ?? 16);
 const WATCHDOG_SLOTS = BigInt(process.env.WATCHDOG_SLOTS ?? 6_000);
 const TOKEN_URI = process.env.TOKEN_URI;
 const TICK_SECONDS = Number(process.env.TICK_SECONDS ?? 10);
-const MEASURE = ["level", "power", "combat"].indexOf(process.env.MEASURE ?? "combat");
+const MEASURES = ["level", "power", "combat", "shuffle"];
+const MEASURE = MEASURES.indexOf(process.env.MEASURE ?? "combat");
+if (MEASURE < 0) throw new Error(`MEASURE must be one of ${MEASURES.join(", ")}, not ${process.env.MEASURE}`);
 const PHASES = ["Idle", "Seeding", "Acting", "Dusk"];
 
 const [programArgument, policyPath] = process.argv.slice(2);
@@ -192,6 +194,7 @@ function petOf(key, holder) {
 		key,
 		owner: decodeAddress(data.subarray(petAccountAt.owner, petAccountAt.owner + 32)),
 		mint: decodeAddress(data.subarray(petAccountAt.mint, petAccountAt.mint + 32)),
+		ordinal: readU32(data, petAccountAt.ordinal),
 		blockId: readU32(data, at("block_id")),
 		slot: data[at("slot")],
 		alive: data[at("alive")] !== 0,
@@ -200,6 +203,9 @@ function petOf(key, holder) {
 		forage: new DataView(data.buffer, data.byteOffset).getUint16(at("forage"), true),
 		might: new DataView(data.buffer, data.byteOffset).getUint16(at("might"), true),
 		grit: new DataView(data.buffer, data.byteOffset).getUint16(at("grit"), true),
+		lastTickEpoch: readU64(data, at("last_tick_epoch")),
+		growthExpiry: readU64(data, at("growth_multiplier_expiry")),
+		growthBps: new DataView(data.buffer, data.byteOffset).getUint16(at("growth_multiplier_bps"), true),
 		gear,
 	};
 }
@@ -221,13 +227,28 @@ function geared(value, bonusBps) {
 	return Math.trunc(value * (10_000 + bonusBps) / 10_000);
 }
 
-export function strengthOf(pet, measure = MEASURE) {
+const SHUFFLE_PRIME = 4_294_967_291n;
+
+function shuffleDraw(ordinal, rotation) {
+	const seeded = (BigInt(ordinal) * 2_654_435_761n + (rotation % SHUFFLE_PRIME) * 40_503n + 12_345n) % SHUFFLE_PRIME;
+	const once = (seeded * seeded) % SHUFFLE_PRIME;
+	const twice = (once + seeded) % SHUFFLE_PRIME;
+	return (twice * twice) % SHUFFLE_PRIME;
+}
+
+export function strengthOf(pet, measure = MEASURE, rotation = 0n) {
 	if (!pet.alive) return 0n;
-	const forage = geared(pet.forage, statBonusBps(pet.gear, TALENT.forage));
+	const growthBonusBps = pet.lastTickEpoch + 1n === pet.growthExpiry ? pet.growthBps - 10_000 : 0;
+	const forage = geared(pet.forage, statBonusBps(pet.gear, TALENT.forage) + growthBonusBps);
 	const might = geared(pet.might, statBonusBps(pet.gear, TALENT.might));
 	const grit = geared(pet.grit, statBonusBps(pet.gear, TALENT.grit));
 	const power = BigInt(forage + might + grit);
-	const strength = measure === 0 ? BigInt(pet.level) * 10_000n + power : measure === 1 ? power : BigInt(might + grit);
+	const strength = [
+		() => BigInt(pet.level) * 10_000n + power,
+		() => power,
+		() => BigInt(might + grit),
+		() => shuffleDraw(pet.ordinal, rotation),
+	][measure]();
 	return strength + 1n;
 }
 
@@ -638,7 +659,10 @@ async function resort() {
 	const resortKey = await addressOf(program.seeds.resort());
 	if (!delegated(await read(baseRead, resortKey))) await onL1("delegate resort", [await program.delegateResort()]);
 	await readCloned([resortKey]);
-	if (world.resorting === 0) await onEr("resort begin", [await program.resortBegin(MEASURE, BigInt(world.placed))]);
+	const known = (await discoverPets()).map((key) => address(key));
+	const pets = (await readCloned(known)).map((holder, index) => petOf(known[index], holder)).filter((pet) => pet.blockId !== NO_BLOCK);
+	if (pets.length !== Number(world.placed)) throw new Error(`resort: found ${pets.length} placed pets, the world has ${world.placed}`);
+	await onEr("resort begin", [await program.resortBegin(MEASURE, BigInt(world.placed))]);
 	blocksNow = await allBlocks();
 	const resortHolder = (await readCloned([resortKey]))[0];
 	const rotation = readU64(resortHolder.data, accountOffsets(idl, "Resort").rotation);
@@ -648,10 +672,8 @@ async function resort() {
 		const members = block.members.filter(Boolean).map((member) => address(member));
 		await onEr(`resort clear ${block.id}`, [await program.resortClear(block.id, members)]);
 	});
-	const memberKeys = blocksNow.flatMap((block) => block.members.filter(Boolean)).map((member) => address(member));
-	const pets = (await readCloned(memberKeys)).map((holder, index) => petOf(memberKeys[index], holder));
 	pets.sort((left, right) => {
-		const difference = strengthOf(right) - strengthOf(left);
+		const difference = strengthOf(right, MEASURE, rotation) - strengthOf(left, MEASURE, rotation);
 		if (difference !== 0n) return difference > 0n ? 1 : -1;
 		if (left.blockId !== right.blockId) return left.blockId - right.blockId;
 		return left.slot - right.slot;
@@ -661,7 +683,7 @@ async function resort() {
 		await onEr(`resort assign ${id}`, [await program.resortAssign(id, 0n, chosen)]);
 	}
 	await onEr("resort finish", [await program.resortFinish()]);
-	note("resort", `re-sorted ${pets.length} pets into ${Math.ceil(pets.length / SEATS)} blocks by ${["level", "power", "combat"][MEASURE]}`);
+	note("resort", `re-sorted ${pets.length} pets into ${Math.ceil(pets.length / SEATS)} blocks by ${MEASURES[MEASURE]}`);
 	if (supportsRelay()) await watchdog();
 	return { resorted: pets.length };
 }

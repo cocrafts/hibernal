@@ -276,3 +276,25 @@ test("load is due only for a living pet whose ledger bought more than it loaded,
 	assert.equal(loadable(ledger(2), record(1, 0, 0, 0)), false);
 	assert.equal(loadable(null, record(0, 0, 0)), false);
 });
+
+test("resort strength counts a growth dose in forage only on the epoch it applies, as rules stats() does", () => {
+	const context = { TALENT: { forage: 1, might: 2, grit: 3 }, MEASURE: 0, GRADE_BONUS_BPS: [400, 800, 1400, 2000, 2600], ITEM_WEAR_MAX: 200 };
+	loadFunction("ops.mjs", "statBonusBps", "geared", context);
+	loadFunction("ops.mjs", "geared", "strengthOf", context);
+	const strengthOf = loadFunction("ops.mjs", "strengthOf", "crankAddressOf", context);
+	context.SHUFFLE_PRIME = 4_294_967_291n;
+	loadFunction("ops.mjs", "shuffleDraw", "strengthOf", context);
+	const pet = (growthExpiry) => ({ alive: true, level: 20, forage: 400, might: 100, grit: 100, lastTickEpoch: 23n, growthExpiry, growthBps: 11_000, gear: [] });
+	assert.equal(strengthOf(pet(24n)), 20n * 10_000n + 440n + 100n + 100n + 1n);
+	assert.equal(strengthOf(pet(23n)), 20n * 10_000n + 400n + 100n + 100n + 1n);
+});
+
+test("resort shuffle draws match the pinned rules/resort.ms values", () => {
+	const context = { SHUFFLE_PRIME: 4_294_967_291n };
+	const shuffleDraw = loadFunction("ops.mjs", "shuffleDraw", "strengthOf", context);
+	assert.equal(shuffleDraw(0, 1n), 1_692_379_012n);
+	assert.equal(shuffleDraw(1, 1n), 675_258_088n);
+	assert.equal(shuffleDraw(0, 2n), 3_493_416_566n);
+	assert.equal(shuffleDraw(79_999, 5n), 2_702_955_033n);
+	assert.equal(shuffleDraw(4_294_967_295, 18_446_744_073_709_551_615n), 2_999_621_875n);
+});
