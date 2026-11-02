@@ -1,7 +1,9 @@
 const config = {
 	fmt: { useTabs: true },
 	deps: {
-		"@metascript/void": "file:./vendor/void",
+		"@metascript/void": "file:../void",
+		"@metascript/neon": "file:../neon",
+		"@metascript/ion": "file:../ion",
 	},
 };
 
